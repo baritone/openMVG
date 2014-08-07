@@ -1441,15 +1441,21 @@ void IncrementalReconstructionEngine::BundleAdjustment()
       problem.SetParameterization(ba_problem.mutable_camera_intrisic_for_observation(i),
                                   constant_transform_parameterization);
     }
+
   }
 
+
   //-- Lock the first camera to better deal with scene orientation ambiguity
-  if (_vec_added_order.size()>0 && map_camIndexToNumber_extrinsic.size()>0)
+  if( _vec_added_order.size() > 1 )
   {
     // First camera is the first one that have been used
     problem.SetParameterBlockConstant(
-      ba_problem.mutable_camera_extrinsic_for_observation(
-        map_camIndexToNumber_extrinsic[_vec_added_order[0]]));
+      ba_problem.mutable_cameras_extrinsic() + 6 * map_camIndexToNumber_extrinsic [ _vec_added_order[0] ] );
+
+    // First camera is the first one that have been used
+    problem.SetParameterBlockConstant(
+      ba_problem.mutable_cameras_extrinsic() + 6 * map_camIndexToNumber_extrinsic [ _vec_added_order[1] ] );
+
   }
 
   // Configure a BA engine and run it
