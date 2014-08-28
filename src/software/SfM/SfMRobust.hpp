@@ -217,7 +217,8 @@ bool robustResection(
   std::vector<size_t> * pvec_inliers,
   const Mat3 * K = NULL,
   Mat34 * P = NULL,
-  double * maxError = NULL)
+  double * maxError = NULL,
+  bool bRefineFocal = true )
 {
   double dPrecision = std::numeric_limits<double>::infinity();
   size_t MINIMUM_SAMPLES = 0;
@@ -240,9 +241,8 @@ bool robustResection(
   }
   else
   {
-    // If K is available use the Epnp solver
-    //typedef openMVG::euclidean_resection::kernel::EpnpSolver SolverType;
-    typedef openMVG::euclidean_resection::P3PSolver SolverType;
+    //typedef openMVG::euclidean_resection::kernel::EpnpSolver SolverType; // If K is available use the Epnp solver
+    typedef openMVG::euclidean_resection::P3PSolver SolverType; // If K is available use the P3P solver
     MINIMUM_SAMPLES = SolverType::MINIMUM_SAMPLES;
 
     typedef ACKernelAdaptorResection_K<
@@ -267,7 +267,7 @@ bool robustResection(
 
     using namespace openMVG::bundle_adjustment;
     // Setup a BA problem
-    BA_Problem_data<7> ba_problem;
+    BA_Problem_data<9> ba_problem;
 
     // Configure the size of the problem
     ba_problem.num_cameras_ = 1;
@@ -278,11 +278,9 @@ bool robustResection(
     ba_problem.camera_index_.reserve(ba_problem.num_observations_);
     ba_problem.observations_.reserve(2 * ba_problem.num_observations_);
 
-    ba_problem.num_parameters_ = 7 * ba_problem.num_cameras_;
+    ba_problem.num_parameters_ = 9 * ba_problem.num_cameras_; // #[Rotation|translation|K] = [3x1]|[3x1]|[3x1]
     ba_problem.parameters_.reserve(ba_problem.num_parameters_);
 
-    double ppx = K_(0,2);
-    double ppy = K_(1,2);
     // Fill it with data (tracks and points coords)
     for (size_t i = 0; i < ba_problem.num_points_; ++i) {
       // Collect the image of point i in each frame.
@@ -290,11 +288,11 @@ bool robustResection(
       ba_problem.camera_index_.push_back(0);
       ba_problem.point_index_.push_back(i);
       const Vec2 & pt = pt2D.col((*pvec_inliers)[i]);
-      ba_problem.observations_.push_back( pt(0) - ppx );
-      ba_problem.observations_.push_back( pt(1) - ppy );
+      ba_problem.observations_.push_back( pt(0) );
+      ba_problem.observations_.push_back( pt(1) );
     }
 
-    // Add camera parameters (R, t, focal)
+    // Add camera parameters (R [3x1], t [3x1], focal [1])
     {
       // Rotation matrix to angle axis
       std::vector<double> angleAxis(3);
@@ -306,6 +304,8 @@ bool robustResection(
       ba_problem.parameters_.push_back(t_[1]);
       ba_problem.parameters_.push_back(t_[2]);
       ba_problem.parameters_.push_back(K_(0,0)); //focal
+      ba_problem.parameters_.push_back(K_(0,2)); //principal_point x
+      ba_problem.parameters_.push_back(K_(1,2)); //principal_point y
     }
 
     // Create residuals for each observation in the bundle adjustment problem. The
@@ -317,7 +317,7 @@ bool robustResection(
       // image location and compares the reprojection against the observation.
 
       ceres::CostFunction* cost_function =
-        new ceres::AutoDiffCostFunction<pinhole_reprojectionError::ErrorFunc_Refine_Camera, 2, 7>(
+        new ceres::AutoDiffCostFunction<pinhole_reprojectionError::ErrorFunc_Refine_Camera, 2, 9>(
         new pinhole_reprojectionError::ErrorFunc_Refine_Camera(
         & ba_problem.observations()[2 * i],
         pt3D.col((*pvec_inliers)[i]).data()));
@@ -325,6 +325,16 @@ bool robustResection(
       problem.AddResidualBlock(cost_function,
         NULL, // squared loss
         ba_problem.mutable_camera_for_observation(0));
+    }
+
+    // Parameterization used to restrict camera intrinsics if desired (fixed focal length)
+    ceres::SubsetParameterization *constant_transform_parameterization = NULL;
+    if ( ! bRefineFocal ) {
+      std::vector<int> vec_constant_focal(1,6); // Set last element camera parameter as fixed (the focal)
+      constant_transform_parameterization =
+        new ceres::SubsetParameterization(7, vec_constant_focal);
+      problem.SetParameterization(ba_problem.mutable_camera_for_observation(0),
+        constant_transform_parameterization);
     }
 
     ceres::Solver::Options options;
@@ -343,7 +353,8 @@ bool robustResection(
     options.minimizer_progress_to_stdout = false;
     options.logging_type = ceres::SILENT;
 #ifdef USE_OPENMP
-    options.num_threads = omp_get_num_threads();
+    options.num_threads = omp_get_max_threads();
+    options.num_linear_solver_threads = omp_get_max_threads();
 #endif // USE_OPENMP
 
     ceres::Solver::Summary summary;
@@ -359,6 +370,8 @@ bool robustResection(
       ceres::AngleAxisToRotationMatrix(Rtf, R_.data());
       t_ = Vec3(Rtf[3], Rtf[4], Rtf[5]);
       double focal = Rtf[6];
+      double ppx = Rtf[7];
+      double ppy = Rtf[8];
 
       Mat3 KRefined;
       KRefined << focal,0, ppx,

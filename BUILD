@@ -45,7 +45,7 @@ Linux compilation
 -----------------
 
 Setup the required external library.
-* sudo apt-get install libpng-dev libjpeg-dev libxxf86vm1 libxxf86vm-dev libxi-dev libxrandr-dev
+* sudo apt-get install libpng-dev libjpeg-dev libtiff-dev libxxf86vm1 libxxf86vm-dev libxi-dev libxrandr-dev
 
  $ git clone --recursive https://github.com/openMVG/openMVG.git
  $ cd openMVG
@@ -58,8 +58,8 @@ Setup the required external library.
 If you want enable unit tests and examples to the build:
  $ cmake -DCMAKE_BUILD_TYPE=RELEASE -DOpenMVG_BUILD_TESTS=ON -DOpenMVG_BUILD_EXAMPLES=ON . ../openMVG/src/
 
-=> In order to use the MOSEK 6 back-end for the linear programming openMVG module
-  - Check that you have an up-to-date MOSEK licence, else openMVG MOSEK unit test will fail.
+=> In order to use the MOSEK 6 backend for the linear programming openMVG module
+  - Check that you have an uptodate MOSEK licence, else openMVG MOSEK unit test will fail.
 
  $ cmake -DCMAKE_BUILD_TYPE=RELEASE
     -DMOSEK_SEARCH_HEADER="~/Documents/Lib/mosek/6/tools/platform/linux64x86/h"

@@ -809,7 +809,7 @@ bool IncrementalReconstructionEngine::Resection(size_t imageIndex)
     &vec_inliers,
     // If intrinsics guess exist use it, else use a standard 6 points pose resection
     (intrinsicCam.m_bKnownIntrinsic == true) ? & intrinsicCam.m_K : NULL,
-    &P, &errorMax);
+    &P, &errorMax, _bRefineFocal );
 
   std::cout << std::endl
     << "-------------------------------" << std::endl
@@ -1282,7 +1282,7 @@ void IncrementalReconstructionEngine::BundleAdjustment()
 
     // Configure the size of the problem
   ba_problem.num_cameras_ = nbCams;
-  ba_problem.num_intrinsic_ = nbIntrinsics;
+  ba_problem.num_intrinsics_ = nbIntrinsics;
   ba_problem.num_points_ = nbPoints3D;
   ba_problem.num_observations_ = nbmeasurements;
 
@@ -1292,9 +1292,9 @@ void IncrementalReconstructionEngine::BundleAdjustment()
   ba_problem.observations_.reserve(2 * ba_problem.num_observations_);
 
   ba_problem.num_parameters_ =
-    6 * ba_problem.num_cameras_ // #[Rotation|translation]
-    + 6 * ba_problem.num_intrinsic_ // #[f,ppx,ppy,k1,k2,k3]
-    + 3 * ba_problem.num_points_; // #[X]
+    6 * ba_problem.num_cameras_ // #[Rotation|translation] = [3x1]|[3x1]
+    + 6 * ba_problem.num_intrinsics_ // #[f,ppx,ppy,k1,k2,k3] = [6x1]
+    + 3 * ba_problem.num_points_; // #[X] = [3x1]
   ba_problem.parameters_.reserve(ba_problem.num_parameters_);
 
   // Setup extrinsic parameters
@@ -1308,11 +1308,11 @@ void IncrementalReconstructionEngine::BundleAdjustment()
     set_camIndex.insert(iter->first);
     map_camIndexToNumber_extrinsic.insert(std::make_pair(iter->first, cpt));
 
-    Mat3 R = iter->second._R;
+    const Mat3 R = iter->second._R;
     double angleAxis[3];
     ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
     // translation
-    Vec3 t = iter->second._t;
+    const Vec3 t = iter->second._t;
     ba_problem.parameters_.push_back(angleAxis[0]);
     ba_problem.parameters_.push_back(angleAxis[1]);
     ba_problem.parameters_.push_back(angleAxis[2]);
@@ -1399,22 +1399,6 @@ void IncrementalReconstructionEngine::BundleAdjustment()
     ++cpt;
   }
 
-  // Parameterization used to restrict camera intrinsics (Brown model or Pinhole Model).
-  ceres::SubsetParameterization *constant_transform_parameterization = NULL;
-  if (!_bRefinePPandDisto) {
-      std::vector<int> vec_constant_PPAndRadialDisto;
-
-      // Last five elements are ppx,ppy and radial disto factors.
-      vec_constant_PPAndRadialDisto.push_back(1); // PRINCIPAL_POINT_X FIXED
-      vec_constant_PPAndRadialDisto.push_back(2); // PRINCIPAL_POINT_Y FIXED
-      vec_constant_PPAndRadialDisto.push_back(3); // K1 FIXED
-      vec_constant_PPAndRadialDisto.push_back(4); // K2 FIXED
-      vec_constant_PPAndRadialDisto.push_back(5); // K3 FIXED
-
-      constant_transform_parameterization =
-        new ceres::SubsetParameterization(6, vec_constant_PPAndRadialDisto);
-  }
-
   // Create residuals for each observation in the bundle adjustment problem. The
   // parameters for cameras and points are added automatically.
   ceres::Problem problem;
@@ -1432,7 +1416,7 @@ void IncrementalReconstructionEngine::BundleAdjustment()
 
     problem.AddResidualBlock(cost_function,
                              p_LossFunction, // replaced by NULL if you don't want a LossFunction
-                             ba_problem.mutable_camera_intrisic_for_observation(i),
+                             ba_problem.mutable_camera_intrinsic_for_observation(i),
                              ba_problem.mutable_camera_extrinsic_for_observation(i),
                              ba_problem.mutable_point_for_observation(i));
 
@@ -1455,6 +1439,55 @@ void IncrementalReconstructionEngine::BundleAdjustment()
     problem.SetParameterBlockConstant(
       ba_problem.mutable_cameras_extrinsic() + 6 * map_camIndexToNumber_extrinsic [ _vec_added_order[1] ] );
 
+  }
+
+  // Parameterization used to restrict camera intrinsics
+  {
+    //-- Optional:
+    //  - bRefinePPandDisto
+    //   -> true: Pinhole camera model with Brown distortion model may vary
+    //   -> false: only the focal lenght may vary
+    //
+    //  - _bRefineFocal
+    //   -> true: refine focal length, Principal point and radial distortion
+    //   -> false: fixed focal length (refine Principal point and radial distortion)
+    ceres::SubsetParameterization *constant_transform_parameterization = NULL;
+    std::vector<int> vec_constant_intrinsic;
+    if ( !_bRefinePPandDisto ) {
+      // Parameterization used to set as constant principal point and radial distortion
+      // Last five elements are ppx,ppy and radial disto factors.
+      vec_constant_intrinsic.push_back(1); // PRINCIPAL_POINT_X FIXED
+      vec_constant_intrinsic.push_back(2); // PRINCIPAL_POINT_Y FIXED
+      vec_constant_intrinsic.push_back(3); // K1 FIXED
+      vec_constant_intrinsic.push_back(4); // K2 FIXED
+      vec_constant_intrinsic.push_back(5); // K3 FIXED
+    }
+
+    if ( !_bRefineFocal ) {
+      // Parameterization used to set as constant the camera focal length (fixed focal length)
+      vec_constant_intrinsic.push_back(0);
+    }
+
+    if ( !vec_constant_intrinsic.empty() &&
+         vec_constant_intrinsic.size() != ba_problem.NINTRINSICPARAM
+         // if all parameters are set as constant, better to use the SetParameterBlockConstant
+       )
+      constant_transform_parameterization =
+        new ceres::SubsetParameterization(6, vec_constant_intrinsic);
+
+    // Loop over intrinsics (to configure varying and fix parameters)
+    for (size_t iIntrinsicGroupId = 0; iIntrinsicGroupId < ba_problem.num_intrinsics(); ++iIntrinsicGroupId)
+    {
+      if ( !_bRefinePPandDisto && !_bRefineFocal ){
+        problem.SetParameterBlockConstant(ba_problem.mutable_cameras_intrinsic(iIntrinsicGroupId));
+      }
+      else{
+        if ( !vec_constant_intrinsic.empty() ) {
+          problem.SetParameterization(ba_problem.mutable_cameras_intrinsic(iIntrinsicGroupId),
+            constant_transform_parameterization);
+        }
+      }
+    }
   }
 
   // Configure a BA engine and run it
@@ -1512,7 +1545,7 @@ void IncrementalReconstructionEngine::BundleAdjustment()
       const size_t imageId = iter->first;
       const size_t extrinsicId = map_camIndexToNumber_extrinsic[imageId];
       // Get back extrinsic pointer
-      const double * camE = ba_problem.mutable_cameras_extrinsic() + extrinsicId * 6;
+      const double * camE = ba_problem.mutable_cameras_extrinsic(extrinsicId);
       Mat3 R;
       // angle axis to rotation matrix
       ceres::AngleAxisToRotationMatrix(camE, R.data());
@@ -1520,19 +1553,19 @@ void IncrementalReconstructionEngine::BundleAdjustment()
 
       // Get back the intrinsic group of the camera
       const size_t intrinsicId = map_camIndexToNumber_intrinsic[imageId];
-      const double * camIntrinsics = ba_problem.mutable_cameras_intrinsic() + intrinsicId * 6;
+      const double * camIntrinsics = ba_problem.mutable_cameras_intrinsic(intrinsicId);
       // Update the camera with update intrinsic and extrinsic parameters
       using namespace pinhole_brown_reprojectionError;
       BrownPinholeCamera & sCam = iter->second;
       sCam = BrownPinholeCamera(
-        camIntrinsics[OFFSET_FOCAL_LENGTH],
-        camIntrinsics[OFFSET_PRINCIPAL_POINT_X],
-        camIntrinsics[OFFSET_PRINCIPAL_POINT_Y],
+        camIntrinsics[pinhole_brown_reprojectionError::OFFSET_FOCAL_LENGTH],
+        camIntrinsics[pinhole_brown_reprojectionError::OFFSET_PRINCIPAL_POINT_X],
+        camIntrinsics[pinhole_brown_reprojectionError::OFFSET_PRINCIPAL_POINT_Y],
         R,
         t,
-        camIntrinsics[OFFSET_K1],
-        camIntrinsics[OFFSET_K2],
-        camIntrinsics[OFFSET_K3]);
+        camIntrinsics[pinhole_brown_reprojectionError::OFFSET_K1],
+        camIntrinsics[pinhole_brown_reprojectionError::OFFSET_K2],
+        camIntrinsics[pinhole_brown_reprojectionError::OFFSET_K3]);
     }
 
     //-- Update each intrinsic parameters group
@@ -1544,20 +1577,20 @@ void IncrementalReconstructionEngine::BundleAdjustment()
       const double * camIntrinsics = ba_problem.mutable_cameras_intrinsic() + cpt * 6;
       Vec6 & intrinsic = iterIntrinsicGroup->second;
       using namespace pinhole_brown_reprojectionError;
-      intrinsic << camIntrinsics[OFFSET_FOCAL_LENGTH],
-        camIntrinsics[OFFSET_PRINCIPAL_POINT_X],
-        camIntrinsics[OFFSET_PRINCIPAL_POINT_Y],
-        camIntrinsics[OFFSET_K1],
-        camIntrinsics[OFFSET_K2],
-        camIntrinsics[OFFSET_K3];
+      intrinsic << camIntrinsics[pinhole_brown_reprojectionError::OFFSET_FOCAL_LENGTH],
+        camIntrinsics[pinhole_brown_reprojectionError::OFFSET_PRINCIPAL_POINT_X],
+        camIntrinsics[pinhole_brown_reprojectionError::OFFSET_PRINCIPAL_POINT_Y],
+        camIntrinsics[pinhole_brown_reprojectionError::OFFSET_K1],
+        camIntrinsics[pinhole_brown_reprojectionError::OFFSET_K2],
+        camIntrinsics[pinhole_brown_reprojectionError::OFFSET_K3];
 
        std::cout << " for camera Idx=[" << cpt << "]: " << std::endl
-        << "\t focal: " << camIntrinsics[OFFSET_FOCAL_LENGTH] << std::endl
-        << "\t ppx: " << camIntrinsics[OFFSET_PRINCIPAL_POINT_X] << std::endl
-        << "\t ppy: " << camIntrinsics[OFFSET_PRINCIPAL_POINT_Y] << std::endl
-        << "\t k1: " << camIntrinsics[OFFSET_K1] << std::endl
-        << "\t k2: " << camIntrinsics[OFFSET_K2] << std::endl
-        << "\t k3: " << camIntrinsics[OFFSET_K3] << std::endl;
+        << "\t focal: " << camIntrinsics[pinhole_brown_reprojectionError::OFFSET_FOCAL_LENGTH] << std::endl
+        << "\t ppx: " << camIntrinsics[pinhole_brown_reprojectionError::OFFSET_PRINCIPAL_POINT_X] << std::endl
+        << "\t ppy: " << camIntrinsics[pinhole_brown_reprojectionError::OFFSET_PRINCIPAL_POINT_Y] << std::endl
+        << "\t k1: " << camIntrinsics[pinhole_brown_reprojectionError::OFFSET_K1] << std::endl
+        << "\t k2: " << camIntrinsics[pinhole_brown_reprojectionError::OFFSET_K2] << std::endl
+        << "\t k3: " << camIntrinsics[pinhole_brown_reprojectionError::OFFSET_K3] << std::endl;
     }
   }
 }
