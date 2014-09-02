@@ -112,7 +112,7 @@ public:
   {
     _bUseBundleAdjustment = bUseBundleAdjustment;
   }
-  
+
   void setIfRefinePrincipalPointAndRadialDisto(bool bRefinePPandDisto)
   {
     _bRefinePPandDisto = bRefinePPandDisto;
@@ -121,6 +121,11 @@ public:
   void setIfRefineFocal(bool bRefineFocal)
   {
     _bRefineFocal = bRefineFocal;
+  }
+
+  void setInitialPoseKnown(bool bInitialPoseKnown)
+  {
+    _bInitialPoseKnown = bInitialPoseKnown;
   }
 
 private:
@@ -144,13 +149,14 @@ private:
   bool _bUseBundleAdjustment;
   bool _bRefinePPandDisto; // Boolean used to know if Principal point and Radial disto is refined
   bool _bRefineFocal;      // Boolean used to know if we refine focal or not
+  bool _bInitialPoseKnown; // boolean used to know if pose of initial pair is known
 
   // -----
   // Future reconstructed data
   // ----
-  
+
   // helper to save reconstructed data (Camera and 3D points)
-  reconstructorHelper _reconstructorData; 
+  reconstructorHelper _reconstructorData;
 
   // tracks that are reconstructed during the sequential SfM process
   openMVG::tracks::STLMAPTracks _map_reconstructed;
@@ -159,7 +165,7 @@ private:
   std::set<size_t> _set_remainingImageId;
 
   //store in which order image have been added
-  std::vector<size_t> _vec_added_order; 
+  std::vector<size_t> _vec_added_order;
 
   // Per camera confidence (A contrario estimated threshold error)
   std::map<size_t, double> _map_ACThreshold;

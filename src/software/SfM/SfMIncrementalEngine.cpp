@@ -472,6 +472,27 @@ bool IncrementalReconstructionEngine::MakeInitialPair3D(const std::pair<size_t,s
   //-> Triangulate the common tracks
   //--> Triangulate the point
 
+  // we suppose here that relative pose of second camera is known
+
+
+#if 0
+  tJ[0] =-0.808647164; tJ[1] = 0.006518219; tJ[2] = 0.037240559;
+
+  double R[9] = { 0.999997, -0.002357,  0.000190,
+                  0.002346,  0.998968,  0.045348,
+                 -0.000296, -0.045348,  0.998971 };
+#else
+  tJ[0] =0.843274256; tJ[1] = -0.005399480; tJ[2] = 0.043443188;
+
+  double R[9] = {-0.999998,  0.001735,  0.000212,
+                 -0.001726, -0.999408,  0.034368,
+                  0.000271,  0.034367,  0.999409  };
+#endif
+
+  for(int i(0); i <3 ; ++i)
+    for(int j(0); j<3 ; ++j)
+      RJ(3*i+j) = R[3*i+j];
+
   BrownPinholeCamera camI(intrinsicCamI.m_focal, intrinsicCamI.m_K(0,2), intrinsicCamI.m_K(1,2), Mat3::Identity(), Vec3::Zero());
   BrownPinholeCamera camJ(intrinsicCamJ.m_focal, intrinsicCamJ.m_K(0,2), intrinsicCamJ.m_K(1,2), RJ, tJ);
 
@@ -1419,11 +1440,6 @@ void IncrementalReconstructionEngine::BundleAdjustment()
                              ba_problem.mutable_camera_intrinsic_for_observation(i),
                              ba_problem.mutable_camera_extrinsic_for_observation(i),
                              ba_problem.mutable_point_for_observation(i));
-
-    if (!_bRefinePPandDisto) {
-      problem.SetParameterization(ba_problem.mutable_camera_intrisic_for_observation(i),
-                                  constant_transform_parameterization);
-    }
 
   }
 
