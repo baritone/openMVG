@@ -77,7 +77,7 @@ int main(int argc, char **argv)
     stlplus::folder_create(sOutDir);
 
   //---------------------------------------
-  // check if an initial pose exists
+  // check if an initial pose exists and load it
   //---------------------------------------
   std::string sPoseFile = stlplus::create_filespec(sImaDirectory, "pose.txt" );
   if (stlplus::is_file(sPoseFile)) {
@@ -87,6 +87,7 @@ int main(int argc, char **argv)
 
     bInitialPoseKnown = true ;
   }
+
 
   //---------------------------------------
   // Incremental reconstruction process
@@ -102,6 +103,9 @@ int main(int argc, char **argv)
   to3DEngine.setIfRefinePrincipalPointAndRadialDisto(bRefinePPandDisto);
   to3DEngine.setIfRefineFocal(bRefineFocal);
   to3DEngine.setInitialPoseKnown(bInitialPoseKnown);
+
+  if(bInitialPoseKnown)
+     to3DEngine.loadInitialPose(sPoseFile);
 
   if (to3DEngine.Process())
   {

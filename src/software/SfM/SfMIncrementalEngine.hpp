@@ -128,6 +128,8 @@ public:
     _bInitialPoseKnown = bInitialPoseKnown;
   }
 
+  bool loadInitialPose(std::string sPoseFile);
+
 private:
 
   // -----
@@ -136,6 +138,7 @@ private:
   std::vector<openMVG::SfMIO::CameraInfo> _vec_camImageNames;
   std::vector<openMVG::SfMIO::IntrinsicCameraInfo> _vec_intrinsicGroups;
   std::map< size_t, std::vector<SIOPointFeature> > _map_feats; // feature per images
+  double _vec_initialPose[12] = {1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
 
   // Intrinsic Id per imageId
   std::map<size_t, size_t> _map_IntrinsicIdPerImageId;
