@@ -551,27 +551,15 @@ bool IncrementalReconstructionEngine::MakeInitialPair3D(const std::pair<size_t,s
       // we suppose here that relative pose of second camera is known
      int i,j;
 
-#if 0
      // affect initial rotation
-      for(i=0; i < 9 ; ++i)
-          RJ(i) = _vec_initialPose[i];
+      for(i=0; i < 3 ; ++i)
+        for(j=0 ; j < 3 ; ++j)
+          RJ(3*i+j) = _vec_initialPose[3*j+i];
 
       // affect initial translation
       tJ[0] = _vec_initialPose[9];
       tJ[1] = _vec_initialPose[10];
       tJ[2] = _vec_initialPose[11];
-
-#else
-     double   scale = sqrt( _vec_initialPose[9]  * _vec_initialPose[9]
-                          + _vec_initialPose[10] * _vec_initialPose[10]
-                          + _vec_initialPose[11] * _vec_initialPose[11] ) ;
-
-     tJ[0] *= scale ;
-     tJ[1] *= scale ;
-     tJ[2] *= scale ;
-
-#endif
-
   }
 
   std::cout << std::endl
