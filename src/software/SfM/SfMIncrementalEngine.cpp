@@ -98,6 +98,14 @@ bool IncrementalReconstructionEngine::Process()
   BundleAdjustment(); // Adjust 3D point and camera parameters.
 
   size_t round = 0;
+
+  // export initial point cloud
+  std::ostringstream os;
+  os << std::setw(8) << std::setfill('0') << round << "_Resection";
+  _reconstructorData.exportToPly( stlplus::create_filespec(_sOutDirectory, os.str(), ".ply"));
+
+  ++round;
+
   // Compute robust Resection of remaining image
   std::vector<size_t> vec_possible_resection_indexes;
   while (FindImagesWithPossibleResection(vec_possible_resection_indexes))
@@ -543,15 +551,26 @@ bool IncrementalReconstructionEngine::MakeInitialPair3D(const std::pair<size_t,s
       // we suppose here that relative pose of second camera is known
      int i,j;
 
+#if 0
      // affect initial rotation
-     for(i=0; i < 3 ; ++i)
-       for(j = 0; j<3 ; ++j)
-          RJ(3*i+j) = _vec_initialPose[3*i+j];
+      for(i=0; i < 9 ; ++i)
+          RJ(i) = _vec_initialPose[i];
 
       // affect initial translation
       tJ[0] = _vec_initialPose[9];
       tJ[1] = _vec_initialPose[10];
       tJ[2] = _vec_initialPose[11];
+
+#else
+     double   scale = sqrt( _vec_initialPose[9]  * _vec_initialPose[9]
+                          + _vec_initialPose[10] * _vec_initialPose[10]
+                          + _vec_initialPose[11] * _vec_initialPose[11] ) ;
+
+     tJ[0] *= scale ;
+     tJ[1] *= scale ;
+     tJ[2] *= scale ;
+
+#endif
 
   }
 
