@@ -31,6 +31,7 @@ int main(int argc, char **argv)
   bool bRefinePPandDisto = true;
   bool bRefineFocal = true;
   bool bColoredPointCloud = false;
+  bool bInitialPoseKnown = false;
   std::pair<size_t,size_t> initialPair(0,0);
 
   cmd.add( make_option('i', sImaDirectory, "imadir") );
@@ -76,6 +77,19 @@ int main(int argc, char **argv)
     stlplus::folder_create(sOutDir);
 
   //---------------------------------------
+  // check if an initial pose exists and load it
+  //---------------------------------------
+  std::string sPoseFile = stlplus::create_filespec(sImaDirectory, "pose.txt" );
+  if (stlplus::is_file(sPoseFile)) {
+    std::cout << std::endl
+      << "The input file \""<< sPoseFile << "\" is found -> initial pose is known."
+      << std::endl;
+
+    bInitialPoseKnown = true ;
+  }
+
+
+  //---------------------------------------
   // Incremental reconstruction process
   //---------------------------------------
 
@@ -88,6 +102,10 @@ int main(int argc, char **argv)
   to3DEngine.setInitialPair(initialPair);
   to3DEngine.setIfRefinePrincipalPointAndRadialDisto(bRefinePPandDisto);
   to3DEngine.setIfRefineFocal(bRefineFocal);
+  to3DEngine.setInitialPoseKnown(bInitialPoseKnown);
+
+  if(bInitialPoseKnown)
+     to3DEngine.loadInitialPose(sPoseFile);
 
   if (to3DEngine.Process())
   {
