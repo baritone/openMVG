@@ -20,6 +20,12 @@ inline T Rgb2Gray(const T r,const T g, const T b) {
   return r * 0.2126 + g * 0.7152 + b * 0.0722;
 }
 
+template<typename T>
+inline T Rg2Gray(const T r,const T g ) {
+  return r * 0.2291 + g * 0.7709 ;
+}
+
+
 template<typename Tin, typename Tout>
 inline void Convert(const Tin& valin, Tout& out) {
   out = static_cast<Tout>(valin);
@@ -29,7 +35,8 @@ template<>
 inline void Convert<RGBColor, unsigned char>(
   const RGBColor& valin, unsigned char& valOut)
 {
-  valOut = static_cast<unsigned char>(0.3 * valin.r() + 0.59 * valin.g() + 0.11 * valin.b());
+ //  valOut = static_cast<unsigned char>(0.3 * valin.r() + 0.59 * valin.g() + 0.11 * valin.b());
+  valOut = static_cast<unsigned char> ( Rg2Gray(valin.r(),valin.g() ) ) ;
 }
 
 template<>
