@@ -58,12 +58,164 @@ namespace openMVG{
 //-- Linear Programming solver:
 //   - in order to have the best performance it is advised to used the MOSEK LP backend.
 
-class GlobalRigidReconstructionEngine : public GlobalReconstructionEngine {
+class GlobalRigidReconstructionEngine : public ReconstructionEngine
+{
+public:
+  GlobalRigidReconstructionEngine(const std::string & sImagePath,
+    const std::string & sMatchesPath,
+    const std::string & sOutDirectory,
+    const ERotationAveragingMethod & eRotationAveragingMethod,
+    const ETranslationAveragingMethod & eTranslationAveragingMethod,
+    bool bHtmlReport = false);
 
+  ~GlobalRigidReconstructionEngine();
+
+  virtual bool Process();
+
+  /// Give a color to all the 3D points
+  void ColorizeTracks(
+    const STLMAPTracks & map_tracks, // tracks to be colorized
+    std::vector<Vec3> & vec_tracksColor // output associated color
+    ) const;
+
+  //--
+  // Accessors
+  //--
+
+  const reconstructorHelper & refToReconstructorHelper() const
+  { return _reconstructorData;  }
+
+  const openMVG::tracks::STLMAPTracks & getTracks() const
+  { return _map_selectedTracks; }
+
+  const std::vector<std::string> getFilenamesVector() const
+  { return _vec_fileNames;  }
+
+  const std::vector< std::pair<size_t, size_t> > getImagesSize() const
+  {
+    std::vector< std::pair<size_t, size_t> > vec_imageSize;
+    for ( std::vector<openMVG::SfMIO::CameraInfo>::const_iterator iter_camInfo = _vec_camImageNames.begin();
+      iter_camInfo != _vec_camImageNames.end();
+      iter_camInfo++ )
+    {
+      std::vector<openMVG::SfMIO::IntrinsicCameraInfo>::const_iterator it_intrinsic = _vec_intrinsicGroups.begin();
+      std::advance(it_intrinsic, iter_camInfo->m_intrinsicId);
+      vec_imageSize.push_back( std::make_pair( it_intrinsic->m_w, it_intrinsic->m_h ) );
+    }
+    return vec_imageSize;
+  }
+
+  /// Tell if the final BA must refine Intrinsics data or not
+  void setRefineIntrinsics(bool bStatus) { _bRefineIntrinsics = bStatus; }
+
+  //--
+  // TYPEDEF
+  //--
+  typedef std::map< std::pair<size_t, size_t>, std::pair<Mat3, Vec3> > Map_RelativeRT;
+  typedef std::map<size_t, PinholeCamera > Map_Camera;
+
+private:
+  /// Read input data (point correspondences, K matrix)
+  bool ReadInputData();
+
+  void ComputeRelativeRt(Map_RelativeRT & vec_relatives);
+
+  // Detect and remove the outlier relative rotations
+  void rotationInference(Map_RelativeRT & map_relatives);
+
+  // Compute the global rotations from relative rotations
+  bool computeGlobalRotations(
+    ERotationAveragingMethod eRotationAveragingMethod,
+    const Map_RelativeRT & map_relatives,
+    std::map<size_t, Mat3> & map_globalR) const;
+
+  // List the triplet of the image connection graph (_map_Matches_E)
+  void tripletListing(std::vector< graphUtils::Triplet > & vec_triplets) const;
+
+  // Relative rotations inference on relative rotations composition error along 3 length cycles (triplets).
+  void tripletRotationRejection(
+    std::vector< graphUtils::Triplet > & vec_triplets,
+    Map_RelativeRT & map_relatives);
+
+  // Compute relative translations over the graph of putative triplets
+  void computePutativeTranslation_EdgesCoverage(
+    const std::map<std::size_t, Mat3> & map_globalR,
+    const std::vector< graphUtils::Triplet > & vec_triplets,
+    std::vector<openMVG::relativeInfo > & vec_initialEstimates,
+    matching::PairWiseMatches & newpairMatches) const;
+
+  // Bundle adjustment : refine structure Xis and camera parameters (with optional refined parameters)
+  void bundleAdjustment(
+    Map_Camera & map_camera,
+    std::vector<Vec3> & vec_allScenes,
+    const STLMAPTracks & map_tracksSelected,
+    bool bRefineRotation = true,
+    bool bRefineTranslation = true,
+    bool bRefineIntrinsics = false);
+
+private:
+
+  // -----
+  // Input data
+  // ----
+
+  // Images considered for the reconstruction
+  std::vector<std::string> _vec_fileNames;
+  std::vector<openMVG::SfMIO::CameraInfo> _vec_camImageNames;
+  std::vector<openMVG::SfMIO::IntrinsicCameraInfo> _vec_intrinsicGroups;
+  std::map< size_t, std::vector<SIOPointFeature> > _map_feats; // feature per images
+  std::map< size_t, std::vector<SIOPointFeature> > _map_feats_normalized; // normalized features per images
+
+  matching::PairWiseMatches _map_Matches_E; // pairwise matches for Essential matrix model
+
+  /// List of images that belong to a common intrinsic group
+  std::map<size_t, std::vector<size_t> > _map_ImagesIdPerIntrinsicGroup;
+  std::map<size_t, Vec3 > _map_IntrinsicsPerGroup;
+
+  // Intrinsic Id per imageId
+  std::map<size_t, size_t> _map_IntrinsicIdPerImageId;
+
+  // Parameter
+  ERotationAveragingMethod _eRotationAveragingMethod;
+  ETranslationAveragingMethod _eTranslationAveragingMethod;
+
+  //------
+  //-- Mapping between camera node Ids and cameraIndex:
+  //--------------
+  // Graph node Ids mapping to camera Ids
+  std::map<size_t, size_t> map_cameraNodeToCameraIndex; // graph node Id to 0->Ncam
+  // camera Ids to graph node Ids
+  std::map<size_t, size_t> map_cameraIndexTocameraNode; // 0->Ncam correspondance to graph node Id
+  //--
+  //----
+
+  //-----
+  //-- Reconstruction data
+  //-----
+  // Cameras (Motion)
+  Map_Camera _map_camera;
+  // Structure
+  std::vector<Vec3> _vec_allScenes;
+  // Structure visibility
+  STLMAPTracks _map_selectedTracks; // reconstructed track (visibility per 3D point)
+  // Scene and structure container (for disk output)
+  reconstructorHelper _reconstructorData;
+  //-----
+
+  // ---
+  // Final Bundle Adjustment parameter
+  // ----
+  bool _bRefineIntrinsics;
+
+  // -----
+  // Reporting ..
+  // ----
+  bool _bHtmlReport;
+  std::auto_ptr<htmlDocument::htmlDocumentStream> _htmlDocStream;
 
 };
 
 
 } // namespace openMVG
 
-#endif // OPENMVG_RIGID_GLOBAL_SFM_ENGINE_H
+#endif // OPENMVG_GLOBAL_SFM_ENGINE_H

@@ -1,6 +1,5 @@
 
 ADD_LIBRARY(openMVG_SfM_Global SfMGlobalEngine.cpp)
-ADD_LIBRARY(openMVG_SfM_Global_Rigid SfMRigidGlobalEngine.cpp) 
 
 ADD_EXECUTABLE(openMVG_main_GlobalSfM main_GlobalSfM.cpp)
 TARGET_LINK_LIBRARIES(
@@ -8,15 +7,16 @@ TARGET_LINK_LIBRARIES(
   openMVG_SfM_Global
   ${OpenMVG_LIBS})
 
-ADD_EXECUTABLE(openMVG_main_rigidRig_GlobalSfM main_rigidRig_GlobalSfM.cpp) 
+SET_PROPERTY(TARGET openMVG_main_GlobalSfM PROPERTY FOLDER OpenMVG/software)
+SET_PROPERTY(TARGET openMVG_SfM_Global PROPERTY FOLDER OpenMVG/OpenMVG)
+
+ADD_LIBRARY(openMVG_SfM_Global_Rigid SfMRigidGlobalEngine.cpp)
+
+ADD_EXECUTABLE(openMVG_main_rigidRig_GlobalSfM main_rigidRig_GlobalSfM.cpp)
 TARGET_LINK_LIBRARIES(
   openMVG_main_rigidRig_GlobalSfM
-  openMVG_SfM_Global
+  openMVG_SfM_Global_Rigid
   ${OpenMVG_LIBS})
 
-
-SET_PROPERTY(TARGET openMVG_main_GlobalSfM PROPERTY FOLDER OpenMVG/software)
 SET_PROPERTY(TARGET openMVG_main_rigidRig_GlobalSfM PROPERTY FOLDER OpenMVG/software)
-
-SET_PROPERTY(TARGET openMVG_SfM_Global PROPERTY FOLDER OpenMVG/OpenMVG)
 SET_PROPERTY(TARGET openMVG_SfM_Global_Rigid PROPERTY FOLDER OpenMVG/OpenMVG)

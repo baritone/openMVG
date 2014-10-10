@@ -9,6 +9,7 @@
 
 #include <cstdlib>
 
+#include "software/globalSfM/SfMGlobalEngine.hpp"
 #include "software/globalSfM/SfMRigidGlobalEngine.hpp"
 using namespace openMVG;
 
@@ -97,7 +98,7 @@ int main(int argc, char **argv)
   //---------------------------------------
 
   openMVG::Timer timer;
-  GlobalReconstructionEngine to3DEngine(
+  GlobalRigidReconstructionEngine to3DEngine(
     sImaDirectory,
     sMatchesDir,
     sOutDir,
