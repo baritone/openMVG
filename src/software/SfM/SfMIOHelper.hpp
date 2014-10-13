@@ -376,8 +376,8 @@ static bool loadImageList(
 
 
     RigidCameraInfo camInfo;
-    camInfo.m_sImageName  = vec_str[0];
-    camInfo.m_intrinsicId = id;
+    camInfo.m_sImageName    = vec_str[0];
+    camInfo.m_intrinsicId   = id;
     camInfo.m_rigidId       = atoi(vec_str[12].c_str());
     camInfo.m_subCameraId   = atoi(vec_str[13].c_str());
     camInfo.m_matchRigImage = atoi(vec_str[14].c_str());

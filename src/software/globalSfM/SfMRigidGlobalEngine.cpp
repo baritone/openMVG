@@ -1103,8 +1103,8 @@ bool GlobalRigidReconstructionEngine::Process()
 }
 
 bool testIntrinsicsEquality(
-  SfMIO::IntrinsicCameraInfo const &ci1,
-  SfMIO::IntrinsicCameraInfo const &ci2)
+  SfMIO::IntrinsicRigidCameraInfo const &ci1,
+  SfMIO::IntrinsicRigidCameraInfo const &ci2)
 {
   return ci1.m_K == ci2.m_K;
 }
@@ -1143,13 +1143,13 @@ bool GlobalRigidReconstructionEngine::ReadInputData()
     else
     {
       // Find to which intrinsic groups each image belong
-      for (std::vector<openMVG::SfMIO::CameraInfo>::const_iterator iter = _vec_camImageNames.begin();
+      for (std::vector<openMVG::SfMIO::RigidCameraInfo>::const_iterator iter = _vec_camImageNames.begin();
         iter != _vec_camImageNames.end(); ++iter)
       {
-        const openMVG::SfMIO::CameraInfo & camInfo = *iter;
+        const openMVG::SfMIO::RigidCameraInfo & camInfo = *iter;
 
         // Find the index of the camera
-        const size_t idx = std::distance((std::vector<openMVG::SfMIO::CameraInfo>::const_iterator)_vec_camImageNames.begin(), iter);
+        const size_t idx = std::distance((std::vector<openMVG::SfMIO::RigidCameraInfo>::const_iterator)_vec_camImageNames.begin(), iter);
 
         // to which intrinsic group each image belongs
         _map_IntrinsicIdPerImageId[idx] = camInfo.m_intrinsicId;

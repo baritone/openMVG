@@ -94,11 +94,11 @@ public:
   const std::vector< std::pair<size_t, size_t> > getImagesSize() const
   {
     std::vector< std::pair<size_t, size_t> > vec_imageSize;
-    for ( std::vector<openMVG::SfMIO::CameraInfo>::const_iterator iter_camInfo = _vec_camImageNames.begin();
+    for ( std::vector<openMVG::SfMIO::RigidCameraInfo>::const_iterator iter_camInfo = _vec_camImageNames.begin();
       iter_camInfo != _vec_camImageNames.end();
       iter_camInfo++ )
     {
-      std::vector<openMVG::SfMIO::IntrinsicCameraInfo>::const_iterator it_intrinsic = _vec_intrinsicGroups.begin();
+      std::vector<openMVG::SfMIO::IntrinsicRigidCameraInfo>::const_iterator it_intrinsic = _vec_intrinsicGroups.begin();
       std::advance(it_intrinsic, iter_camInfo->m_intrinsicId);
       vec_imageSize.push_back( std::make_pair( it_intrinsic->m_w, it_intrinsic->m_h ) );
     }
@@ -161,8 +161,8 @@ private:
 
   // Images considered for the reconstruction
   std::vector<std::string> _vec_fileNames;
-  std::vector<openMVG::SfMIO::CameraInfo> _vec_camImageNames;
-  std::vector<openMVG::SfMIO::IntrinsicCameraInfo> _vec_intrinsicGroups;
+  std::vector<openMVG::SfMIO::RigidCameraInfo> _vec_camImageNames;
+  std::vector<openMVG::SfMIO::IntrinsicRigidCameraInfo> _vec_intrinsicGroups;
   std::map< size_t, std::vector<SIOPointFeature> > _map_feats; // feature per images
   std::map< size_t, std::vector<SIOPointFeature> > _map_feats_normalized; // normalized features per images
 
