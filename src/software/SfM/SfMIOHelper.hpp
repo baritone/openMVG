@@ -23,6 +23,7 @@
 namespace openMVG{
 namespace SfMIO{
 
+//  basic camera structure
 struct CameraInfo
 {
   std::string m_sImageName;
@@ -48,6 +49,51 @@ struct IntrinsicCameraInfo
     return bequal;
   }
 };
+
+// rigid rig camera structure
+struct RigidCameraInfo
+{
+  std::string m_sImageName;
+  size_t m_intrinsicId;
+  size_t m_rigidId;
+  size_t m_subCameraId;
+  bool   m_matchRigImage;
+};
+
+struct IntrinsicRigInfo
+{
+    size_t  m_nbSubCamera;  //number of subchannel
+
+    // list of optical center of subcameras in rigid rig ref
+    std::vector<Vec3>  m_subcamCenter;
+    // list of rotation associated to sub channel
+    std::vector<Mat3>  m_subcamRotation;
+
+    IntrinsicRigInfo(): m_nbSubCamera(0), m_subcamCenter.clear(), m_subcamRotation.clear();
+    {  }
+
+    /// Functor used to tell if two IntrinsicRigInfo share the same properties
+    friend bool operator== (IntrinsicRigInfo const &ri1, IntrinsicRigInfo const &ri2)
+    {
+      // Two rigs are equal if they have the same number of subchannels and
+      // the same intrinsic infos (center and rotations)
+      bool  bSameCenter(true);
+      bool  bSameRotation(true);
+
+      if( ri1.m_subcamCenter.size() == ri2.m_subcamCenter.size() )
+      {
+        for(size_t i(0);  i < r1.subCameraCenter.size(); ++i )
+        {
+            bSameCenteer  = bSameCenter   && ri1.m_subcamCenter[i]   == ri2.m_subcamCenter[i];
+            bSameRotation = bSameRotation && ri1.m_subcamRotation[i] == ri2.m_subcamRotation[i];
+        }
+      }
+
+      bool bequal = cr1.m_nbSubCamera == cr2.m_nbSubCamera && bSameRotation == bSameCenter;
+      return bequal;
+    }
+
+}
 
 // Load an image file list
 // One basename per line.
@@ -173,7 +219,7 @@ static bool loadImageList( std::vector<CameraInfo> & vec_camImageName,
     {
       id = std::distance( std::vector<IntrinsicCameraInfo>::const_iterator(vec_focalGroup.begin()), iterIntrinsicGroup);
     }
-    
+
     CameraInfo camInfo;
     camInfo.m_sImageName = vec_str[0];
     camInfo.m_intrinsicId = id;
@@ -212,5 +258,109 @@ static bool loadImageList( std::vector<std::string> & vec_camImageName,
 } // namespace SfMIO
 } // namespace openMVG
 
-#endif // OPENMVG_SFM_IO_H
+// Load an image file list
+// One basename per line.
+// It handle different scenario based on the intrinsic info of the tested image
+// - a camera without exif data
+// - a camera with exif data found in the database
+// - a camera with exif data not found in the database
+// - a camera with known intrinsic
+static bool loadImageList(
+         std::vector<CameraInfoRigid> & vec_camImageName,
+         std::vector<IntrinsicCameraInfo> & vec_focalGroup,
+         std::vector<IntrinsicRigInfo> & vec_rigGroup,
+         const std::string & sFileName,
+         bool bVerbose = true )
+{
+  std::ifstream in(sFileName.c_str());
+  if(!in.is_open())  {
+    std::cerr << std::endl
+      << "Impossible to read the specified file." << std::endl;
+  }
+  std::string sValue;
+  std::vector<std::string> vec_str;
+  while(getline( in, sValue ) )
+  {
+    vec_str.clear();
+    split( sValue, ";", vec_str );
+    if (vec_str.size() == 1)
+    {
+      std::cerr << "Invalid input file" << std::endl;
+      in.close();
+      return false;
+    }
+    std::stringstream oss;
+    oss.clear(); oss.str(vec_str[1]);
+    size_t width, height;
+    oss >> width;
+    oss.clear(); oss.str(vec_str[2]);
+    oss >> height;
 
+    IntrinsicCameraInfo intrinsicCamInfo;
+    intrinsicCamInfo.m_w = width;
+    intrinsicCamInfo.m_h = height;
+
+    switch ( vec_str.size() )
+    {
+      case 27 : // a camera with known intrinsic and rig structure
+      {
+        intrinsicCamInfo.m_bKnownIntrinsic = true;
+        intrinsicCamInfo.m_sCameraMaker = intrinsicCamInfo.m_sCameraModel = "";
+
+        Mat3 K = Mat3::Identity();
+
+        oss.clear(); oss.str(vec_str[3]);
+        oss >> K(0,0);
+        oss.clear(); oss.str(vec_str[4]);
+        oss >> K(0,1);
+        oss.clear(); oss.str(vec_str[5]);
+        oss >> K(0,2);
+        oss.clear(); oss.str(vec_str[6]);
+        oss >> K(1,0);
+        oss.clear(); oss.str(vec_str[7]);
+        oss >> K(1,1);
+        oss.clear(); oss.str(vec_str[8]);
+        oss >> K(1,2);
+        oss.clear(); oss.str(vec_str[9]);
+        oss >> K(2,0);
+        oss.clear(); oss.str(vec_str[10]);
+        oss >> K(2,1);
+        oss.clear(); oss.str(vec_str[11]);
+        oss >> K(2,2);
+
+        intrinsicCamInfo.m_K = K;
+        intrinsicCamInfo.m_focal = static_cast<float>(K(0,0)); // unknown sensor size;
+      }
+      break;
+      default :
+      {
+        std::cerr << "Invalid image list line: wrong number of arguments" << std::endl;
+        in.close();
+        return false;
+      }
+    }
+
+    std::vector<IntrinsicCameraInfo>::const_iterator iterIntrinsicGroup = find(vec_focalGroup.begin(), vec_focalGroup.end(), intrinsicCamInfo);
+    size_t id = -1;
+    if ( iterIntrinsicGroup == vec_focalGroup.end())
+    {
+      vec_focalGroup.push_back(intrinsicCamInfo);
+      id = vec_focalGroup.size()-1;
+    }
+    else
+    {
+      id = std::distance( std::vector<IntrinsicCameraInfo>::const_iterator(vec_focalGroup.begin()), iterIntrinsicGroup);
+    }
+
+    CameraInfo camInfo;
+    camInfo.m_sImageName = vec_str[0];
+    camInfo.m_intrinsicId = id;
+    vec_camImageName.push_back(camInfo);
+
+    vec_str.clear();
+  }
+  in.close();
+  return !(vec_camImageName.empty());
+}
+
+#endif // OPENMVG_SFM_IO_H
