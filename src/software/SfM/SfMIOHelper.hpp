@@ -63,24 +63,23 @@ struct RigidCameraInfo
 struct IntrinsicRigidCameraInfo
 {
   size_t m_w, m_h;
-  size_t m_rig, m_subcam;
   float m_focal;
   Mat3 m_K;
   Mat3 m_R;
   Vec3 m_rigC;
   bool m_bKnownIntrinsic; // true if 11 or 6, else false
-  bool m_bMatchRig;
   std::string m_sCameraMaker, m_sCameraModel;
 
   IntrinsicRigidCameraInfo(): m_w(0), m_h(0), m_K(Mat3::Zero()), m_bKnownIntrinsic(false), m_sCameraModel(""), m_sCameraMaker("")
-      ,m_rig(0), m_subcam(0), m_R(Mat3::Zero()), m_rigC(Vec3::Zero()), m_bMatchRig(false)
+      , m_R(Mat3::Zero()), m_rigC(Vec3::Zero())
   {  }
 
   /// Functor used to tell if two IntrinsicCameraInfo share the same optical properties
   friend bool operator== (IntrinsicRigidCameraInfo const &ci1, IntrinsicRigidCameraInfo const &ci2)
   {
     // Two camera share optical properties if they share the same K matrix (and the same camera name)
-    bool bequal = ci1.m_K == ci2.m_K && ci1.m_sCameraMaker == ci2.m_sCameraMaker && ci1.m_sCameraModel == ci2.m_sCameraModel;
+    bool bequal =  ci1.m_K == ci2.m_K && ci1.m_sCameraMaker == ci2.m_sCameraMaker && ci1.m_sCameraModel == ci2.m_sCameraModel
+                && ci1.m_R == ci2.m_R && ci1.m_rigC == ci2.m_rigC ;
     return bequal;
   }
 };
@@ -295,6 +294,7 @@ static bool loadImageList(
 
         Mat3 K = Mat3::Identity();
 
+        // get camera matrix
         oss.clear(); oss.str(vec_str[3]);
         oss >> K(0,0);
         oss.clear(); oss.str(vec_str[4]);
@@ -316,6 +316,41 @@ static bool loadImageList(
 
         intrinsicCamInfo.m_K = K;
         intrinsicCamInfo.m_focal = static_cast<float>(K(0,0)); // unknown sensor size;
+
+        // get rotation
+        Mat3 R = Mat3::Identity();
+        oss.clear(); oss.str(vec_str[15]);
+        oss >> R(0,0);
+        oss.clear(); oss.str(vec_str[16]);
+        oss >> R(0,1);
+        oss.clear(); oss.str(vec_str[17]);
+        oss >> R(0,2);
+        oss.clear(); oss.str(vec_str[18]);
+        oss >> R(1,0);
+        oss.clear(); oss.str(vec_str[19]);
+        oss >> R(1,1);
+        oss.clear(); oss.str(vec_str[20]);
+        oss >> R(1,2);
+        oss.clear(); oss.str(vec_str[21]);
+        oss >> R(2,0);
+        oss.clear(); oss.str(vec_str[22]);
+        oss >> R(2,1);
+        oss.clear(); oss.str(vec_str[23]);
+        oss >> R(2,2);
+
+        intrinsicCamInfo.m_R = R;
+
+        // get center
+        Vec3  C = Vec3::Zero();
+        oss.clear(); oss.str(vec_str[24]);
+        oss >> C(0);
+        oss.clear(); oss.str(vec_str[25]);
+        oss >> C(1);
+        oss.clear(); oss.str(vec_str[26]);
+        oss >> C(2);
+
+        intrinsicCamInfo.m_rigC=C;
+
       }
       break;
       default :
@@ -339,12 +374,13 @@ static bool loadImageList(
       id = std::distance( std::vector<IntrinsicRigidCameraInfo>::const_iterator(vec_focalGroup.begin()), iterIntrinsicGroup);
     }
 
-    // subchannel
-
 
     RigidCameraInfo camInfo;
-    camInfo.m_sImageName = vec_str[0];
+    camInfo.m_sImageName  = vec_str[0];
     camInfo.m_intrinsicId = id;
+    camInfo.m_rigidId       = atoi(vec_str[12].c_str());
+    camInfo.m_subCameraId   = atoi(vec_str[13].c_str());
+    camInfo.m_matchRigImage = atoi(vec_str[14].c_str());
     vec_camImageName.push_back(camInfo);
 
     vec_str.clear();
