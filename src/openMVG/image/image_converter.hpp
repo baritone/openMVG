@@ -37,7 +37,7 @@ inline void Convert<RGBColor, unsigned char>(
 {
  //  valOut = static_cast<unsigned char>(0.3 * valin.r() + 0.59 * valin.g() + 0.11 * valin.b());
  //  valOut = static_cast<unsigned char> ( Rg2Gray(valin.r(),valin.g() ) ) ;
-  valOut = static_cast<unsigned char> (valin.r() );
+  valOut = static_cast<unsigned char> (valin.g() );
 }
 
 template<>
