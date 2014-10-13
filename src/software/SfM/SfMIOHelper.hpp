@@ -60,40 +60,30 @@ struct RigidCameraInfo
   bool   m_matchRigImage;
 };
 
-struct IntrinsicRigInfo
+struct IntrinsicRigidCameraInfo
 {
-    size_t  m_nbSubCamera;  //number of subchannel
+  size_t m_w, m_h;
+  size_t m_rig, m_subcam;
+  float m_focal;
+  Mat3 m_K;
+  Mat3 m_R;
+  Vec3 m_rigC;
+  bool m_bKnownIntrinsic; // true if 11 or 6, else false
+  bool m_bMatchRig;
+  std::string m_sCameraMaker, m_sCameraModel;
 
-    // list of optical center of subcameras in rigid rig ref
-    std::vector<Vec3>  m_subcamCenter;
-    // list of rotation associated to sub channel
-    std::vector<Mat3>  m_subcamRotation;
+  IntrinsicRigidCameraInfo(): m_w(0), m_h(0), m_K(Mat3::Zero()), m_bKnownIntrinsic(false), m_sCameraModel(""), m_sCameraMaker("")
+      ,m_rig(0), m_subcam(0), m_R(Mat3::Zero()), m_rigC(Vec3::Zero()), m_bMatchRig(false)
+  {  }
 
-    IntrinsicRigInfo(): m_nbSubCamera(0), m_subcamCenter.clear(), m_subcamRotation.clear();
-    {  }
-
-    /// Functor used to tell if two IntrinsicRigInfo share the same properties
-    friend bool operator== (IntrinsicRigInfo const &ri1, IntrinsicRigInfo const &ri2)
-    {
-      // Two rigs are equal if they have the same number of subchannels and
-      // the same intrinsic infos (center and rotations)
-      bool  bSameCenter(true);
-      bool  bSameRotation(true);
-
-      if( ri1.m_subcamCenter.size() == ri2.m_subcamCenter.size() )
-      {
-        for(size_t i(0);  i < r1.subCameraCenter.size(); ++i )
-        {
-            bSameCenteer  = bSameCenter   && ri1.m_subcamCenter[i]   == ri2.m_subcamCenter[i];
-            bSameRotation = bSameRotation && ri1.m_subcamRotation[i] == ri2.m_subcamRotation[i];
-        }
-      }
-
-      bool bequal = cr1.m_nbSubCamera == cr2.m_nbSubCamera && bSameRotation == bSameCenter;
-      return bequal;
-    }
-
-}
+  /// Functor used to tell if two IntrinsicCameraInfo share the same optical properties
+  friend bool operator== (IntrinsicRigidCameraInfo const &ci1, IntrinsicRigidCameraInfo const &ci2)
+  {
+    // Two camera share optical properties if they share the same K matrix (and the same camera name)
+    bool bequal = ci1.m_K == ci2.m_K && ci1.m_sCameraMaker == ci2.m_sCameraMaker && ci1.m_sCameraModel == ci2.m_sCameraModel;
+    return bequal;
+  }
+};
 
 // Load an image file list
 // One basename per line.
@@ -255,9 +245,6 @@ static bool loadImageList( std::vector<std::string> & vec_camImageName,
   return (!vec_camImageName.empty());
 }
 
-} // namespace SfMIO
-} // namespace openMVG
-
 // Load an image file list
 // One basename per line.
 // It handle different scenario based on the intrinsic info of the tested image
@@ -266,9 +253,8 @@ static bool loadImageList( std::vector<std::string> & vec_camImageName,
 // - a camera with exif data not found in the database
 // - a camera with known intrinsic
 static bool loadImageList(
-         std::vector<CameraInfoRigid> & vec_camImageName,
-         std::vector<IntrinsicCameraInfo> & vec_focalGroup,
-         std::vector<IntrinsicRigInfo> & vec_rigGroup,
+         std::vector<RigidCameraInfo> & vec_camImageName,
+         std::vector<IntrinsicRigidCameraInfo> & vec_focalGroup,
          const std::string & sFileName,
          bool bVerbose = true )
 {
@@ -296,7 +282,7 @@ static bool loadImageList(
     oss.clear(); oss.str(vec_str[2]);
     oss >> height;
 
-    IntrinsicCameraInfo intrinsicCamInfo;
+    IntrinsicRigidCameraInfo intrinsicCamInfo;
     intrinsicCamInfo.m_w = width;
     intrinsicCamInfo.m_h = height;
 
@@ -340,7 +326,8 @@ static bool loadImageList(
       }
     }
 
-    std::vector<IntrinsicCameraInfo>::const_iterator iterIntrinsicGroup = find(vec_focalGroup.begin(), vec_focalGroup.end(), intrinsicCamInfo);
+    // intrinsic group
+    std::vector<IntrinsicRigidCameraInfo>::const_iterator iterIntrinsicGroup = find(vec_focalGroup.begin(), vec_focalGroup.end(), intrinsicCamInfo);
     size_t id = -1;
     if ( iterIntrinsicGroup == vec_focalGroup.end())
     {
@@ -349,10 +336,13 @@ static bool loadImageList(
     }
     else
     {
-      id = std::distance( std::vector<IntrinsicCameraInfo>::const_iterator(vec_focalGroup.begin()), iterIntrinsicGroup);
+      id = std::distance( std::vector<IntrinsicRigidCameraInfo>::const_iterator(vec_focalGroup.begin()), iterIntrinsicGroup);
     }
 
-    CameraInfo camInfo;
+    // subchannel
+
+
+    RigidCameraInfo camInfo;
     camInfo.m_sImageName = vec_str[0];
     camInfo.m_intrinsicId = id;
     vec_camImageName.push_back(camInfo);
@@ -362,5 +352,8 @@ static bool loadImageList(
   in.close();
   return !(vec_camImageName.empty());
 }
+
+} // namespace SfMIO
+} // namespace openMVG
 
 #endif // OPENMVG_SFM_IO_H
