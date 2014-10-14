@@ -57,7 +57,6 @@ struct RigidCameraInfo
   size_t m_intrinsicId;
   size_t m_rigidId;
   size_t m_subCameraId;
-  bool   m_matchRigImage;
 };
 
 struct IntrinsicRigidCameraInfo
@@ -189,6 +188,36 @@ static bool loadImageList( std::vector<CameraInfo> & vec_camImageName,
         intrinsicCamInfo.m_focal = static_cast<float>(K(0,0)); // unknown sensor size;
       }
       break;
+      case 26 : // a camera with known intrinsic and rig
+      {
+        intrinsicCamInfo.m_bKnownIntrinsic = true;
+        intrinsicCamInfo.m_sCameraMaker = intrinsicCamInfo.m_sCameraModel = "";
+
+        Mat3 K = Mat3::Identity();
+
+        oss.clear(); oss.str(vec_str[3]);
+        oss >> K(0,0);
+        oss.clear(); oss.str(vec_str[4]);
+        oss >> K(0,1);
+        oss.clear(); oss.str(vec_str[5]);
+        oss >> K(0,2);
+        oss.clear(); oss.str(vec_str[6]);
+        oss >> K(1,0);
+        oss.clear(); oss.str(vec_str[7]);
+        oss >> K(1,1);
+        oss.clear(); oss.str(vec_str[8]);
+        oss >> K(1,2);
+        oss.clear(); oss.str(vec_str[9]);
+        oss >> K(2,0);
+        oss.clear(); oss.str(vec_str[10]);
+        oss >> K(2,1);
+        oss.clear(); oss.str(vec_str[11]);
+        oss >> K(2,2);
+
+        intrinsicCamInfo.m_K = K;
+        intrinsicCamInfo.m_focal = static_cast<float>(K(0,0)); // unknown sensor size;
+      }
+      break;
       default :
       {
         std::cerr << "Invalid image list line: wrong number of arguments" << std::endl;
@@ -287,7 +316,7 @@ static bool loadImageList(
 
     switch ( vec_str.size() )
     {
-      case 27 : // a camera with known intrinsic and rig structure
+      case 26 : // a camera with known intrinsic and rig structure
       {
         intrinsicCamInfo.m_bKnownIntrinsic = true;
         intrinsicCamInfo.m_sCameraMaker = intrinsicCamInfo.m_sCameraModel = "";
@@ -319,34 +348,34 @@ static bool loadImageList(
 
         // get rotation
         Mat3 R = Mat3::Identity();
-        oss.clear(); oss.str(vec_str[15]);
+        oss.clear(); oss.str(vec_str[14]);
         oss >> R(0,0);
-        oss.clear(); oss.str(vec_str[16]);
+        oss.clear(); oss.str(vec_str[15]);
         oss >> R(0,1);
-        oss.clear(); oss.str(vec_str[17]);
+        oss.clear(); oss.str(vec_str[16]);
         oss >> R(0,2);
-        oss.clear(); oss.str(vec_str[18]);
+        oss.clear(); oss.str(vec_str[17]);
         oss >> R(1,0);
-        oss.clear(); oss.str(vec_str[19]);
+        oss.clear(); oss.str(vec_str[18]);
         oss >> R(1,1);
-        oss.clear(); oss.str(vec_str[20]);
+        oss.clear(); oss.str(vec_str[19]);
         oss >> R(1,2);
-        oss.clear(); oss.str(vec_str[21]);
+        oss.clear(); oss.str(vec_str[20]);
         oss >> R(2,0);
-        oss.clear(); oss.str(vec_str[22]);
+        oss.clear(); oss.str(vec_str[21]);
         oss >> R(2,1);
-        oss.clear(); oss.str(vec_str[23]);
+        oss.clear(); oss.str(vec_str[22]);
         oss >> R(2,2);
 
         intrinsicCamInfo.m_R = R;
 
         // get center
         Vec3  C = Vec3::Zero();
-        oss.clear(); oss.str(vec_str[24]);
+        oss.clear(); oss.str(vec_str[23]);
         oss >> C(0);
-        oss.clear(); oss.str(vec_str[25]);
+        oss.clear(); oss.str(vec_str[24]);
         oss >> C(1);
-        oss.clear(); oss.str(vec_str[26]);
+        oss.clear(); oss.str(vec_str[25]);
         oss >> C(2);
 
         intrinsicCamInfo.m_rigC=C;
@@ -379,8 +408,7 @@ static bool loadImageList(
     camInfo.m_sImageName    = vec_str[0];
     camInfo.m_intrinsicId   = id;
     camInfo.m_rigidId       = atoi(vec_str[12].c_str());
-    camInfo.m_subCameraId   = atoi(vec_str[13].c_str());
-    camInfo.m_matchRigImage = atoi(vec_str[14].c_str());
+    camInfo.m_subCameraId   = id;
     vec_camImageName.push_back(camInfo);
 
     vec_str.clear();
