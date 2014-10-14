@@ -55,7 +55,7 @@ struct RigidCameraInfo
 {
   std::string m_sImageName;
   size_t m_intrinsicId;
-  size_t m_rigidId;
+  size_t m_rigId;
   size_t m_subCameraId;
 };
 
@@ -407,7 +407,7 @@ static bool loadImageList(
     RigidCameraInfo camInfo;
     camInfo.m_sImageName    = vec_str[0];
     camInfo.m_intrinsicId   = id;
-    camInfo.m_rigidId       = atoi(vec_str[12].c_str());
+    camInfo.m_rigId         = atoi(vec_str[12].c_str());
     camInfo.m_subCameraId   = id;
     vec_camImageName.push_back(camInfo);
 

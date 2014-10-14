@@ -118,6 +118,9 @@ private:
   /// Read input data (point correspondences, K matrix)
   bool ReadInputData();
 
+  /// check input data
+  bool  InputDataIsCorrect();
+
   void ComputeRelativeRt(Map_RelativeRT & vec_relatives);
 
   // Detect and remove the outlier relative rotations
@@ -174,6 +177,9 @@ private:
 
   // Intrinsic Id per imageId
   std::map<size_t, size_t> _map_IntrinsicIdPerImageId;
+
+  // rig Id per imageId
+  std::map<size_t, size_t> _map_RigIdPerImageId;
 
   // Parameter
   ERotationAveragingMethod _eRotationAveragingMethod;

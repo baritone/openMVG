@@ -497,6 +497,15 @@ bool GlobalRigidReconstructionEngine::Process()
     return false;
   }
 
+  //-------------------
+  // check input data
+  //-------------------
+
+  if(!InputDataIsCorrect())  {
+    std::cout << "\nError in your input data" << std::endl;
+    return false;
+  }
+
   //-- Export input graph
   {
     typedef lemon::ListGraph Graph;
@@ -1153,6 +1162,9 @@ bool GlobalRigidReconstructionEngine::ReadInputData()
 
         // to which intrinsic group each image belongs
         _map_IntrinsicIdPerImageId[idx] = camInfo.m_intrinsicId;
+
+        // to which rigid rig each image belongs
+        _map_RigIdPerImageId[idx]       = camInfo.m_rigId;
       }
 
       for (size_t i = 0; i < _vec_camImageNames.size(); ++i)
@@ -1210,6 +1222,30 @@ bool GlobalRigidReconstructionEngine::ReadInputData()
     _map_feats_normalized.insert(std::make_pair(camIndex,normalizedFeatureImageI) );
 
   }
+
+  return true;
+}
+
+bool GlobalRigidReconstructionEngine::InputDataIsCorrect()
+{
+
+  // check if rotation matrices are rotation matrices
+  for(size_t i=0; i < _vec_intrinsicGroups.size() ; ++i )
+  {
+      Mat3  R = _vec_intrinsicGroups[i].m_R;
+
+      // evaluate difference between R.R^t and I_3
+      Mat3  RRt = R.transpose() * R ;
+      Mat3  D   = Mat3::Identity() - RRt;
+
+      // R is a rotation matrix if |R| = + 1.0 and R.R^t = I_3
+      if( fabs(R.determinant()-1.0) > 1.0e-5 || D.squaredNorm() > 1.0e-8 )
+      {
+        std::cerr << " Input Rotation Matrix is not a rotation matrix \n" << endl;
+        return false;
+      }
+  }
+
 
   return true;
 }
