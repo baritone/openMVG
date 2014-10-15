@@ -1,8 +1,6 @@
 
 // Copyright (c) 2012, 2013, 2014 Pierre MOULON.
 
-// contributor : Stephane FLOTRON
-
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -94,11 +92,11 @@ public:
   const std::vector< std::pair<size_t, size_t> > getImagesSize() const
   {
     std::vector< std::pair<size_t, size_t> > vec_imageSize;
-    for ( std::vector<openMVG::SfMIO::RigidCameraInfo>::const_iterator iter_camInfo = _vec_camImageNames.begin();
+    for ( std::vector<openMVG::SfMIO::CameraRigInfo>::const_iterator iter_camInfo = _vec_camImageNames.begin();
       iter_camInfo != _vec_camImageNames.end();
       iter_camInfo++ )
     {
-      std::vector<openMVG::SfMIO::IntrinsicRigidCameraInfo>::const_iterator it_intrinsic = _vec_intrinsicGroups.begin();
+      std::vector<openMVG::SfMIO::IntrinsicCameraRigInfo>::const_iterator it_intrinsic = _vec_intrinsicGroups.begin();
       std::advance(it_intrinsic, iter_camInfo->m_intrinsicId);
       vec_imageSize.push_back( std::make_pair( it_intrinsic->m_w, it_intrinsic->m_h ) );
     }
@@ -164,8 +162,8 @@ private:
 
   // Images considered for the reconstruction
   std::vector<std::string> _vec_fileNames;
-  std::vector<openMVG::SfMIO::RigidCameraInfo> _vec_camImageNames;
-  std::vector<openMVG::SfMIO::IntrinsicRigidCameraInfo> _vec_intrinsicGroups;
+  std::vector<openMVG::SfMIO::CameraRigInfo> _vec_camImageNames;
+  std::vector<openMVG::SfMIO::IntrinsicCameraRigInfo> _vec_intrinsicGroups;
   std::map< size_t, std::vector<SIOPointFeature> > _map_feats; // feature per images
   std::map< size_t, std::vector<SIOPointFeature> > _map_feats_normalized; // normalized features per images
 
@@ -179,6 +177,7 @@ private:
   std::map<size_t, size_t> _map_IntrinsicIdPerImageId;
 
   // rig Id per imageId
+  std::map<size_t, std::vector<size_t> >  _map_ImagesIdPerRigId;
   std::map<size_t, size_t> _map_RigIdPerImageId;
 
   // Parameter

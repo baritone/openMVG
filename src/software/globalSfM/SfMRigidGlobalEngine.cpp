@@ -1112,8 +1112,8 @@ bool GlobalRigidReconstructionEngine::Process()
 }
 
 bool testIntrinsicsEquality(
-  SfMIO::IntrinsicRigidCameraInfo const &ci1,
-  SfMIO::IntrinsicRigidCameraInfo const &ci2)
+  SfMIO::IntrinsicCameraRigInfo const &ci1,
+  SfMIO::IntrinsicCameraRigInfo const &ci2)
 {
   return ci1.m_K == ci2.m_K;
 }
@@ -1152,13 +1152,13 @@ bool GlobalRigidReconstructionEngine::ReadInputData()
     else
     {
       // Find to which intrinsic groups each image belong
-      for (std::vector<openMVG::SfMIO::RigidCameraInfo>::const_iterator iter = _vec_camImageNames.begin();
+      for (std::vector<openMVG::SfMIO::CameraRigInfo>::const_iterator iter = _vec_camImageNames.begin();
         iter != _vec_camImageNames.end(); ++iter)
       {
-        const openMVG::SfMIO::RigidCameraInfo & camInfo = *iter;
+        const openMVG::SfMIO::CameraRigInfo & camInfo = *iter;
 
         // Find the index of the camera
-        const size_t idx = std::distance((std::vector<openMVG::SfMIO::RigidCameraInfo>::const_iterator)_vec_camImageNames.begin(), iter);
+        const size_t idx = std::distance((std::vector<openMVG::SfMIO::CameraRigInfo>::const_iterator)_vec_camImageNames.begin(), iter);
 
         // to which intrinsic group each image belongs
         _map_IntrinsicIdPerImageId[idx] = camInfo.m_intrinsicId;
@@ -1228,7 +1228,6 @@ bool GlobalRigidReconstructionEngine::ReadInputData()
 
 bool GlobalRigidReconstructionEngine::InputDataIsCorrect()
 {
-
   // check if rotation matrices are rotation matrices
   for(size_t i=0; i < _vec_intrinsicGroups.size() ; ++i )
   {
@@ -1241,11 +1240,34 @@ bool GlobalRigidReconstructionEngine::InputDataIsCorrect()
       // R is a rotation matrix if |R| = + 1.0 and R.R^t = I_3
       if( fabs(R.determinant()-1.0) > 1.0e-5 || D.squaredNorm() > 1.0e-8 )
       {
-        std::cerr << " Input Rotation Matrix is not a rotation matrix \n" << endl;
+        std::cerr << "Error : Input Rotation Matrix is not a rotation matrix \n";
         return false;
       }
   }
 
+  // generate list of image per rig
+  for (std::map<size_t, size_t>::const_iterator iter = _map_RigIdPerImageId.begin();
+             iter != _map_RigIdPerImageId.end(); ++ iter)
+  {
+      const size_t idx = iter->first;
+      _map_ImagesIdPerRigId[_map_RigIdPerImageId[idx]].push_back(idx);
+  }
+
+  // check that each rig got the same number of subCameras
+  size_t  rigSize=0;
+  for (std::map<size_t, std::vector<size_t> >::const_iterator iter = _map_ImagesIdPerRigId.begin();
+             iter != _map_ImagesIdPerRigId.end(); ++ iter)
+  {
+      const size_t rigSubCamNumber = iter->second.size();
+      if( rigSize == 0)
+          rigSize = rigSubCamNumber;
+
+      if( rigSubCamNumber != _vec_intrinsicGroups.size() || rigSubCamNumber != rigSize )
+      {
+        std::cerr << "Error : The rig does not always have the same number of subcameras or there is more than one rig \n";
+        return false;
+      }
+  }
 
   return true;
 }
