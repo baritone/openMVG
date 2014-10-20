@@ -4,6 +4,3 @@
 [submodule "src/dependencies/osi_clp"]
 	path = src/dependencies/osi_clp
 	url = https://github.com/openMVG-thirdparty/osi_clp.git
-[submodule "src/third_party/opengv"]
-        path = src/third_party/opengv
-        url = https://github.com/laurentkneip/opengv.git
