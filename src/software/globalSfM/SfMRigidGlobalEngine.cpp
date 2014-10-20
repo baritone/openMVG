@@ -160,7 +160,9 @@ template<typename EdgesInterface_T>
 std::set<size_t> CleanGraph_Node(
   const EdgesInterface_T & edges,
   const std::vector<std::string> & vec_fileNames,
-  const std::string & _sOutDirectory)
+  const std::string & _sOutDirectory,
+  std::map<size_t, size_t> map_RigIdPerImageId,
+  const size_t subCameraNumber)
 {
   std::set<size_t> largestBiEdgeCC;
 
@@ -169,7 +171,7 @@ std::set<size_t> CleanGraph_Node(
   // - keep the largest connected component.
 
   typedef lemon::ListGraph Graph;
-  imageGraph::indexedImageGraph putativeGraph(edges, vec_fileNames);
+  imageGraph::indexedImageGraph putativeGraph(edges, vec_fileNames,map_RigIdPerImageId, subCameraNumber);
 
   // Save the graph before cleaning:
   imageGraph::exportToGraphvizData(
@@ -509,7 +511,7 @@ bool GlobalRigidReconstructionEngine::Process()
   //-- Export input graph
   {
     typedef lemon::ListGraph Graph;
-    imageGraph::indexedImageGraph putativeGraph(_map_Matches_E, _vec_fileNames);
+    imageGraph::indexedImageGraph putativeGraph(_map_Matches_E, _vec_fileNames, _map_RigIdPerImageId, _map_ImagesIdPerRigId[0].size());
 
     // Save the graph before cleaning:
     imageGraph::exportToGraphvizData(
@@ -524,7 +526,8 @@ bool GlobalRigidReconstructionEngine::Process()
   // Only keep the largest biedge connected subgraph
   //-------------------
   {
-    const std::set<size_t> set_remainingIds = CleanGraph_Node(_map_Matches_E, _vec_fileNames, _sOutDirectory);
+    const std::set<size_t> set_remainingIds = CleanGraph_Node(_map_Matches_E, _vec_fileNames, _sOutDirectory,
+                                                              _map_RigIdPerImageId, _map_ImagesIdPerRigId[0].size());
     if(set_remainingIds.empty())
     {
       std::cout << "Invalid input image graph for global SfM" << std::endl;
@@ -554,7 +557,8 @@ bool GlobalRigidReconstructionEngine::Process()
     //-------------------
     // keep the largest biedge connected subgraph
     //-------------------
-    const std::set<size_t> set_remainingIds = CleanGraph_Node(_map_Matches_E, _vec_fileNames, _sOutDirectory);
+    const std::set<size_t> set_remainingIds = CleanGraph_Node(_map_Matches_E, _vec_fileNames, _sOutDirectory,
+                                                              _map_RigIdPerImageId, _map_ImagesIdPerRigId[0].size());
     if(set_remainingIds.empty())
       return false;
 
@@ -682,7 +686,8 @@ bool GlobalRigidReconstructionEngine::Process()
       map_pairs_tij.push_back(std::make_pair(rel.first.first,rel.first.second));
     }
 
-    const std::set<size_t> set_representedImageIndex = CleanGraph_Node(map_pairs_tij, _vec_fileNames, _sOutDirectory);
+    const std::set<size_t> set_representedImageIndex = CleanGraph_Node(map_pairs_tij, _vec_fileNames, _sOutDirectory,
+                                                                       _map_RigIdPerImageId, _map_ImagesIdPerRigId[0].size());
     std::cout << "\n\n"
       << "We targeting to estimates: " << map_globalR.size()
       << " and we have estimation for: " << set_representedImageIndex.size() << " images" << std::endl;

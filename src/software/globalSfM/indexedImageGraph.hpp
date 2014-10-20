@@ -124,6 +124,116 @@ struct indexedImageGraph
       (*map_edgeMap)[ edge ] = 1;
     }
   }
+
+indexedImageGraph( const PairWiseMatches & map_indexedMatches,
+  const std::vector<string> &vec_fileNames,
+  std::map<size_t, size_t> &map_RigIdPerImageId,
+  const size_t &subCameraNumber)
+{
+  map_nodeMapIndex =  auto_ptr<map_NodeMapIndex>( new map_NodeMapIndex(g) );
+  map_codeMapName =  auto_ptr<map_NodeMapName>( new map_NodeMapName(g) );
+  map_edgeMap = auto_ptr<map_EdgeMap>( new map_EdgeMap(g) );
+
+  //A-- Compute the number of node we need
+  set<size_t> setNodes;
+  for (PairWiseMatches::const_iterator iter = map_indexedMatches.begin();
+    iter != map_indexedMatches.end();
+    ++iter)
+  {
+    setNodes.insert(map_RigIdPerImageId[iter->first.first]);
+    setNodes.insert(map_RigIdPerImageId[iter->first.second]);
+  }
+
+  //B-- Create a node graph for each element of the set
+  for (set<size_t>::const_iterator iter = setNodes.begin();
+    iter != setNodes.end();
+    ++iter)
+  {
+    map_size_t_to_node[*iter] = g.addNode();
+    (*map_nodeMapIndex) [map_size_t_to_node[*iter]] = *iter;
+    (*map_codeMapName) [map_size_t_to_node[*iter]] = vec_fileNames[subCameraNumber * (*iter)];
+  }
+
+  //C-- Add weighted edges from the "map_indexedMatches" object
+  for (PairWiseMatches::const_iterator iter = map_indexedMatches.begin();
+    iter != map_indexedMatches.end();
+    ++iter)
+  {
+    const std::vector<IndMatch> & vec_FilteredMatches = iter->second;
+    if (vec_FilteredMatches.size() > 0)
+    {
+      const size_t i = map_RigIdPerImageId[iter->first.first];
+      const size_t j = map_RigIdPerImageId[iter->first.second];
+      if( i != j)
+      {
+        if( findEdge(g,map_size_t_to_node[i], map_size_t_to_node[j]) != INVALID)
+        {
+            GraphT::Edge edge = findEdge(g,map_size_t_to_node[i], map_size_t_to_node[j]);
+            (*map_edgeMap)[ edge ] += vec_FilteredMatches.size();
+        }
+        else
+        {
+            GraphT::Edge edge =  g.addEdge(map_size_t_to_node[i], map_size_t_to_node[j]);
+            (*map_edgeMap)[ edge ] = vec_FilteredMatches.size();
+        }
+      }
+    }
+  }
+}
+
+indexedImageGraph( const std::vector<std::pair<size_t, size_t> > & map_pairs,
+  const std::vector<string> &vec_fileNames,
+  std::map<size_t, size_t> &map_RigIdPerImageId,
+  const size_t &subCameraNumber)
+{
+  typedef std::vector<std::pair<size_t, size_t> > Pairs_T;
+  map_nodeMapIndex =  auto_ptr<map_NodeMapIndex>( new map_NodeMapIndex(g) );
+  map_codeMapName =  auto_ptr<map_NodeMapName>( new map_NodeMapName(g) );
+  map_edgeMap = auto_ptr<map_EdgeMap>( new map_EdgeMap(g) );
+
+  //A-- Compute the number of node we need
+  set<size_t> setNodes;
+  for (Pairs_T::const_iterator iter = map_pairs.begin();
+    iter != map_pairs.end();
+    ++iter)
+  {
+    setNodes.insert(map_RigIdPerImageId[iter->first]);
+    setNodes.insert(map_RigIdPerImageId[iter->second]);
+  }
+
+  //B-- Create a node graph for each element of the set
+  for (set<size_t>::const_iterator iter = setNodes.begin();
+    iter != setNodes.end();
+    ++iter)
+  {
+    map_size_t_to_node[*iter] = g.addNode();
+    (*map_nodeMapIndex) [map_size_t_to_node[*iter]] = *iter;
+    (*map_codeMapName) [map_size_t_to_node[*iter]] = vec_fileNames[subCameraNumber * (*iter)];
+  }
+
+  //C-- Add weighted edges from the pairs object
+  for (Pairs_T::const_iterator iter = map_pairs.begin();
+    iter != map_pairs.end();
+    ++iter)
+  {
+    const size_t i = map_RigIdPerImageId[iter->first];
+    const size_t j = map_RigIdPerImageId[iter->second];
+    if( i != j)
+    {
+      if( findEdge(g,map_size_t_to_node[i], map_size_t_to_node[j]) != INVALID)
+      {
+          GraphT::Edge edge = findEdge(g,map_size_t_to_node[i], map_size_t_to_node[j]);
+          (*map_edgeMap)[ edge ] = 1;
+      }
+      else
+      {
+          GraphT::Edge edge =  g.addEdge(map_size_t_to_node[i], map_size_t_to_node[j]);
+          (*map_edgeMap)[ edge ] = 1;
+      }
+    }
+  }
+}
+
 };
 
 } // namespace imageGraph
