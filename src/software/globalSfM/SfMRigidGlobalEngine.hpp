@@ -120,7 +120,7 @@ private:
   bool InputDataIsCorrect();
 
   // compute pairwise rig matches based on essential pairwise matches for Essential matrix
-  bool ComputeMapMatchesRig();
+  void ComputeMapMatchesRig();
 
   void ComputeRelativeRt(Map_RelativeRT & vec_relatives);
 

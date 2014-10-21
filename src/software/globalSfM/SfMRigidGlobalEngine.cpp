@@ -510,11 +510,7 @@ bool GlobalRigidReconstructionEngine::Process()
   //--------------------
   // compute liste of pairwise matches per rig
   //--------------------
-  if(!ComputeMapMatchesRig())
-  {
-    std::cout << "\nCannot compute matches per rig" << std::endl;
-    return false;
-  }
+  ComputeMapMatchesRig();
 
   //-- Export input graph
   {
@@ -1283,7 +1279,7 @@ bool GlobalRigidReconstructionEngine::InputDataIsCorrect()
   return true;
 }
 
-bool GlobalRigidReconstructionEngine::ComputeMapMatchesRig()
+void GlobalRigidReconstructionEngine::ComputeMapMatchesRig()
 {
   for (PairWiseMatches::const_iterator iter = _map_Matches_E.begin();
     iter != _map_Matches_E.end(); ++iter)
