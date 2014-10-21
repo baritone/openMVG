@@ -151,7 +151,7 @@ ENDIF (OpenMVG_BUILD_TESTS)
 MACRO (UNIT_TEST NAMESPACE NAME EXTRA_LIBS)
   IF (OpenMVG_BUILD_TESTS)
     ADD_EXECUTABLE(${NAMESPACE}_test_${NAME} ${NAME}_test.cpp)
-    
+
     SET_PROPERTY(TARGET ${NAMESPACE}_test_${NAME} PROPERTY FOLDER OpenMVG/test)
 
     TARGET_LINK_LIBRARIES(${NAMESPACE}_test_${NAME}
@@ -222,7 +222,7 @@ ENDFOREACH()
 # concat lists
 SET(OpenMVG_LIBS "${OpenMVG_LIBS}" ${openMVG_linearProgramming})
 #third_party libs
-SET(OpenMVG_LIBS "${OpenMVG_LIBS}" 
+SET(OpenMVG_LIBS "${OpenMVG_LIBS}"
   vlsift
   stlplus
   flann_cpp_s

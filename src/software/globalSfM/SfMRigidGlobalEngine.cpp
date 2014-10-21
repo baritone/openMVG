@@ -39,6 +39,12 @@
 #include "third_party/stlAddition/stlMap.hpp"
 #include "third_party/histogram/histogram.hpp"
 
+#include <opengv/types.hpp>
+#include <opengv/relative_pose/methods.hpp>
+#include <opengv/relative_pose/NoncentralRelativeAdapter.hpp>
+#include <opengv/sac/Ransac.hpp>
+#include <opengv/sac_problems/relative_pose/NoncentralRelativePoseSacProblem.hpp>
+
 #include "openMVG/robust_estimation/robust_estimator_ACRansac.hpp"
 #include "openMVG/robust_estimation/robust_estimator_ACRansacKernelAdaptator.hpp"
 
@@ -65,6 +71,7 @@
 using namespace openMVG;
 using namespace openMVG::graphUtils;
 using namespace svg;
+using namespace opengv;
 
 namespace openMVG{
 

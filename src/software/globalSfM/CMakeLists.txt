@@ -10,6 +10,7 @@ TARGET_LINK_LIBRARIES(
 SET_PROPERTY(TARGET openMVG_main_GlobalSfM PROPERTY FOLDER OpenMVG/software)
 SET_PROPERTY(TARGET openMVG_SfM_Global PROPERTY FOLDER OpenMVG/OpenMVG)
 
+INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/third_party/opengv/include/)
 ADD_LIBRARY(openMVG_SfM_Global_Rigid SfMRigidGlobalEngine.cpp)
 
 ADD_EXECUTABLE(openMVG_main_rigidRig_GlobalSfM main_rigidRig_GlobalSfM.cpp)
