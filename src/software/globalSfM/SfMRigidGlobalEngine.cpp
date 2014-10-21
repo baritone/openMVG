@@ -99,23 +99,23 @@ void KeepOnlyReferencedElement(
   map_relatives.swap(map_relatives_infered);
 }
 
-// Specialization for PairWiseMatches
+// Specialization for RigWiseMatches
 template<>
 void KeepOnlyReferencedElement(
   const std::set<size_t> & set_remainingIds,
-  PairWiseMatches& map_matches)
+  RigWiseMatches& map_matches)
 {
-  PairWiseMatches map_matches_E_infered;
-  for (PairWiseMatches::const_iterator iter = map_matches.begin();
+  RigWiseMatches map_matches_Rig_infered;
+  for (RigWiseMatches::const_iterator iter = map_matches.begin();
     iter != map_matches.end(); ++iter)
   {
     if (set_remainingIds.find(iter->first.first) != set_remainingIds.end() &&
         set_remainingIds.find(iter->first.second) != set_remainingIds.end())
     {
-      map_matches_E_infered.insert(*iter);
+      map_matches_Rig_infered.insert(*iter);
     }
   }
-  map_matches.swap(map_matches_E_infered);
+  map_matches.swap(map_matches_Rig_infered);
 }
 
 // Specialization for std::map<size_t,Mat3>
@@ -536,7 +536,7 @@ bool GlobalRigidReconstructionEngine::Process()
       std::cout << "Invalid input image graph for global SfM" << std::endl;
     return false;
     }
-    KeepOnlyReferencedElement(set_remainingIds, _map_Matches_E);
+    KeepOnlyReferencedElement(set_remainingIds, _map_Matches_Rig);
   }
 
   //-------------------
@@ -688,7 +688,7 @@ bool GlobalRigidReconstructionEngine::Process()
       map_pairs_tij.push_back(std::make_pair(rel.first.first,rel.first.second));
     }
 
-    const std::set<size_t> set_representedImageIndex = CleanGraph_Node(map_pairs_tij, _vec_fileNames, _sOutDirectory, _map_ImagesIdPerRigId[0].size());
+    const std::set<size_t> set_representedImageIndex = CleanGraph_Node(map_pairs_tij, _vec_fileNames, _sOutDirectory, 1.0);
 
     std::cout << "\n\n"
       << "We targeting to estimates: " << map_globalR.size()
