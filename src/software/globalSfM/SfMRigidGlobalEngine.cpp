@@ -1285,8 +1285,8 @@ void GlobalRigidReconstructionEngine::ComputeMapMatchesRig()
     iter != _map_Matches_E.end(); ++iter)
   {
      // extract rig id from image id
-     size_t  I = min(_map_RigIdPerImageId[iter->first.first], _map_RigIdPerImageId[iter->first.second]);
-     size_t  J = max(_map_RigIdPerImageId[iter->first.first], _map_RigIdPerImageId[iter->first.second]);
+     const size_t  I = min(_map_RigIdPerImageId[iter->first.first], _map_RigIdPerImageId[iter->first.second]);
+     const size_t  J = max(_map_RigIdPerImageId[iter->first.first], _map_RigIdPerImageId[iter->first.second]);
 
       _map_Matches_Rig[make_pair(I,J)].push_back(iter->first);
   }
@@ -1298,40 +1298,52 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 {
   // For each pair, compute the rotation from pairwise point matches:
 
-  C_Progress_display my_progress_bar( _map_Matches_E.size(), std::cout, "\n", " " , "ComputeRelativeRt\n" );
+  C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n" );
 #ifdef USE_OPENMP
   #pragma omp parallel for schedule(dynamic)
 #endif
-  for (int i = 0; i < _map_Matches_E.size(); ++i)
+  for (int i = 0; i < _map_Matches_Rig.size(); ++i)
   {
-    PairWiseMatches::const_iterator iter = _map_Matches_E.begin();
+    RigWiseMatches::const_iterator iter = _map_Matches_Rig.begin();
     std::advance(iter, i);
 
+    // extract indices of matching rigs
     const size_t I = iter->first.first;
     const size_t J = iter->first.second;
 
-    const std::vector<IndMatch> & vec_matchesInd = iter->second;
+    // create rig structure using openGV
+
+
+    // extract list of matching cameras bewteen rigs
+    const std::vector<std::pair <size_t, size_t> > & vec_matchesCamera = iter->second;
+
+    for( int j = 0; j < vec_matchesCamera.size(); ++j ){
+
+      const size_t firstCam = vec_matchesCamera[j].first;
+      const size_t secondCam = vec_matchesCamera[j].second;
+
+      const std::vector<IndMatch> vec_matchesInd = _map_Matches_E[vec_matchesCamera[j]];
 
     Mat x1(2, vec_matchesInd.size()), x2(2, vec_matchesInd.size());
     for (size_t k = 0; k < vec_matchesInd.size(); ++k)
     {
-      x1.col(k) = _map_feats_normalized[I][vec_matchesInd[k]._i].coords().cast<double>();
-      x2.col(k) = _map_feats_normalized[J][vec_matchesInd[k]._j].coords().cast<double>();
+      x1.col(k) = _map_feats_normalized[firstCam][vec_matchesInd[k]._i].coords().cast<double>();
+      x2.col(k) = _map_feats_normalized[secondCam][vec_matchesInd[k]._j].coords().cast<double>();
     }
 
     Mat3 E;
     std::vector<size_t> vec_inliers;
 
     std::pair<size_t, size_t> imageSize_I(
-      _vec_intrinsicGroups[_vec_camImageNames[I].m_intrinsicId].m_w,
-      _vec_intrinsicGroups[_vec_camImageNames[I].m_intrinsicId].m_h );
+      _vec_intrinsicGroups[_vec_camImageNames[firstCam].m_intrinsicId].m_w,
+      _vec_intrinsicGroups[_vec_camImageNames[secondCam].m_intrinsicId].m_h );
 
     std::pair<size_t, size_t> imageSize_J(
-      _vec_intrinsicGroups[_vec_camImageNames[J].m_intrinsicId].m_w,
-      _vec_intrinsicGroups[_vec_camImageNames[J].m_intrinsicId].m_h);
+      _vec_intrinsicGroups[_vec_camImageNames[firstCam].m_intrinsicId].m_w,
+      _vec_intrinsicGroups[_vec_camImageNames[secondCam].m_intrinsicId].m_h);
 
-    const Mat3 K1 = _vec_intrinsicGroups[_vec_camImageNames[I].m_intrinsicId].m_K;
-    const Mat3 K2 = _vec_intrinsicGroups[_vec_camImageNames[J].m_intrinsicId].m_K;
+    const Mat3 K1 = _vec_intrinsicGroups[_vec_camImageNames[firstCam].m_intrinsicId].m_K;
+    const Mat3 K2 = _vec_intrinsicGroups[_vec_camImageNames[secondCam].m_intrinsicId].m_K;
     const Mat3 K  = Mat3::Identity();
 
     double errorMax = std::numeric_limits<double>::max();
@@ -1500,27 +1512,26 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
           // If no error, get back refined parameters
           if (summary.IsSolutionUsable())
           {
-/*            // Get back 3D points
-*            size_t k = 0;
-*            std::vector<Vec3>  finalPoint;
-*
-*            for (std::vector<Vec3>::iterator iter = vec_allScenes.begin();
-*              iter != vec_allScenes.end(); ++iter, ++k)
-*            {
-*              const double * pt = ba_problem.mutable_points() + k*3;
-*              Vec3 & pt3D = *iter;
-*              pt3D = Vec3(pt[0], pt[1], pt[2]);
-*              finalPoint.push_back(pt3D);
-*            }
-*
-*
-*            // export point cloud associated to pair (I,J). Only for debug purpose
-*            std::ostringstream pairIJ;
-*            pairIJ << I << "_" << J << ".ply";
-*
-*            plyHelper::exportToPly(finalPoint, stlplus::create_filespec(_sOutDirectory,
-*                   "pointCloud_rot_"+pairIJ.str()) );
-*/
+            // Get back 3D points
+            size_t k = 0;
+            std::vector<Vec3>  finalPoint;
+
+            for (std::vector<Vec3>::iterator iter = vec_allScenes.begin();
+              iter != vec_allScenes.end(); ++iter, ++k)
+            {
+              const double * pt = ba_problem.mutable_points() + k*3;
+              Vec3 & pt3D = *iter;
+              pt3D = Vec3(pt[0], pt[1], pt[2]);
+              finalPoint.push_back(pt3D);
+            }
+
+
+            // export point cloud associated to pair (I,J). Only for debug purpose
+            std::ostringstream pairIJ;
+            pairIJ << firstCam << "_" << secondCam << ".ply";
+
+            plyHelper::exportToPly(finalPoint, stlplus::create_filespec(_sOutDirectory,
+                   "pointCloud_rot_"+pairIJ.str()) );
 
             // Get back camera 1
             {
@@ -1558,12 +1569,13 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
   #pragma omp critical
 #endif
         {
-          vec_relatives[iter->first] = std::make_pair(R,t);
+          vec_relatives[vec_matchesCamera[j]] = std::make_pair(R,t);
           ++my_progress_bar;
         }
 
       }
     }
+  }
   }
 }
 
