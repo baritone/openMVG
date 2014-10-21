@@ -117,7 +117,10 @@ private:
   bool ReadInputData();
 
   /// check input data
-  bool  InputDataIsCorrect();
+  bool InputDataIsCorrect();
+
+  // compute pairwise rig matches based on essential pairwise matches for Essential matrix
+  bool ComputeMapMatchesRig();
 
   void ComputeRelativeRt(Map_RelativeRT & vec_relatives);
 
@@ -168,6 +171,9 @@ private:
   std::map< size_t, std::vector<SIOPointFeature> > _map_feats_normalized; // normalized features per images
 
   matching::PairWiseMatches _map_Matches_E; // pairwise matches for Essential matrix model
+
+  // pairwise rig matches based on essential pairwise matches for Essential matrix
+  matching::RigWiseMatches _map_Matches_Rig;
 
   /// List of images that belong to a common intrinsic group
   std::map<size_t, std::vector<size_t> > _map_ImagesIdPerIntrinsicGroup;
