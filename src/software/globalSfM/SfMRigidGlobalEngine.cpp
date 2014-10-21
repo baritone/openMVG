@@ -44,6 +44,7 @@
 #include <opengv/relative_pose/NoncentralRelativeAdapter.hpp>
 #include <opengv/sac/Ransac.hpp>
 #include <opengv/sac_problems/relative_pose/NoncentralRelativePoseSacProblem.hpp>
+#include <../test/time_measurement.hpp>
 
 #include "openMVG/robust_estimation/robust_estimator_ACRansac.hpp"
 #include "openMVG/robust_estimation/robust_estimator_ACRansacKernelAdaptator.hpp"
@@ -1295,6 +1296,7 @@ void GlobalRigidReconstructionEngine::ComputeMapMatchesRig()
      const size_t  I = min(_map_RigIdPerImageId[iter->first.first], _map_RigIdPerImageId[iter->first.second]);
      const size_t  J = max(_map_RigIdPerImageId[iter->first.first], _map_RigIdPerImageId[iter->first.second]);
 
+     if( I != J)
       _map_Matches_Rig[make_pair(I,J)].push_back(iter->first);
   }
 
@@ -1315,274 +1317,117 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     std::advance(iter, i);
 
     // extract indices of matching rigs
-    const size_t I = iter->first.first;
-    const size_t J = iter->first.second;
+    const size_t R0 = iter->first.first;
+    const size_t R1 = iter->first.second;
 
     // create rig structure using openGV
+    translations_t  rigOffsets;
+    rotations_t     rigRotations;
 
+    for(int k(0) ; k < _vec_intrinsicGroups.size(); ++k)
+    {
+        translation_t   t = _vec_intrinsicGroups[k].m_rigC;
+        rotation_t      R = _vec_intrinsicGroups[k].m_R.transpose();
+
+        rigOffsets.push_back(t);
+        rigRotations.push_back(R);
+    }
 
     // extract list of matching cameras bewteen rigs
     const std::vector<std::pair <size_t, size_t> > & vec_matchesCamera = iter->second;
 
+    // initialize structure used for matching between rigs
+    bearingVectors_t bearingVectorsRigOne;
+    bearingVectors_t bearingVectorsRigTwo;
+
+    std::vector<int>  camCorrespondencesRigOne;
+    std::vector<int>  camCorrespondencesRigTwo;
+
+    // loop on intra-rig correspondences
     for( int j = 0; j < vec_matchesCamera.size(); ++j ){
 
-      const size_t firstCam = vec_matchesCamera[j].first;
-      const size_t secondCam = vec_matchesCamera[j].second;
+      // extract camera id and subchannel number
+      const size_t I = vec_matchesCamera[j].first;
+      const size_t J = vec_matchesCamera[j].second;
+
+      const size_t SubI = _map_IntrinsicIdPerImageId[I];
+      const size_t SubJ = _map_IntrinsicIdPerImageId[J];
 
       const std::vector<IndMatch> vec_matchesInd = _map_Matches_E[vec_matchesCamera[j]];
 
-    Mat x1(2, vec_matchesInd.size()), x2(2, vec_matchesInd.size());
-    for (size_t k = 0; k < vec_matchesInd.size(); ++k)
-    {
-      x1.col(k) = _map_feats_normalized[firstCam][vec_matchesInd[k]._i].coords().cast<double>();
-      x2.col(k) = _map_feats_normalized[secondCam][vec_matchesInd[k]._j].coords().cast<double>();
-    }
-
-    Mat3 E;
-    std::vector<size_t> vec_inliers;
-
-    std::pair<size_t, size_t> imageSize_I(
-      _vec_intrinsicGroups[_vec_camImageNames[firstCam].m_intrinsicId].m_w,
-      _vec_intrinsicGroups[_vec_camImageNames[secondCam].m_intrinsicId].m_h );
-
-    std::pair<size_t, size_t> imageSize_J(
-      _vec_intrinsicGroups[_vec_camImageNames[firstCam].m_intrinsicId].m_w,
-      _vec_intrinsicGroups[_vec_camImageNames[secondCam].m_intrinsicId].m_h);
-
-    const Mat3 K1 = _vec_intrinsicGroups[_vec_camImageNames[firstCam].m_intrinsicId].m_K;
-    const Mat3 K2 = _vec_intrinsicGroups[_vec_camImageNames[secondCam].m_intrinsicId].m_K;
-    const Mat3 K  = Mat3::Identity();
-
-    double errorMax = std::numeric_limits<double>::max();
-
-    double maxExpectedError = std::pow( 2.5 / K1(0,0) + 2.5 / K2(0,0), 1./2.); // geometric mean
-    if (!SfMRobust::robustEssential(K, K,
-      x1, x2,
-      &E, &vec_inliers,
-      imageSize_I, imageSize_J,
-      &errorMax,
-      maxExpectedError))
-    {
-      std::cerr << " /!\\ Robust estimation failed to compute E for this pair"
-        << std::endl;
-        continue;
-    }
-    else
-    {
-      //--> Estimate the best possible Rotation/Translation from E
-      Mat3 R;
-      Vec3 t;
-      if (!SfMRobust::estimate_Rt_fromE(K, K, x1, x2, E, vec_inliers, &R, &t))
+      // extracts features for each pair in order to construct bearing vectors.
+      for (size_t k = 0; k < vec_matchesInd.size(); ++k)
       {
-        std::cout << " /!\\ Failed to compute initial R|t for the initial pair"
-          << std::endl;
-          continue;
-      }
-      else
-      {
-        PinholeCamera cam1(K, Mat3::Identity(), Vec3::Zero());
-        PinholeCamera cam2(K, R, t);
+        bearingVector_t  bearing1;
+        bearingVector_t  bearing2;
 
-        std::vector<Vec3> vec_allScenes;
-        vec_allScenes.resize(x1.cols());
-        for (size_t k = 0; k < x1.cols(); ++k) {
-          const Vec2 & x1_ = x1.col(k),
-            & x2_ = x2.col(k);
-          Vec3 X;
-          TriangulateDLT(cam1._P, x1_, cam2._P, x2_, &X);
-          vec_allScenes[k] = X;
-        }
+        // extract normalized keypoints coordinates
+        bearing1(0) = _map_feats_normalized[I][vec_matchesInd[k]._i].x();
+        bearing1(1) = _map_feats_normalized[I][vec_matchesInd[k]._i].y();
+        bearing1(2) = 1.0;
 
-        // Refine Xis, tis and Ris (Bundle Adjustment)
-        {
-          using namespace std;
+        bearing2(0) = _map_feats_normalized[J][vec_matchesInd[k]._i].x();
+        bearing2(1) = _map_feats_normalized[J][vec_matchesInd[k]._i].y();
+        bearing2(2) = 1.0;
 
-          const size_t nbCams = 2;
-          const size_t nbPoints3D = vec_allScenes.size();
+        // normalize bearing vectors
+        bearing1 = bearing1 / bearing1.norm();
+        bearing2 = bearing2 / bearing2.norm();
 
-          // Count the number of measurement (sum of the reconstructed track length)
-          size_t nbmeasurements = x1.cols() * 2;
+        // add bearing vectors to list and update correspondences list
+        bearingVectorsRigOne.push_back( bearing1 );
+        bearingVectorsRigTwo.push_back( bearing2 );
 
-          // Setup a BA problem
-          using namespace openMVG::bundle_adjustment;
-          BA_Problem_data<6> ba_problem; // Will refine [Rotations|Translations] and 3D points
-
-          // Configure the size of the problem
-          ba_problem.num_cameras_ = nbCams;
-          ba_problem.num_points_ = nbPoints3D;
-          ba_problem.num_observations_ = nbmeasurements;
-
-          ba_problem.point_index_.reserve(ba_problem.num_observations_);
-          ba_problem.camera_index_.reserve(ba_problem.num_observations_);
-          ba_problem.observations_.reserve(2 * ba_problem.num_observations_);
-
-          ba_problem.num_parameters_ =
-            6 * ba_problem.num_cameras_ // #[Rotation|translation] = [3x1]|[3x1]
-            + 3 * ba_problem.num_points_; // 3DPoints = [3x1]
-          ba_problem.parameters_.reserve(ba_problem.num_parameters_);
-
-          // Fill camera
-          {
-            Mat3 R = cam1._R;
-            double angleAxis[3];
-            ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
-
-            // translation
-            Vec3 t = cam1._t;
-
-            ba_problem.parameters_.push_back(angleAxis[0]);
-            ba_problem.parameters_.push_back(angleAxis[1]);
-            ba_problem.parameters_.push_back(angleAxis[2]);
-            ba_problem.parameters_.push_back(t[0]);
-            ba_problem.parameters_.push_back(t[1]);
-            ba_problem.parameters_.push_back(t[2]);
-          }
-          {
-            Mat3 R = cam2._R;
-            double angleAxis[3];
-            ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
-
-            // translation
-            Vec3 t = cam2._t;
-
-            ba_problem.parameters_.push_back(angleAxis[0]);
-            ba_problem.parameters_.push_back(angleAxis[1]);
-            ba_problem.parameters_.push_back(angleAxis[2]);
-            ba_problem.parameters_.push_back(t[0]);
-            ba_problem.parameters_.push_back(t[1]);
-            ba_problem.parameters_.push_back(t[2]);
-          }
-
-          // Fill 3D points
-          for (std::vector<Vec3>::const_iterator iter = vec_allScenes.begin();
-            iter != vec_allScenes.end();
-            ++iter)
-          {
-            const Vec3 & pt3D = *iter;
-            ba_problem.parameters_.push_back(pt3D[0]);
-            ba_problem.parameters_.push_back(pt3D[1]);
-            ba_problem.parameters_.push_back(pt3D[2]);
-          }
-
-          // Fill the measurements
-          for (size_t k = 0; k < x1.cols(); ++k) {
-            const Vec2 & x1_ = x1.col(k), & x2_ = x2.col(k);
-
-            const Mat3 & K = cam1._K;
-
-            double ppx = K(0,2), ppy = K(1,2);
-            ba_problem.observations_.push_back( x1_(0) - ppx );
-            ba_problem.observations_.push_back( x1_(1) - ppy );
-            ba_problem.point_index_.push_back(k);
-            ba_problem.camera_index_.push_back(0);
-
-            ba_problem.observations_.push_back( x2_(0) - ppx );
-            ba_problem.observations_.push_back( x2_(1) - ppy );
-            ba_problem.point_index_.push_back(k);
-            ba_problem.camera_index_.push_back(1);
-          }
-
-          // Create residuals for each observation in the bundle adjustment problem. The
-          // parameters for cameras and points are added automatically.
-          ceres::Problem problem;
-          // Set a LossFunction to be less penalized by false measurements
-          //  - set it to NULL if you don't want use a lossFunction.
-          ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
-          for (size_t i = 0; i < ba_problem.num_observations(); ++i) {
-            // Each Residual block takes a point and a camera as input and outputs a 2
-            // dimensional residual. Internally, the cost function stores the observed
-            // image location and compares the reprojection against the observation.
-
-            ceres::CostFunction* cost_function =
-                new ceres::AutoDiffCostFunction<PinholeReprojectionError_Rt, 2, 6, 3>(
-                    new PinholeReprojectionError_Rt(
-                        &ba_problem.observations()[2 * i + 0],  K(0,0)));
-
-            problem.AddResidualBlock(cost_function,
-                                     p_LossFunction,
-                                     ba_problem.mutable_camera_for_observation(i),
-                                     ba_problem.mutable_point_for_observation(i));
-          }
-
-          // Configure a BA engine and run it
-          //  Make Ceres automatically detect the bundle structure.
-          ceres::Solver::Options options;
-          // Use a dense back-end since we only consider a two view problem
-          options.linear_solver_type = ceres::DENSE_SCHUR;
-          options.minimizer_progress_to_stdout = false;
-          options.logging_type = ceres::SILENT;
-
-          // Solve BA
-          ceres::Solver::Summary summary;
-          ceres::Solve(options, &problem, &summary);
-
-          // If no error, get back refined parameters
-          if (summary.IsSolutionUsable())
-          {
-            // Get back 3D points
-            size_t k = 0;
-            std::vector<Vec3>  finalPoint;
-
-            for (std::vector<Vec3>::iterator iter = vec_allScenes.begin();
-              iter != vec_allScenes.end(); ++iter, ++k)
-            {
-              const double * pt = ba_problem.mutable_points() + k*3;
-              Vec3 & pt3D = *iter;
-              pt3D = Vec3(pt[0], pt[1], pt[2]);
-              finalPoint.push_back(pt3D);
-            }
-
-
-            // export point cloud associated to pair (I,J). Only for debug purpose
-            std::ostringstream pairIJ;
-            pairIJ << firstCam << "_" << secondCam << ".ply";
-
-            plyHelper::exportToPly(finalPoint, stlplus::create_filespec(_sOutDirectory,
-                   "pointCloud_rot_"+pairIJ.str()) );
-
-            // Get back camera 1
-            {
-              const double * cam = ba_problem.mutable_cameras() + 0*6;
-              Mat3 R;
-              // angle axis to rotation matrix
-              ceres::AngleAxisToRotationMatrix(cam, R.data());
-
-              Vec3 t(cam[3], cam[4], cam[5]);
-
-              // Update the camera
-              Mat3 K = cam1._K;
-              PinholeCamera & sCam = cam1;
-              sCam = PinholeCamera(K, R, t);
-            }
-            // Get back camera 2
-            {
-              const double * cam = ba_problem.mutable_cameras() + 1*6;
-              Mat3 R;
-              // angle axis to rotation matrix
-              ceres::AngleAxisToRotationMatrix(cam, R.data());
-
-              Vec3 t(cam[3], cam[4], cam[5]);
-
-              // Update the camera
-              Mat3 K = cam2._K;
-              PinholeCamera & sCam = cam2;
-              sCam = PinholeCamera(K, R, t);
-            }
-            RelativeCameraMotion(cam1._R, cam1._t, cam2._R, cam2._t, &R, &t);
-          }
-        }
-
-#ifdef USE_OPENMP
-  #pragma omp critical
-#endif
-        {
-          vec_relatives[vec_matchesCamera[j]] = std::make_pair(R,t);
-          ++my_progress_bar;
-        }
-
+        camCorrespondencesRigOne.push_back(SubI);
+        camCorrespondencesRigTwo.push_back(SubJ);
       }
     }
-  }
+
+    //create non-central relative adapter
+    relative_pose::NoncentralRelativeAdapter adapter(
+          bearingVectorsRigOne,
+          bearingVectorsRigTwo,
+          camCorrespondencesRigOne,
+          camCorrespondencesRigTwo,
+          rigOffsets,
+          rigRotations);
+
+   //Create a NoncentralRelativePoseSacProblem and Ransac
+    sac::Ransac<
+        sac_problems::relative_pose::NoncentralRelativePoseSacProblem> ransac;
+    boost::shared_ptr<
+        sac_problems::relative_pose::NoncentralRelativePoseSacProblem>
+        relposeproblem_ptr(
+        new sac_problems::relative_pose::NoncentralRelativePoseSacProblem(
+        adapter,
+        sac_problems::relative_pose::NoncentralRelativePoseSacProblem::GEM));
+    ransac.sac_model_ = relposeproblem_ptr;
+    ransac.threshold_ = 2.0*(1.0 - cos(atan(sqrt(2.0)*0.5/2050.0)));
+    ransac.max_iterations_ = 20000;
+
+   //Run the experiment
+    struct timeval tic;
+    struct timeval toc;
+    gettimeofday( &tic, 0 );
+    ransac.computeModel();
+    gettimeofday( &toc, 0 );
+    double ransac_time = TIMETODOUBLE(timeval_minus(toc,tic));
+
+    //print the results
+    printf( "Rig are %ld  and %ld \n", R0, R1);
+
+    std::cout << "the ransac threshold is: " << ransac.threshold_ << std::endl;
+    std::cout << "the ransac results is: " << std::endl;
+    std::cout << ransac.model_coefficients_ << std::endl << std::endl;
+    std::cout << "Ransac needed " << ransac.iterations_ << " iterations and ";
+    std::cout << ransac_time << " seconds" << std::endl << std::endl;
+    std::cout << "the number of inliers is: " << ransac.inliers_.size();
+    std::cout << std::endl << std::endl;
+    std::cout << "the found inliers are: " << std::endl;
+    for(size_t i = 0; i < ransac.inliers_.size(); i++)
+      std::cout << ransac.inliers_[i] << " ";
+    std::cout << std::endl << std::endl;
+
   }
 }
 
