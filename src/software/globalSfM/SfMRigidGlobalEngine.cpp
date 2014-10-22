@@ -1307,11 +1307,24 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
   Map_RelativeRT & vec_relatives)
 {
   // For each pair, compute the rotation from pairwise point matches:
-
   C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n" );
-#ifdef USE_OPENMP
-  #pragma omp parallel for schedule(dynamic)
+#if USE_OPENMP
+  #pragma comment omp parallel for schedule(dynamic)
 #endif
+
+  // create rig structure using openGV
+  translations_t  rigOffsets;
+  rotations_t     rigRotations;
+
+  for(int k(0) ; k < _vec_intrinsicGroups.size(); ++k)
+  {
+      translation_t   t = _vec_intrinsicGroups[k].m_rigC;
+      rotation_t      R = _vec_intrinsicGroups[k].m_R.transpose();
+
+      rigOffsets.push_back(t);
+      rigRotations.push_back(R);
+  }
+
   for (int i = 0; i < _map_Matches_Rig.size(); ++i)
   {
     RigWiseMatches::const_iterator iter = _map_Matches_Rig.begin();
@@ -1320,19 +1333,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     // extract indices of matching rigs
     const size_t R0 = iter->first.first;
     const size_t R1 = iter->first.second;
-
-    // create rig structure using openGV
-    translations_t  rigOffsets;
-    rotations_t     rigRotations;
-
-    for(int k(0) ; k < _vec_intrinsicGroups.size(); ++k)
-    {
-        translation_t   t = _vec_intrinsicGroups[k].m_rigC;
-        rotation_t      R = _vec_intrinsicGroups[k].m_R.transpose();
-
-        rigOffsets.push_back(t);
-        rigRotations.push_back(R);
-    }
 
     // extract list of matching cameras bewteen rigs
     const std::vector<std::pair <size_t, size_t> > & vec_matchesCamera = iter->second;
@@ -1345,7 +1345,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     std::vector<int>  camCorrespondencesRigTwo;
 
     // loop on intra-rig correspondences
-    for( int j = 0; j < vec_matchesCamera.size(); ++j ){
+    for( size_t j = 0; j < vec_matchesCamera.size(); ++j ){
 
       // extract camera id and subchannel number
       const size_t I = vec_matchesCamera[j].first;
@@ -1357,30 +1357,46 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
       const std::vector<IndMatch> vec_matchesInd = _map_Matches_E[vec_matchesCamera[j]];
 
       // extracts features for each pair in order to construct bearing vectors.
-      for (size_t k = 0; k < vec_matchesInd.size(); ++k)
+      for (size_t l = 0; l < vec_matchesInd.size(); ++l)
       {
         bearingVector_t  bearing1;
         bearingVector_t  bearing2;
 
         // extract normalized keypoints coordinates
-        bearing1(0) = _map_feats_normalized[I][vec_matchesInd[k]._i].x();
-        bearing1(1) = _map_feats_normalized[I][vec_matchesInd[k]._i].y();
+        bearing1(0) = _map_feats_normalized[I][vec_matchesInd[l]._i].x();
+        bearing1(1) = _map_feats_normalized[I][vec_matchesInd[l]._i].y();
         bearing1(2) = 1.0;
 
-        bearing2(0) = _map_feats_normalized[J][vec_matchesInd[k]._i].x();
-        bearing2(1) = _map_feats_normalized[J][vec_matchesInd[k]._i].y();
+        bearing2(0) = _map_feats_normalized[J][vec_matchesInd[l]._i].x();
+        bearing2(1) = _map_feats_normalized[J][vec_matchesInd[l]._i].y();
         bearing2(2) = 1.0;
 
         // normalize bearing vectors
         bearing1 = bearing1 / bearing1.norm();
         bearing2 = bearing2 / bearing2.norm();
 
-        // add bearing vectors to list and update correspondences list
-        bearingVectorsRigOne.push_back( bearing1 );
-        bearingVectorsRigTwo.push_back( bearing2 );
+        if( _map_RigIdPerImageId[I] == R0 && _map_RigIdPerImageId[J] == R1){
+          // add bearing vectors to list and update correspondences list
+          bearingVectorsRigOne.push_back( bearing1 );
+          bearingVectorsRigTwo.push_back( bearing2 );
 
-        camCorrespondencesRigOne.push_back(SubI);
-        camCorrespondencesRigTwo.push_back(SubJ);
+          camCorrespondencesRigOne.push_back(SubI);
+          camCorrespondencesRigTwo.push_back(SubJ);
+        }
+        else
+          if( _map_RigIdPerImageId[I] == R1 && _map_RigIdPerImageId[J] == R0 )
+          {
+            // add bearing vectors to list and update correspondences list
+            bearingVectorsRigOne.push_back( bearing2 );
+            bearingVectorsRigTwo.push_back( bearing1 );
+
+            camCorrespondencesRigOne.push_back(SubJ);
+            camCorrespondencesRigTwo.push_back(SubI);
+          }
+          else
+          {
+            std::cerr << " Not all images belongs to rig " << R0 << " and " << R1 << endl;
+          }
       }
     }
 
@@ -1401,9 +1417,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         relposeproblem_ptr(
         new sac_problems::relative_pose::NoncentralRelativePoseSacProblem(
         adapter,
-        sac_problems::relative_pose::NoncentralRelativePoseSacProblem::GE));
+        sac_problems::relative_pose::NoncentralRelativePoseSacProblem::SEVENTEENPT));
     ransac.sac_model_ = relposeproblem_ptr;
-    ransac.threshold_ = 2.0*(1.0 - cos(atan(sqrt(2.0)*0.5/2050.0)));
+    ransac.threshold_ = 2.0*(1.0 - cos(atan(sqrt(2.0)*2.5/2050.0)));
     ransac.max_iterations_ = 20000;
 
    //Run the experiment
@@ -1424,11 +1440,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     std::cout << ransac_time << " seconds" << std::endl << std::endl;
     std::cout << "the number of inliers is: " << ransac.inliers_.size();
     std::cout << std::endl << std::endl;
-    std::cout << "the found inliers are: " << std::endl;
-    for(size_t i = 0; i < ransac.inliers_.size(); i++)
-      std::cout << ransac.inliers_[i] << " ";
-    std::cout << std::endl << std::endl;
 
+    ++my_progress_bar;
   }
 }
 
