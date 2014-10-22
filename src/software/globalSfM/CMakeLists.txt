@@ -10,7 +10,7 @@ TARGET_LINK_LIBRARIES(
 SET_PROPERTY(TARGET openMVG_main_GlobalSfM PROPERTY FOLDER OpenMVG/software)
 SET_PROPERTY(TARGET openMVG_SfM_Global PROPERTY FOLDER OpenMVG/OpenMVG)
 
-INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/third_party/opengv/include/)
+INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/third_party/opengv/include/ ${CMAKE_SOURCE_DIR}/third_party/opengv/third_party/)
 FIND_LIBRARY(OPENGV_LIBRARY opengv ${CMAKE_BINARY_DIR}/third_party/opengv/lib)
 FIND_LIBRARY(OPENGV_LIBRARY random_generators ${CMAKE_BINARY_DIR}/third_party/opengv/lib)
 
