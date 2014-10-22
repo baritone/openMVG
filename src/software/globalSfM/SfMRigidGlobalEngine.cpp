@@ -1314,6 +1314,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
   // create rig structure using openGV
   translations_t  rigOffsets;
   rotations_t     rigRotations;
+  double          averageFocal=0.0;
 
   for(int k(0) ; k < _vec_intrinsicGroups.size(); ++k)
   {
@@ -1322,7 +1323,10 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
       rigOffsets.push_back(t);
       rigRotations.push_back(R);
+      averageFocal += _vec_intrinsicGroups[k].m_focal ;
   }
+
+  averageFocal /= (double) _vec_intrinsicGroups.size();
 
   for (int i = 0; i < _map_Matches_Rig.size(); ++i)
   {
@@ -1366,8 +1370,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         bearing1(1) = _map_feats_normalized[I][vec_matchesInd[l]._i].y();
         bearing1(2) = 1.0;
 
-        bearing2(0) = _map_feats_normalized[J][vec_matchesInd[l]._i].x();
-        bearing2(1) = _map_feats_normalized[J][vec_matchesInd[l]._i].y();
+        bearing2(0) = _map_feats_normalized[J][vec_matchesInd[l]._j].x();
+        bearing2(1) = _map_feats_normalized[J][vec_matchesInd[l]._j].y();
         bearing2(2) = 1.0;
 
         // normalize bearing vectors
@@ -1416,10 +1420,10 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         relposeproblem_ptr(
         new sac_problems::relative_pose::NoncentralRelativePoseSacProblem(
         adapter,
-        sac_problems::relative_pose::NoncentralRelativePoseSacProblem::SEVENTEENPT));
+        sac_problems::relative_pose::NoncentralRelativePoseSacProblem::GE));
     ransac.sac_model_ = relposeproblem_ptr;
-    ransac.threshold_ = 2.0*(1.0 - cos(atan(sqrt(2.0)*2.5/2050.0)));
-    ransac.max_iterations_ = 20000;
+    ransac.threshold_ = 2.0*(1.0 - cos(atan(sqrt(2.0) * 0.5 / averageFocal )));
+    ransac.max_iterations_ = 4096;
 
    //Run the experiment
     struct timeval tic;
