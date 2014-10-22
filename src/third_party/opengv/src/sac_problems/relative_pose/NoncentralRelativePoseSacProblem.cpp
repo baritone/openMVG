@@ -54,7 +54,7 @@ opengv::sac_problems::
         outModel = opengv::relative_pose::seventeenpt(_adapter,indices);
         break;
       }
-      case GEM:
+      case GE:
       {
         geOutput_t output2;
         opengv::relative_pose::ge(_adapter,indices,output2);
@@ -294,7 +294,7 @@ opengv::sac_problems::
         sampleSize = 17;
         break;
       }
-      case GEM:
+      case GE:
       {
         sampleSize = 8;
         break;

@@ -39,6 +39,7 @@
 #include "third_party/stlAddition/stlMap.hpp"
 #include "third_party/histogram/histogram.hpp"
 
+#undef GE
 #include <opengv/types.hpp>
 #include <opengv/relative_pose/methods.hpp>
 #include <opengv/relative_pose/NoncentralRelativeAdapter.hpp>
@@ -1400,7 +1401,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         relposeproblem_ptr(
         new sac_problems::relative_pose::NoncentralRelativePoseSacProblem(
         adapter,
-        sac_problems::relative_pose::NoncentralRelativePoseSacProblem::GEM));
+        sac_problems::relative_pose::NoncentralRelativePoseSacProblem::GE));
     ransac.sac_model_ = relposeproblem_ptr;
     ransac.threshold_ = 2.0*(1.0 - cos(atan(sqrt(2.0)*0.5/2050.0)));
     ransac.max_iterations_ = 20000;
