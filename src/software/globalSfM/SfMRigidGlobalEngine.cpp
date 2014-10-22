@@ -39,7 +39,6 @@
 #include "third_party/stlAddition/stlMap.hpp"
 #include "third_party/histogram/histogram.hpp"
 
-#undef GE
 #include <opengv/types.hpp>
 #include <opengv/relative_pose/methods.hpp>
 #include <opengv/relative_pose/NoncentralRelativeAdapter.hpp>
