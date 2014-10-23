@@ -1466,13 +1466,13 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         RI = Rcam0;
         RJ = Rcam1*R;
         tI =-Rcam0*CI;
-        tJ = RJ*(-C-CJ);
+        tJ = RJ*(-C-R.transpose()*CJ);
       }
       else
       {
         RI = Rcam0*R;
         RJ = Rcam1;
-        tI = RI*(-C-CI);
+        tI = RI*(-C-R.transpose()*CI);
         tJ =-Rcam1*CJ;
       }
 
@@ -1510,13 +1510,13 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
       }
     } // end loop on matches inter-rigs
 
-/*    // export point cloud associated to rig (R0,R1). Only for debug purpose
-*    std::ostringstream pairIJ;
-*    pairIJ << R0 << "_" << R1 << ".ply";
-*
-*    plyHelper::exportToPly(vec_allScenes, stlplus::create_filespec(_sOutDirectory,
-*       "pointCloud_rot_"+pairIJ.str()) );
-*/
+    // export point cloud associated to rig (R0,R1). Only for debug purpose
+    std::ostringstream pairIJ;
+    pairIJ << R0 << "_" << R1 << ".ply";
+
+    plyHelper::exportToPly(vec_allScenes, stlplus::create_filespec(_sOutDirectory,
+       "pointCloud_rot_"+pairIJ.str()) );
+
     // export rotation for rotation avereging
     vec_relatives[iter->first] = std::make_pair(R,t);
     ++my_progress_bar;
