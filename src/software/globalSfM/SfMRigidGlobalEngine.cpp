@@ -313,7 +313,7 @@ void GlobalRigidReconstructionEngine::rotationInference(
 {
   std::cout
         << "---------------\n"
-        << "-- INFERENCE on " << _map_Matches_E.size() << " EGs count.\n"
+        << "-- INFERENCE on " << _map_Matches_Rig.size() << " EGs count.\n"
         << "---------------" << std::endl
         << " /!\\  /!\\  /!\\  /!\\  /!\\  /!\\  /!\\ \n"
         << "--- ITERATED BAYESIAN INFERENCE IS NOT RELEASED, SEE C.ZACH CODE FOR MORE INFORMATION" << std::endl
@@ -325,7 +325,7 @@ void GlobalRigidReconstructionEngine::rotationInference(
   // Triplet inference (test over the composition error)
   //-------------------
   std::vector< graphUtils::Triplet > vec_triplets;
-  tripletListing(vec_triplets);
+  tripletListing(vec_triplets, _map_ImagesIdPerRigId[0].size());
   //-- Rejection triplet that are 'not' identity rotation (error to identity > 2°)
   tripletRotationRejection(vec_triplets, map_relatives);
 }
@@ -576,18 +576,18 @@ bool GlobalRigidReconstructionEngine::Process()
 
     // Clean Map_RelativeRT and relative matches
     KeepOnlyReferencedElement(set_remainingIds, map_relatives);
-    KeepOnlyReferencedElement(set_remainingIds, _map_Matches_E);
+    KeepOnlyReferencedElement(set_remainingIds, _map_Matches_Rig);
 
     //---------------------------------------
     //-- Export geometric filtered matches
     //---------------------------------------
-    std::ofstream file (string(_sMatchesPath + "/matches.filtered.txt").c_str());
-    if (file.is_open())
-      PairedIndMatchToStream(_map_Matches_E, file);
-    file.close();
+  //  std::ofstream file (string(_sMatchesPath + "/matches.filtered.txt").c_str());
+  //  if (file.is_open())
+  //    PairedIndMatchToStream(_map_Matches_E, file); // need to modifiy that ?
+  //  file.close();
 
     std::cout << "\n Remaining cameras after inference filter: \n"
-      << set_remainingIds.size() << " from a total of " << _vec_fileNames.size() << std::endl;
+      << set_remainingIds.size() << " from a total of " << _vec_fileNames.size() / _vec_intrinsicGroups.size() << std::endl;
 
     //-- Export statistics about the rotation inference step:
     if (_bHtmlReport)
@@ -615,9 +615,9 @@ bool GlobalRigidReconstructionEngine::Process()
   std::map<std::size_t, Mat3> map_globalR;
   {
     std::set<size_t> set_indeximage;
-    for (PairWiseMatches::const_iterator
-         iter = _map_Matches_E.begin();
-         iter != _map_Matches_E.end();
+    for (RigWiseMatches::const_iterator
+         iter = _map_Matches_Rig.begin();
+         iter != _map_Matches_Rig.end();
          ++iter)
     {
       const size_t I = iter->first.first;
@@ -653,7 +653,7 @@ bool GlobalRigidReconstructionEngine::Process()
 
     // List putative triplets
     std::vector< graphUtils::Triplet > vec_triplets;
-    tripletListing(vec_triplets);
+    tripletListing(vec_triplets, _map_ImagesIdPerRigId[0].size());
 
     // Compute putative translations with an edge coverage algorithm
 
@@ -1434,22 +1434,10 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     gettimeofday( &toc, 0 );
     double ransac_time = TIMETODOUBLE(timeval_minus(toc,tic));
 
-#if 0
-    //print the results
-    printf( "Rig are %ld  and %ld \n", R0, R1);
-
-    std::cout << "the ransac threshold is: " << ransac.threshold_ << std::endl;
-    std::cout << "the ransac results is: " << std::endl;
-    std::cout << ransac.model_coefficients_ << std::endl << std::endl;
-    std::cout << "Ransac needed " << ransac.iterations_ << " iterations and ";
-    std::cout << ransac_time << " seconds" << std::endl << std::endl;
-    std::cout << "the number of inliers is: " << ransac.inliers_.size();
-    std::cout << std::endl << std::endl;
-#endif
-
     // retrieve relative rig orientation and translation
     Mat3  R = ransac.model_coefficients_.block<3,3>(0,0).transpose();
     Vec3  C = ransac.model_coefficients_.col(3);
+    Vec3  t = -R*C;
 
     // compute point cloud associated and do BA to refine pose of rigs
     Mat3  K = Mat3::Identity();
@@ -1522,209 +1510,25 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
       }
     } // end loop on matches inter-rigs
 
-    // export point cloud associated to rig (R0,R1). Only for debug purpose
-    std::ostringstream pairIJ;
-    pairIJ << R0 << "_" << R1 << ".ply";
-
-    plyHelper::exportToPly(vec_allScenes, stlplus::create_filespec(_sOutDirectory,
-       "pointCloud_rot_"+pairIJ.str()) );
-
-#if 0
-    // Refine Xis, tis and Ris (Bundle Adjustment)
-    {
-      using namespace std;
-
-      const size_t nbCams = 2;
-      const size_t nbPoints3D = vec_allScenes.size();
-
-      // Count the number of measurement (sum of the reconstructed track length)
-      size_t nbmeasurements = x1.cols() * 2;
-
-      // Setup a BA problem
-      using namespace openMVG::bundle_adjustment;
-      BA_Problem_data<6> ba_problem; // Will refine [Rotations|Translations] and 3D points
-
-      // Configure the size of the problem
-      ba_problem.num_cameras_ = nbCams;
-      ba_problem.num_points_ = nbPoints3D;
-      ba_problem.num_observations_ = nbmeasurements;
-
-      ba_problem.point_index_.reserve(ba_problem.num_observations_);
-      ba_problem.camera_index_.reserve(ba_problem.num_observations_);
-      ba_problem.observations_.reserve(2 * ba_problem.num_observations_);
-
-      ba_problem.num_parameters_ =
-        6 * ba_problem.num_cameras_ // #[Rotation|translation] = [3x1]|[3x1]
-        + 3 * ba_problem.num_points_; // 3DPoints = [3x1]
-      ba_problem.parameters_.reserve(ba_problem.num_parameters_);
-
-      // Fill camera
-      {
-        Mat3 R = cam1._R;
-        double angleAxis[3];
-        ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
-
-        // translation
-        Vec3 t = cam1._t;
-
-        ba_problem.parameters_.push_back(angleAxis[0]);
-        ba_problem.parameters_.push_back(angleAxis[1]);
-        ba_problem.parameters_.push_back(angleAxis[2]);
-        ba_problem.parameters_.push_back(t[0]);
-        ba_problem.parameters_.push_back(t[1]);
-        ba_problem.parameters_.push_back(t[2]);
-      }
-      {
-        Mat3 R = cam2._R;
-        double angleAxis[3];
-        ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
-
-        // translation
-        Vec3 t = cam2._t;
-
-        ba_problem.parameters_.push_back(angleAxis[0]);
-        ba_problem.parameters_.push_back(angleAxis[1]);
-        ba_problem.parameters_.push_back(angleAxis[2]);
-        ba_problem.parameters_.push_back(t[0]);
-        ba_problem.parameters_.push_back(t[1]);
-        ba_problem.parameters_.push_back(t[2]);
-      }
-
-      // Fill 3D points
-      for (std::vector<Vec3>::const_iterator iter = vec_allScenes.begin();
-        iter != vec_allScenes.end();
-        ++iter)
-      {
-        const Vec3 & pt3D = *iter;
-        ba_problem.parameters_.push_back(pt3D[0]);
-        ba_problem.parameters_.push_back(pt3D[1]);
-        ba_problem.parameters_.push_back(pt3D[2]);
-      }
-
-      // Fill the measurements
-      for (size_t k = 0; k < x1.cols(); ++k) {
-        const Vec2 & x1_ = x1.col(k), & x2_ = x2.col(k);
-
-        const Mat3 & K = cam1._K;
-
-        double ppx = K(0,2), ppy = K(1,2);
-        ba_problem.observations_.push_back( x1_(0) - ppx );
-        ba_problem.observations_.push_back( x1_(1) - ppy );
-        ba_problem.point_index_.push_back(k);
-        ba_problem.camera_index_.push_back(0);
-
-        ba_problem.observations_.push_back( x2_(0) - ppx );
-        ba_problem.observations_.push_back( x2_(1) - ppy );
-        ba_problem.point_index_.push_back(k);
-        ba_problem.camera_index_.push_back(1);
-      }
-
-      // Create residuals for each observation in the bundle adjustment problem. The
-      // parameters for cameras and points are added automatically.
-      ceres::Problem problem;
-      // Set a LossFunction to be less penalized by false measurements
-      //  - set it to NULL if you don't want use a lossFunction.
-      ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
-      for (size_t i = 0; i < ba_problem.num_observations(); ++i) {
-        // Each Residual block takes a point and a camera as input and outputs a 2
-        // dimensional residual. Internally, the cost function stores the observed
-        // image location and compares the reprojection against the observation.
-
-        ceres::CostFunction* cost_function =
-            new ceres::AutoDiffCostFunction<PinholeReprojectionError_Rt, 2, 6, 3>(
-                new PinholeReprojectionError_Rt(
-                    &ba_problem.observations()[2 * i + 0],  K(0,0)));
-
-        problem.AddResidualBlock(cost_function,
-                                 p_LossFunction,
-                                 ba_problem.mutable_camera_for_observation(i),
-                                 ba_problem.mutable_point_for_observation(i));
-      }
-
-      // Configure a BA engine and run it
-      //  Make Ceres automatically detect the bundle structure.
-      ceres::Solver::Options options;
-      // Use a dense back-end since we only consider a two view problem
-      options.linear_solver_type = ceres::DENSE_SCHUR;
-      options.minimizer_progress_to_stdout = false;
-      options.logging_type = ceres::SILENT;
-
-      // Solve BA
-      ceres::Solver::Summary summary;
-      ceres::Solve(options, &problem, &summary);
-
-      // If no error, get back refined parameters
-      if (summary.IsSolutionUsable())
-      {
-    /*            // Get back 3D points
-    *            size_t k = 0;
-    *            std::vector<Vec3>  finalPoint;
-    *
-    *            for (std::vector<Vec3>::iterator iter = vec_allScenes.begin();
-    *              iter != vec_allScenes.end(); ++iter, ++k)
-    *            {
-    *              const double * pt = ba_problem.mutable_points() + k*3;
-    *              Vec3 & pt3D = *iter;
-    *              pt3D = Vec3(pt[0], pt[1], pt[2]);
-    *              finalPoint.push_back(pt3D);
-    *            }
-    *
-    *
-    *            // export point cloud associated to pair (I,J). Only for debug purpose
-    *            std::ostringstream pairIJ;
-    *            pairIJ << I << "_" << J << ".ply";
-    *
-    *            plyHelper::exportToPly(finalPoint, stlplus::create_filespec(_sOutDirectory,
-    *                   "pointCloud_rot_"+pairIJ.str()) );
-    */
-
-        // Get back camera 1
-        {
-          const double * cam = ba_problem.mutable_cameras() + 0*6;
-          Mat3 R;
-          // angle axis to rotation matrix
-          ceres::AngleAxisToRotationMatrix(cam, R.data());
-
-          Vec3 t(cam[3], cam[4], cam[5]);
-
-          // Update the camera
-          Mat3 K = cam1._K;
-          PinholeCamera & sCam = cam1;
-          sCam = PinholeCamera(K, R, t);
-        }
-        // Get back camera 2
-        {
-          const double * cam = ba_problem.mutable_cameras() + 1*6;
-          Mat3 R;
-          // angle axis to rotation matrix
-          ceres::AngleAxisToRotationMatrix(cam, R.data());
-
-          Vec3 t(cam[3], cam[4], cam[5]);
-
-          // Update the camera
-          Mat3 K = cam2._K;
-          PinholeCamera & sCam = cam2;
-          sCam = PinholeCamera(K, R, t);
-        }
-        RelativeCameraMotion(cam1._R, cam1._t, cam2._R, cam2._t, &R, &t);
-      }
-    }
-
-#ifdef USE_OPENMP
-    #pragma comment omp critical
-#endif
-
+/*    // export point cloud associated to rig (R0,R1). Only for debug purpose
+*    std::ostringstream pairIJ;
+*    pairIJ << R0 << "_" << R1 << ".ply";
+*
+*    plyHelper::exportToPly(vec_allScenes, stlplus::create_filespec(_sOutDirectory,
+*       "pointCloud_rot_"+pairIJ.str()) );
+*/
+    // export rotation for rotation avereging
     vec_relatives[iter->first] = std::make_pair(R,t);
-#endif
     ++my_progress_bar;
   }
 }
 
-void GlobalRigidReconstructionEngine::tripletListing(std::vector< graphUtils::Triplet > & vec_triplets) const
+void GlobalRigidReconstructionEngine::tripletListing(std::vector< graphUtils::Triplet > & vec_triplets,
+   const size_t & numberOfSubcam ) const
 {
   vec_triplets.clear();
 
-  imageGraph::indexedImageGraph putativeGraph(_map_Matches_E, _vec_fileNames);
+  imageGraph::indexedImageGraph putativeGraph(_map_Matches_Rig, _vec_fileNames, numberOfSubcam );
 
   List_Triplets<imageGraph::indexedImageGraph::GraphT>(putativeGraph.g, vec_triplets);
 
@@ -1839,7 +1643,7 @@ void GlobalRigidReconstructionEngine::tripletRotationRejection(
                 600,300);
 
   typedef lemon::ListGraph Graph;
-  imageGraph::indexedImageGraph putativeGraph(_map_Matches_E, _vec_fileNames);
+  imageGraph::indexedImageGraph putativeGraph(_map_Matches_Rig, _vec_fileNames, _map_ImagesIdPerRigId[0].size() );
 
   Graph::EdgeMap<bool> edge_filter(putativeGraph.g, false);
   Graph::NodeMap<bool> node_filter(putativeGraph.g, true);
@@ -1893,16 +1697,16 @@ void GlobalRigidReconstructionEngine::tripletRotationRejection(
         size_t Idv = (*putativeGraph.map_nodeMapIndex)[sg.v(iter)];
 
         //-- Clean relatives matches
-        PairWiseMatches::iterator iterF = _map_Matches_E.find(std::make_pair(Idu,Idv));
-        if (iterF != _map_Matches_E.end())
+        RigWiseMatches::iterator iterF = _map_Matches_Rig.find(std::make_pair(Idu,Idv));
+        if (iterF != _map_Matches_Rig.end())
         {
-          _map_Matches_E.erase(iterF);
+          _map_Matches_Rig.erase(iterF);
         }
         else
         {
-          iterF = _map_Matches_E.find(std::make_pair(Idv,Idu));
-          if (iterF != _map_Matches_E.end())
-            _map_Matches_E.erase(iterF);
+          iterF = _map_Matches_Rig.find(std::make_pair(Idv,Idu));
+          if (iterF != _map_Matches_Rig.end())
+            _map_Matches_Rig.erase(iterF);
         }
 
         //-- Clean relative motions

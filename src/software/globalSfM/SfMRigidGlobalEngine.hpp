@@ -134,7 +134,7 @@ private:
     std::map<size_t, Mat3> & map_globalR) const;
 
   // List the triplet of the image connection graph (_map_Matches_E)
-  void tripletListing(std::vector< graphUtils::Triplet > & vec_triplets) const;
+  void tripletListing(std::vector< graphUtils::Triplet > & vec_triplets, const size_t & nbRigCam) const;
 
   // Relative rotations inference on relative rotations composition error along 3 length cycles (triplets).
   void tripletRotationRejection(
