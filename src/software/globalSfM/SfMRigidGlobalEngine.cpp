@@ -1449,9 +1449,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     // retrieve relative rig orientation and translation
     Mat3  R = ransac.model_coefficients_.block<3,3>(0,0).transpose();
-    Vec3  t = ransac.model_coefficients_.col(3);
-
-    cout << " norm of t " << t.norm() << endl;
+    Vec3  C = ransac.model_coefficients_.col(3);
 
     // compute point cloud associated and do BA to refine pose of rigs
     Mat3  K = Mat3::Identity();
@@ -1480,13 +1478,13 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         RI = Rcam0;
         RJ = Rcam1*R;
         tI =-Rcam0*CI;
-        tJ = Rcam1*(t-CJ);
+        tJ = RJ*(-C-CJ);
       }
       else
       {
         RI = Rcam0*R;
         RJ = Rcam1;
-        tI = Rcam0*(t-CI);
+        tI = RI*(-C-CI);
         tJ =-Rcam1*CJ;
       }
 
