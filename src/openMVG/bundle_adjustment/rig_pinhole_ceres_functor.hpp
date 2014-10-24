@@ -36,6 +36,8 @@ namespace rig_pinhole_reprojectionError {
    *
    * @warning Principal point is assumed being applied on observed points.
    *
+   * @param[in] rig_R Angle-axis rig rotation
+   * @param[in] rig_t (x, y, z) rig translation
    * @param[in] cam_R Angle-axis camera rotation
    * @param[in] cam_t (x, y, z) Camera translation
    * @param[in] cam_K (f, ppx, ppy) Intrinsic data: (Focal length, principal point x and principal point y)
@@ -95,9 +97,11 @@ namespace rig_pinhole_reprojectionError {
  * @brief Ceres functor to refine a pinhole camera model and 3D points.
  *
  *  - first the intrinsic data block [focal, principal point x, principal point y]
- *  - second the camera extrinsic block (camera orientation and position) [R;t]
+ *  - second the rig extrinsic extrinsic parameters (rig orientation and position) [R;t]
  *    - 3 for rotation(angle axis), 3 for translation.
- *  - third the 3D point data block
+ *  - third the camera extrinsic block in rig (camera orientation and position in rig) [R;t]
+ *    - 3 for rotation(angle axis), 3 for translation.
+ *  - fourth the 3D point data block
  *
  * @warning Principal point is assumed being applied on observed points.
  *
@@ -120,8 +124,8 @@ struct ErrorFunc_Refine_Rig_Motion_3DPoints
    */
   template <typename T>
   bool operator()(
-    const T* const rig_Rt,
     const T* const cam_K,
+    const T* const rig_Rt,
     const T* const cam_Rt,
     const T* const pos_3dpoint,
     T* out_residuals) const
