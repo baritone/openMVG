@@ -38,15 +38,15 @@ namespace rig_pinhole_reprojectionError {
    *
    * @param[in] rig_R Angle-axis rig rotation
    * @param[in] rig_t (x, y, z) rig translation
-   * @param[in] cam_R Angle-axis camera rotation
-   * @param[in] cam_t (x, y, z) Camera translation
+   * @param[in] cam_R Angle-axis camera rotation (in rig coordinate frame)
+   * @param[in] cam_t (x, y, z) Camera translation ( in rig coordinate frame)
    * @param[in] cam_K (f, ppx, ppy) Intrinsic data: (Focal length, principal point x and principal point y)
    * @param[in] pos_3dpoint The observed 3D point
    * @param[in] pos_2dpoint The image plane observation
    * @param[out] out_residuals The residuals along the x and y axis
    */
-  template <typename T>
-  void computeResidual(
+template <typename T>
+void computeResidual(
     const T* const rig_R,
     const T* const rig_t,
     const T* const cam_R,
@@ -55,7 +55,7 @@ namespace rig_pinhole_reprojectionError {
     const T* const pos_3dpoint,
     const double* pos_2dpoint,
     T* out_residuals )
-  {
+{
     T pos_proj[3];
     T pos_rig[3];
     T rig_trans[3];
@@ -91,7 +91,7 @@ namespace rig_pinhole_reprojectionError {
     //  and observed position
     out_residuals[0] = predicted_x - T(pos_2dpoint[0]);
     out_residuals[1] = predicted_y - T(pos_2dpoint[1]);
-  }
+}     
 
 /**
  * @brief Ceres functor to refine a pinhole camera model and 3D points.
@@ -117,16 +117,18 @@ struct ErrorFunc_Refine_Rig_Motion_3DPoints
 
   /**
    * @param[in] cam_K: Camera intrinsics( focal, principal point [x,y] )
+   * @param[in] rig_Rt: Rig parameterized using one block of 6 parameters [R;t]:
+   *   - 3 for rotation(angle axis), 3 for translation (in rig coordinate)
    * @param[in] cam_Rt: Camera parameterized using one block of 6 parameters [R;t]:
-   *   - 3 for rotation(angle axis), 3 for translation
+   *   - 3 for rotation(angle axis), 3 for translation (in rig coordinate)
    * @param[in] pos_3dpoint
    * @param[out] out_residuals
    */
   template <typename T>
   bool operator()(
     const T* const cam_K,
-    const T* const rig_Rt,
     const T* const cam_Rt,
+    const T* const rig_Rt,
     const T* const pos_3dpoint,
     T* out_residuals) const
   {
@@ -134,7 +136,7 @@ struct ErrorFunc_Refine_Rig_Motion_3DPoints
       rig_Rt,
       & rig_Rt[3],
       cam_Rt, // => cam_R
-      cam_Rt[3], // => cam_t
+      & cam_Rt[3], // => cam_t
       cam_K,
       pos_3dpoint,
       m_pos_2dpoint,

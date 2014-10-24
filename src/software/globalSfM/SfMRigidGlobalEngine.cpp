@@ -52,6 +52,7 @@
 #undef DYNAMIC
 #include "openMVG/bundle_adjustment/problem_data_container.hpp"
 #include "openMVG/bundle_adjustment/pinhole_ceres_functor.hpp"
+#include "openMVG/bundle_adjustment/rig_pinhole_ceres_functor.hpp"
 #include "software/globalSfM/SfMBundleAdjustmentHelper_tonly.hpp"
 
 #include "lemon/list_graph.h"
@@ -1435,13 +1436,18 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     double ransac_time = TIMETODOUBLE(timeval_minus(toc,tic));
 
     // retrieve relative rig orientation and translation
-    Mat3  R = ransac.model_coefficients_.block<3,3>(0,0).transpose();
-    Vec3  C = ransac.model_coefficients_.col(3);
-    Vec3  t = -R*C;
+    Mat3  Rrig = ransac.model_coefficients_.block<3,3>(0,0).transpose();
+    Vec3  CRig = ransac.model_coefficients_.col(3);
+    Vec3  tRig = -Rrig * CRig;
 
     // compute point cloud associated and do BA to refine pose of rigs
     Mat3  K = Mat3::Identity();
     std::vector<Vec3> vec_allScenes;
+    std::vector< std::vector <double> > obsR0;
+    std::vector< std::vector <double> > obsR1;
+
+    // count the number of observations
+    size_t nbmeas = 0;
 
     for( size_t j = 0; j < vec_matchesCamera.size(); ++j )
     {
@@ -1464,16 +1470,16 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
       if( _map_RigIdPerImageId[I] == R0 && _map_RigIdPerImageId[J] == R1){
         RI = Rcam0;
-        RJ = Rcam1*R;
-        tI =-Rcam0*CI;
-        tJ = RJ*(-C-R.transpose()*CJ);
+        RJ = Rcam1 * Rrig;
+        tI =-Rcam0 * CI;
+        tJ = RJ*(-CRig - Rrig.transpose() * CJ);
       }
       else
       {
-        RI = Rcam0*R;
+        RI = Rcam0 * Rrig;
         RJ = Rcam1;
-        tI = RI*(-C-R.transpose()*CI);
-        tJ =-Rcam1*CJ;
+        tI = RI*(-CRig - Rrig.transpose() * CI);
+        tJ =-Rcam1 * CJ;
       }
 
       // build associated camera
@@ -1489,6 +1495,21 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         {
           x1.col(k) = _map_feats_normalized[I][vec_matchesInd[k]._i].coords().cast<double>();
           x2.col(k) = _map_feats_normalized[J][vec_matchesInd[k]._j].coords().cast<double>();
+
+          // export observation for BA.
+          std::vector < double > temp0, temp1;
+
+          temp0.push_back( x1.col(k)(0));
+          temp0.push_back( x1.col(k)(1));
+          temp0.push_back( SubI );
+
+          obsR0.push_back(temp0);
+
+          temp1.push_back( x2.col(k)(0));
+          temp1.push_back( x2.col(k)(1));
+          temp1.push_back( SubJ );
+
+          obsR1.push_back(temp1);
         }
       }
       else
@@ -1497,6 +1518,22 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         {
           x2.col(k) = _map_feats_normalized[I][vec_matchesInd[k]._i].coords().cast<double>();
           x1.col(k) = _map_feats_normalized[J][vec_matchesInd[k]._j].coords().cast<double>();
+
+          // export observation for BA.
+          std::vector < double > temp0, temp1;
+
+          temp0.push_back( x1.col(k)(0));
+          temp0.push_back( x1.col(k)(1));
+          temp0.push_back( SubJ );
+
+          obsR1.push_back(temp0);
+
+          temp1.push_back( x2.col(k)(0));
+          temp1.push_back( x2.col(k)(1));
+          temp1.push_back( SubI );
+
+          obsR0.push_back(temp1);
+
         }
       }
 
@@ -1515,10 +1552,198 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     pairIJ << R0 << "_" << R1 << ".ply";
 
     plyHelper::exportToPly(vec_allScenes, stlplus::create_filespec(_sOutDirectory,
-       "pointCloud_rot_"+pairIJ.str()) );
+       "pointCloud_rot_raw"+pairIJ.str()) );
+
+    // now do bundle adjustment
+    using namespace std;
+
+    const size_t nbRigs = 2;
+    const size_t nbCams = _vec_intrinsicGroups.size();
+    const size_t nbPoints3D = vec_allScenes.size();
+
+    // Count the number of measurement (sum of the reconstructed track length)
+    size_t nbmeasurements = 2 * obsR0.size() ;
+
+    // Setup a BA problem
+    using namespace openMVG::bundle_adjustment;
+    BA_Problem_data_rigMotionAndIntrinsic<6,6,3> ba_problem; // Will refine [Rotations|Translations] and 3D points
+
+    // Configure the size of the problem
+    ba_problem.num_rigs_ = nbRigs;
+    ba_problem.num_cameras_ = nbCams;
+    ba_problem.num_intrinsics_ = nbCams;
+    ba_problem.num_points_ = nbPoints3D;
+    ba_problem.num_observations_ = nbmeasurements;
+
+    ba_problem.rig_index_extrinsic.reserve(ba_problem.num_observations_);
+    ba_problem.point_index_.reserve(ba_problem.num_observations_);
+    ba_problem.camera_index_extrinsic.reserve(ba_problem.num_observations_);
+    ba_problem.camera_index_intrinsic.reserve(ba_problem.num_observations_);
+    ba_problem.observations_.reserve(2 * ba_problem.num_observations_);
+
+    ba_problem.num_parameters_ =
+      6 * ba_problem.num_rigs_         // rigs rotations / translations
+      + 6 * ba_problem.num_cameras_    // #[Rotation|translation] = [3x1]|[3x1]
+      + 3 * ba_problem.num_intrinsics_ // cameras intrinsics (focal and principal point)
+      + 3 * ba_problem.num_points_;    // 3DPoints = [3x1]
+    ba_problem.parameters_.reserve(ba_problem.num_parameters_);
+
+    // Fill rigs
+    {
+      Mat3 R = Mat3::Identity();
+      double angleAxis[3];
+      ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
+
+      // translation
+      Vec3 t = Vec3::Zero();
+
+      ba_problem.parameters_.push_back(angleAxis[0]);
+      ba_problem.parameters_.push_back(angleAxis[1]);
+      ba_problem.parameters_.push_back(angleAxis[2]);
+      ba_problem.parameters_.push_back(t[0]);
+      ba_problem.parameters_.push_back(t[1]);
+      ba_problem.parameters_.push_back(t[2]);
+    }
+
+    {
+      Mat3 R = Rrig;
+      double angleAxis[3];
+      ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
+
+      // translation
+      Vec3 t = tRig;
+
+      ba_problem.parameters_.push_back(angleAxis[0]);
+      ba_problem.parameters_.push_back(angleAxis[1]);
+      ba_problem.parameters_.push_back(angleAxis[2]);
+      ba_problem.parameters_.push_back(t[0]);
+      ba_problem.parameters_.push_back(t[1]);
+      ba_problem.parameters_.push_back(t[2]);
+    }
+
+    // Setup rig camera position parameters
+    for (size_t iter=0; iter < ba_problem.num_cameras_ ; ++iter )
+    {
+
+      const Mat3 R = _vec_intrinsicGroups[iter].m_R;
+      double angleAxis[3];
+      ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
+      // translation
+      const Vec3 t = -R * _vec_intrinsicGroups[iter].m_rigC;
+      ba_problem.parameters_.push_back(angleAxis[0]);
+      ba_problem.parameters_.push_back(angleAxis[1]);
+      ba_problem.parameters_.push_back(angleAxis[2]);
+      ba_problem.parameters_.push_back(t[0]);
+      ba_problem.parameters_.push_back(t[1]);
+      ba_problem.parameters_.push_back(t[2]);
+    }
+
+    // Setup rig camera intrinsics parameters
+    for (size_t iter=0; iter < ba_problem.num_cameras_ ; ++iter )
+    {
+      ba_problem.parameters_.push_back( 1.0 );
+      ba_problem.parameters_.push_back( 0.0 );
+      ba_problem.parameters_.push_back( 0.0 );
+    }
+
+    // Fill 3D points
+    for (std::vector<Vec3>::const_iterator iter = vec_allScenes.begin();
+      iter != vec_allScenes.end();
+      ++iter)
+    {
+      const Vec3 & pt3D = *iter;
+      ba_problem.parameters_.push_back(pt3D[0]);
+      ba_problem.parameters_.push_back(pt3D[1]);
+      ba_problem.parameters_.push_back(pt3D[2]);
+    }
+
+    // Fill the measurements
+    for (size_t k = 0; k < obsR0.size(); ++k) {
+
+      ba_problem.observations_.push_back( obsR0[k][0] );
+      ba_problem.observations_.push_back( obsR0[k][1] );
+      ba_problem.camera_index_intrinsic.push_back( (size_t) obsR0[k][2] );
+      ba_problem.camera_index_extrinsic.push_back( (size_t) obsR0[k][2] );
+      ba_problem.point_index_.push_back(k);
+      ba_problem.rig_index_extrinsic.push_back(0);
+
+      ba_problem.observations_.push_back( obsR1[k][0] );
+      ba_problem.observations_.push_back( obsR1[k][1] );
+      ba_problem.camera_index_intrinsic.push_back( (size_t) obsR1[k][2] );
+      ba_problem.camera_index_extrinsic.push_back( (size_t) obsR1[k][2] );
+      ba_problem.point_index_.push_back(k);
+      ba_problem.rig_index_extrinsic.push_back(1);
+
+    }
+
+    // Create residuals for each observation in the bundle adjustment problem. The
+    // parameters for cameras and points are added automatically.
+    ceres::Problem problem;
+    // Set a LossFunction to be less penalized by false measurements
+    //  - set it to NULL if you don't want use a lossFunction.
+    ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
+    for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
+      // Each Residual block takes a point and a camera as input and outputs a 2
+      // dimensional residual. Internally, the cost function stores the observed
+      // image location and compares the reprojection against the observation.
+
+      ceres::CostFunction* cost_function =
+        new ceres::AutoDiffCostFunction<rig_pinhole_reprojectionError::ErrorFunc_Refine_Rig_Motion_3DPoints, 2, 3, 6, 6, 3>(
+          new rig_pinhole_reprojectionError::ErrorFunc_Refine_Rig_Motion_3DPoints(
+            &ba_problem.observations()[2 * k]));
+
+      problem.AddResidualBlock(cost_function,
+        p_LossFunction,
+        ba_problem.mutable_camera_intrinsic_for_observation(k),
+        ba_problem.mutable_camera_extrinsic_for_observation(k),
+        ba_problem.mutable_rig_extrinsic_for_observation(k),
+        ba_problem.mutable_point_for_observation(k));
+
+      // fix intrinsic rig parameters
+      problem.SetParameterBlockConstant(
+        ba_problem.mutable_camera_extrinsic_for_observation(k) );
+      problem.SetParameterBlockConstant(
+        ba_problem.mutable_camera_intrinsic_for_observation(k) );
+    }
+
+    // Configure a BA engine and run it
+    //  Make Ceres automatically detect the bundle structure.
+    ceres::Solver::Options options;
+    // Use a dense back-end since we only consider a two view problem
+    options.linear_solver_type = ceres::DENSE_SCHUR;
+    options.minimizer_progress_to_stdout = false;
+    options.logging_type = ceres::SILENT;
+
+    // Solve BA
+    ceres::Solver::Summary summary;
+    ceres::Solve(options, &problem, &summary);
+
+    // If no error, get back refined parameters
+    if (summary.IsSolutionUsable())
+    {
+        // Get back 3D points
+        size_t k = 0;
+        std::vector<Vec3>  finalPoint;
+
+        for (std::vector<Vec3>::iterator iter = vec_allScenes.begin();
+              iter != vec_allScenes.end(); ++iter, ++k)
+        {
+            const double * pt = ba_problem.mutable_points() + k*3;
+            Vec3 & pt3D = *iter;
+            pt3D = Vec3(pt[0], pt[1], pt[2]);
+            finalPoint.push_back(pt3D);
+        }
+
+        // export point cloud associated to pair (I,J). Only for debug purpose
+        std::ostringstream pairIJ;
+        pairIJ << R0 << "_" << R1 << ".ply";
+
+        plyHelper::exportToPly(finalPoint, stlplus::create_filespec(_sOutDirectory,"pointCloud_rot_"+pairIJ.str()) );
+
+    }
 
     // export rotation for rotation avereging
-    vec_relatives[iter->first] = std::make_pair(R,t);
+    vec_relatives[iter->first] = std::make_pair(Rrig,tRig);
     ++my_progress_bar;
   }
 }
