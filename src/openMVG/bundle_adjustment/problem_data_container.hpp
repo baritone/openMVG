@@ -224,7 +224,7 @@ class BA_Problem_data_rigMotionAndIntrinsic {
   size_t num_intrinsics()  const { return num_intrinsics_;}
 
   /// Return a pointer to external rig data
-  double* mutable_rigs_extrinsic() {
+  double* mutable_rig_extrinsic() {
     return &parameters_[0];}
   /// Return a pointer to external camera data
   double* mutable_cameras_extrinsic() {
@@ -244,7 +244,7 @@ class BA_Problem_data_rigMotionAndIntrinsic {
 
   /// Return a pointer to the rig extrinsic that observe the Inth observation
   double* mutable_rig_extrinsic_for_observation(size_t i) {
-    return mutable_rigs_extrinsic() + rig_index_extrinsic[i] * NRigExternalParam;
+    return mutable_rig_extrinsic() + rig_index_extrinsic[i] * NRigExternalParam;
   }
   /// Return a pointer to the camera extrinsic that observe the Inth observation
   double* mutable_camera_extrinsic_for_observation(size_t i) {
@@ -257,8 +257,8 @@ class BA_Problem_data_rigMotionAndIntrinsic {
 
 
   /// Return a pointer to the Inth rig extrinsic parameters
-  double* mutable_rigs_extrinsic(size_t i) {
-    return mutable_rigs_extrinsic() + i * NRigExternalParam;
+  double* mutable_rig_extrinsic(size_t i) {
+    return mutable_rig_extrinsic() + i * NRigExternalParam;
   }
   /// Return a pointer to the Inth intrinsic parameters
   double* mutable_cameras_intrinsic(size_t i) {

@@ -1727,6 +1727,31 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             finalPoint.push_back(pt3D);
         }
 
+        // retrieve relative translation and rotation of rig
+        // Get back rig 1
+        Mat3  RotRigOne, RotRigTwo;
+        Vec3  tRigOne, tRigTwo;
+
+        {
+          const double * cam = ba_problem.mutable_rig_extrinsic() + 0*6;
+
+          // angle axis to rotation matrix
+          ceres::AngleAxisToRotationMatrix(cam, RotRigOne.data());
+
+          tRigOne[0] = cam[3]; tRigOne[1] = cam[4]; tRigOne[2] = cam[5];
+
+        }
+        // Get back rig 2
+        {
+          const double * cam = ba_problem.mutable_rig_extrinsic() + 1*6;
+
+          // angle axis to rotation matrix
+          ceres::AngleAxisToRotationMatrix(cam, RotRigTwo.data());
+
+          Vec3 tRigTwo(cam[3], cam[4], cam[5]);
+        }
+        RelativeCameraMotion(RotRigOne, tRigOne, RotRigTwo, tRigTwo, &Rrig, &tRig);
+
     }
 
     // export rotation for rotation avereging
