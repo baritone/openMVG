@@ -1547,13 +1547,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
       }
     } // end loop on matches inter-rigs
 
-    // export point cloud associated to rig (R0,R1). Only for debug purpose
-    std::ostringstream pairIJ;
-    pairIJ << R0 << "_" << R1 << ".ply";
-
-    plyHelper::exportToPly(vec_allScenes, stlplus::create_filespec(_sOutDirectory,
-       "pointCloud_rot_raw"+pairIJ.str()) );
-
     // now do bundle adjustment
     using namespace std;
 
@@ -1733,12 +1726,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             pt3D = Vec3(pt[0], pt[1], pt[2]);
             finalPoint.push_back(pt3D);
         }
-
-        // export point cloud associated to pair (I,J). Only for debug purpose
-        std::ostringstream pairIJ;
-        pairIJ << R0 << "_" << R1 << ".ply";
-
-        plyHelper::exportToPly(finalPoint, stlplus::create_filespec(_sOutDirectory,"pointCloud_rot_"+pairIJ.str()) );
 
     }
 
