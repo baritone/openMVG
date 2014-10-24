@@ -134,6 +134,67 @@ class BA_Problem_data_camMotionAndIntrinsic {
 };
 
 /// Container for a Bundle Adjustment dataset
+///  Allows to refine NRigParam per rig and the structure (3Dpts)
+///  Used with 6 parameters by default:
+///   (Rotation(angle,axis), t, focal)
+template<unsigned char NRigParam = 6,
+         unsigned char NCamParam = 7>
+class BA_Rig_Problem_data {
+ public:
+
+  // Number of camera parameters
+  static const unsigned char NRIGPARAM = NRigParam;
+  static const unsigned char NCAMPARAM = NCamParam;
+
+  /// Return the number of observed 3D points
+  size_t num_rigs()    const { return num_rigs_; }
+  /// Return the number of observed 3D points
+  size_t num_observations()    const { return num_observations_; }
+
+  /// Return a pointer to observed points [X_0, ... ,X_n]
+  const double* observations() const { return &observations_[0]; }
+
+  /// Return pointer to camera data
+  double* mutable_rigs() {
+    return &parameters_[0];}
+  /// Return pointer to camera data
+  double* mutable_cameras() {
+    return &parameters_[0] + NRigParam * num_rigs_;}
+  /// Return point to points data
+  double* mutable_points()  {
+    return &parameters_[0]
+      + NRigParam * num_rigs_
+      + NCamParam * num_cameras_;}
+
+  /// Return a pointer to the camera that observe the Inth observation
+  double* mutable_rigs_for_observation(size_t i) {
+    return mutable_cameras() + rig_index_[i] * NRigParam;
+  }
+  /// Return a pointer to the camera that observe the Inth observation
+  double* mutable_camera_for_observation(size_t i) {
+    return mutable_cameras() + camera_index_[i] * NCamParam;
+  }
+  /// Return a pointer to the point that observe the Inth observation
+  double* mutable_point_for_observation(size_t i) {
+    return mutable_points() + point_index_[i] * 3;
+  }
+
+  size_t num_rigs_;         // # of rigs
+  size_t num_cameras_;      // # of cameras
+  size_t num_points_;       // # of 3D points
+  size_t num_observations_; // # of observations
+  size_t num_parameters_;   // # of parameters ( NRigParam * #Rig + NCamParam * #Cam + 3 * #Points)
+
+  std::vector<size_t> rig_index_;    // re-projection linked to the Inth rig
+  std::vector<size_t> point_index_;  // re-projection linked to the Inth 2d point
+  std::vector<size_t> camera_index_; // re-projection linked to the Inth camera
+  std::vector<double> observations_; // 3D points
+
+  std::vector<double> parameters_;  // Camera parametrization
+};
+
+
+/// Container for a Bundle Adjustment dataset
 /// Allows to refine rigs extrinsics, cameras shared intrinsics and the structure
 /// Camera can be parametrized by the number of desired values
 ///   External parameter => 6: [Rotation(angle,axis), t]
