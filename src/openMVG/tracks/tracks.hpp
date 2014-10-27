@@ -190,8 +190,8 @@ struct TracksBuilder
          for( size_t k = 0; k < vec_FilteredMatches.size(); ++k)
          {
            // Look if one of the feature already belong to a track :
-           myset.insert(make_pair(I,vec_FilteredMatches[k]._i));
-           myset.insert(make_pair(J,vec_FilteredMatches[k]._j));
+           myset.insert(make_pair(iterPair->first.first,vec_FilteredMatches[k]._i));
+           myset.insert(make_pair(iterPair->first.second,vec_FilteredMatches[k]._j));
          }
       }
     }
@@ -236,8 +236,8 @@ struct TracksBuilder
 
         for( size_t k = 0; k < vec_FilteredMatches.size(); ++k)
         {
-          indexedFeaturePair pairI = make_pair(I,vec_FilteredMatches[k]._i);
-          indexedFeaturePair pairJ = make_pair(J,vec_FilteredMatches[k]._j);
+          indexedFeaturePair pairI = make_pair(iterPair->first.first,vec_FilteredMatches[k]._i);
+          indexedFeaturePair pairJ = make_pair(iterPair->first.second,vec_FilteredMatches[k]._j);
           myTracksUF->join( my_Map[pairI], my_Map[pairJ] );
         }
       }
