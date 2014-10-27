@@ -146,7 +146,7 @@ private:
     const std::map<std::size_t, Mat3> & map_globalR,
     const std::vector< graphUtils::Triplet > & vec_triplets,
     std::vector<openMVG::relativeInfo > & vec_initialEstimates,
-    matching::PairWiseMatches & newpairMatches) const;
+    matching::RigWiseMatches & newpairMatches) const;
 
   // Bundle adjustment : refine structure Xis and camera parameters (with optional refined parameters)
   void bundleAdjustment(

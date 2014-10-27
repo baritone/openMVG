@@ -14,7 +14,7 @@
 #include "software/globalSfM/indexedImageGraph.hpp"
 #include "software/globalSfM/indexedImageGraphExport.hpp"
 #include "software/globalSfM/SfMRigidGlobalEngine.hpp"
-#include "software/globalSfM/SfMGlobal_tij_computation.hpp"
+#include "software/globalSfM/SfMGlobal_Rig_tij_computation.hpp"
 #include "software/SfM/SfMIOHelper.hpp"
 #include "software/SfM/SfMRobust.hpp"
 #include "software/SfM/SfMPlyHelper.hpp"
@@ -660,7 +660,7 @@ bool GlobalRigidReconstructionEngine::Process()
   // Relative translations estimation (Triplet based translation computation)
   //-------------------
   std::vector<openMVG::relativeInfo > vec_initialRijTijEstimates;
-  PairWiseMatches newpairMatches;
+  RigWiseMatches newpairMatches;
   {
     std::cout << "\n-------------------------------" << "\n"
       << " Relative translations computation: " << "\n"
