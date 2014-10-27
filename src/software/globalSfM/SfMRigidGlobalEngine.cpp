@@ -402,10 +402,17 @@ bool GlobalRigidReconstructionEngine::computeGlobalRotations(
       {
         const openMVG::relativeInfo & rel = *iter;
         // Find the number of support point for this pair
-        PairWiseMatches::const_iterator iterMatches = _map_Matches_E.find(rel.first);
-        if (iterMatches != _map_Matches_E.end())
+        RigWiseMatches::const_iterator iterMatches = _map_Matches_Rig.find(rel.first);
+        if (iterMatches != _map_Matches_Rig.end())
         {
-          vec_count.push_back(iterMatches->second.size());
+          size_t  supportPointNumber = 0;
+          for(PairWiseMatches::const_iterator iterRig = iterMatches->second.begin() ;
+              iterRig != iterMatches->second.end(); ++iterRig )
+          {
+              supportPointNumber += iterRig->second.size();
+          }
+
+          vec_count.push_back(supportPointNumber);
         }
       }
       const float thTrustPair = (std::accumulate(vec_count.begin(), vec_count.end(), 0.0f) / vec_count.size()) / 2.0;
@@ -415,10 +422,17 @@ bool GlobalRigidReconstructionEngine::computeGlobalRotations(
       {
         const openMVG::relativeInfo & rel = *iter;
         float weight = 1.f; // the relative rotation correspondence point support
-        PairWiseMatches::const_iterator iterMatches = _map_Matches_E.find(rel.first);
-        if (iterMatches != _map_Matches_E.end())
+        RigWiseMatches::const_iterator iterMatches = _map_Matches_Rig.find(rel.first);
+        if (iterMatches != _map_Matches_Rig.end())
         {
-          weight = std::min((float)iterMatches->second.size()/thTrustPair, 1.f);
+          size_t  supportPointNumber = 0;
+          for(PairWiseMatches::const_iterator iterRig = iterMatches->second.begin() ;
+              iterRig != iterMatches->second.end(); ++iterRig )
+          {
+              supportPointNumber += iterRig->second.size();
+          }
+
+          weight = std::min((float)supportPointNumber/thTrustPair, 1.f);
           vec_relativeRotWeight.push_back(weight);
         }
       }
@@ -433,8 +447,8 @@ bool GlobalRigidReconstructionEngine::computeGlobalRotations(
     iter != map_relatives.end(); ++iter)
   {
     const openMVG::relativeInfo & rel = *iter;
-    PairWiseMatches::const_iterator iterMatches = _map_Matches_E.find(rel.first);
-    if (iterMatches != _map_Matches_E.end())
+    RigWiseMatches::const_iterator iterMatches = _map_Matches_Rig.find(rel.first);
+    if (iterMatches != _map_Matches_Rig.end())
     {
       vec_relativeRotEstimate.push_back(RelRotationData(
         _reindexForward[rel.first.first],
@@ -1513,7 +1527,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         for (size_t k = 0; k < x1.cols(); ++k) {
           const Vec2 & x1_ = x1.col(k),
             & x2_ = x2.col(k);
-            
+
           Vec3 X;
           TriangulateDLT(cam1._P, x1_, cam2._P, x2_, &X);
           vec_allScenes.push_back(X);
