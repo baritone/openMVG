@@ -68,7 +68,7 @@ static inline std::istream& operator>>(std::istream & in, IndMatch & obj) {
 /// The structure used to store corresponding point indexes per images pairs
 typedef std::map< std::pair<size_t, size_t>, std::vector<matching::IndMatch> > PairWiseMatches;
 /// the structure used to store rigwise correspondences
-typedef std::map< std::pair<size_t, size_t>, std::vector< std::pair<size_t, size_t> > > RigWiseMatches;
+typedef std::map< std::pair<size_t, size_t>, PairWiseMatches > RigWiseMatches;
 
 }  // namespace matching
 }  // namespace openMVG

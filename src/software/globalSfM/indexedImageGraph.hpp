@@ -158,15 +158,14 @@ struct indexedImageGraph
     iter != map_indexedMatches.end();
     ++iter)
   {
-    const std::vector< std::pair <size_t, size_t> > & vec_FilteredMatches = iter->second;
-    if (vec_FilteredMatches.size() > 0)
+    if (iter->second.size() > 0)
     {
       const size_t i = iter->first.first;
       const size_t j = iter->first.second;
       if( i != j)
       {
         GraphT::Edge edge =  g.addEdge(map_size_t_to_node[i], map_size_t_to_node[j]);
-        (*map_edgeMap)[ edge ] = vec_FilteredMatches.size();
+        (*map_edgeMap)[ edge ] = iter->second.size();
       }
     }
   }

@@ -1297,8 +1297,34 @@ void GlobalRigidReconstructionEngine::ComputeMapMatchesRig()
      const size_t  I = min(_map_RigIdPerImageId[iter->first.first], _map_RigIdPerImageId[iter->first.second]);
      const size_t  J = max(_map_RigIdPerImageId[iter->first.first], _map_RigIdPerImageId[iter->first.second]);
 
-     if( I != J)
-      _map_Matches_Rig[make_pair(I,J)].push_back(iter->first);
+     const bool  bRigSwap = ( I != _map_RigIdPerImageId[iter->first.first] );
+
+     if( I != J){
+
+       if( !bRigSwap){
+            _map_Matches_Rig[make_pair(I,J)][iter->first] = iter->second ;
+       }
+       else
+       {
+         // swap I and J matches in order to have matches grouped per rig id
+         std::vector <matching::IndMatch>   matches;
+
+         matches.clear();
+
+         for(size_t  k(0); k < _map_Matches_E[iter->first].size(); ++k)
+         {
+            IndMatch  featurePair;
+
+            featurePair._i = _map_Matches_E[iter->first][k]._j;
+            featurePair._j = _map_Matches_E[iter->first][k]._i;
+
+            matches.push_back( featurePair );
+         }
+
+         _map_Matches_Rig[make_pair(I,J)][make_pair(iter->first.second, iter->first.first)] = matches;
+
+       }
+    }
   }
 
 }
@@ -1339,9 +1365,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     const size_t R0 = iter->first.first;
     const size_t R1 = iter->first.second;
 
-    // extract list of matching cameras bewteen rigs
-    const std::vector<std::pair <size_t, size_t> > & vec_matchesCamera = iter->second;
-
     // initialize structure used for matching between rigs
     bearingVectors_t bearingVectorsRigOne;
     bearingVectors_t bearingVectorsRigTwo;
@@ -1350,58 +1373,41 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     std::vector<int>  camCorrespondencesRigTwo;
 
     // loop on inter-rig correspondences
-    for( size_t j = 0; j < vec_matchesCamera.size(); ++j ){
+    for( PairWiseMatches::const_iterator iterMatch =  iter->second.begin() ;
+              iterMatch != iter->second.end() ; ++iterMatch ){
 
       // extract camera id and subchannel number
-      const size_t I = vec_matchesCamera[j].first;
-      const size_t J = vec_matchesCamera[j].second;
+      const size_t I = iterMatch->first.first;
+      const size_t J = iterMatch->first.second;
 
       const size_t SubI = _map_IntrinsicIdPerImageId[I];
       const size_t SubJ = _map_IntrinsicIdPerImageId[J];
 
-      const std::vector<IndMatch> vec_matchesInd = _map_Matches_E[vec_matchesCamera[j]];
-
       // extracts features for each pair in order to construct bearing vectors.
-      for (size_t l = 0; l < vec_matchesInd.size(); ++l)
+      for (size_t l = 0; l < iterMatch->second.size(); ++l)
       {
         bearingVector_t  bearing1;
         bearingVector_t  bearing2;
 
         // extract normalized keypoints coordinates
-        bearing1(0) = _map_feats_normalized[I][vec_matchesInd[l]._i].x();
-        bearing1(1) = _map_feats_normalized[I][vec_matchesInd[l]._i].y();
+        bearing1(0) = _map_feats_normalized[I][iterMatch->second[l]._i].x();
+        bearing1(1) = _map_feats_normalized[I][iterMatch->second[l]._i].y();
         bearing1(2) = 1.0;
 
-        bearing2(0) = _map_feats_normalized[J][vec_matchesInd[l]._j].x();
-        bearing2(1) = _map_feats_normalized[J][vec_matchesInd[l]._j].y();
+        bearing2(0) = _map_feats_normalized[J][iterMatch->second[l]._j].x();
+        bearing2(1) = _map_feats_normalized[J][iterMatch->second[l]._j].y();
         bearing2(2) = 1.0;
 
         // normalize bearing vectors
         bearing1 = bearing1 / bearing1.norm();
         bearing2 = bearing2 / bearing2.norm();
 
-        if( _map_RigIdPerImageId[I] == R0 && _map_RigIdPerImageId[J] == R1){
-          // add bearing vectors to list and update correspondences list
-          bearingVectorsRigOne.push_back( bearing1 );
-          bearingVectorsRigTwo.push_back( bearing2 );
+        // add bearing vectors to list and update correspondences list
+        bearingVectorsRigOne.push_back( bearing1 );
+        bearingVectorsRigTwo.push_back( bearing2 );
 
-          camCorrespondencesRigOne.push_back(SubI);
-          camCorrespondencesRigTwo.push_back(SubJ);
-        }
-        else
-          if( _map_RigIdPerImageId[I] == R1 && _map_RigIdPerImageId[J] == R0 )
-          {
-            // add bearing vectors to list and update correspondences list
-            bearingVectorsRigOne.push_back( bearing2 );
-            bearingVectorsRigTwo.push_back( bearing1 );
-
-            camCorrespondencesRigOne.push_back(SubJ);
-            camCorrespondencesRigTwo.push_back(SubI);
-          }
-          else
-          {
-            std::cerr << " Not all images belongs to rig " << R0 << " and " << R1 << endl;
-          }
+        camCorrespondencesRigOne.push_back(SubI);
+        camCorrespondencesRigTwo.push_back(SubJ);
       }
     }// end loop on inter-rig matches
 
@@ -1449,11 +1455,13 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     // count the number of observations
     size_t nbmeas = 0;
 
-    for( size_t j = 0; j < vec_matchesCamera.size(); ++j )
-    {
+    // loop on inter-rig correspondences
+    for( PairWiseMatches::const_iterator iterMatch =  iter->second.begin() ;
+              iterMatch != iter->second.end() ; ++iterMatch ){
+
       // extract camera id and subchannel number
-      size_t I = vec_matchesCamera[j].first;
-      size_t J = vec_matchesCamera[j].second;
+      size_t I = iterMatch->first.first;
+      size_t J = iterMatch->first.second;
 
       const size_t SubI = _map_IntrinsicIdPerImageId[I];
       const size_t SubJ = _map_IntrinsicIdPerImageId[J];
@@ -1468,84 +1476,56 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
       Vec3 tI, tJ;
       Mat3 RI, RJ;
 
-      if( _map_RigIdPerImageId[I] == R0 && _map_RigIdPerImageId[J] == R1){
-        RI = Rcam0;
-        RJ = Rcam1 * Rrig;
-        tI =-Rcam0 * CI;
-        tJ = RJ*(-CRig - Rrig.transpose() * CJ);
-      }
-      else
-      {
-        RI = Rcam0 * Rrig;
-        RJ = Rcam1;
-        tI = RI*(-CRig - Rrig.transpose() * CI);
-        tJ =-Rcam1 * CJ;
-      }
+      RI = Rcam0;
+      RJ = Rcam1 * Rrig;
+      tI =-Rcam0 * CI;
+      tJ = RJ*(-CRig - Rrig.transpose() * CJ);
 
       // build associated camera
       PinholeCamera cam1(K, RI, tI);
       PinholeCamera cam2(K, RJ, tJ);
 
-      // extract features
-      const std::vector<IndMatch> vec_matchesInd = _map_Matches_E[vec_matchesCamera[j]];
+      Mat x1(2, iterMatch->second.size()), x2(2, iterMatch->second.size());
 
-      Mat x1(2, vec_matchesInd.size()), x2(2, vec_matchesInd.size());
-      if( _map_RigIdPerImageId[I] == R0 && _map_RigIdPerImageId[J] == R1){
-        for (size_t k = 0; k < vec_matchesInd.size(); ++k)
-        {
-          x1.col(k) = _map_feats_normalized[I][vec_matchesInd[k]._i].coords().cast<double>();
-          x2.col(k) = _map_feats_normalized[J][vec_matchesInd[k]._j].coords().cast<double>();
+      for (size_t k = 0; k < iterMatch->second.size(); ++k)
+          {
+            x1.col(k) = _map_feats_normalized[I][iterMatch->second[k]._i].coords().cast<double>();
+            x2.col(k) = _map_feats_normalized[J][iterMatch->second[k]._j].coords().cast<double>();
 
-          // export observation for BA.
-          std::vector < double > temp0, temp1;
+            // export observation for BA.
+            std::vector < double > temp0, temp1;
 
-          temp0.push_back( x1.col(k)(0));
-          temp0.push_back( x1.col(k)(1));
-          temp0.push_back( SubI );
+            temp0.push_back( x1.col(k)(0));
+            temp0.push_back( x1.col(k)(1));
+            temp0.push_back( SubI );
 
-          obsR0.push_back(temp0);
+            obsR0.push_back(temp0);
 
-          temp1.push_back( x2.col(k)(0));
-          temp1.push_back( x2.col(k)(1));
-          temp1.push_back( SubJ );
+            temp1.push_back( x2.col(k)(0));
+            temp1.push_back( x2.col(k)(1));
+            temp1.push_back( SubJ );
 
-          obsR1.push_back(temp1);
+            obsR1.push_back(temp1);
         }
-      }
-      else
-      {
-        for (size_t k = 0; k < vec_matchesInd.size(); ++k)
-        {
-          x2.col(k) = _map_feats_normalized[I][vec_matchesInd[k]._i].coords().cast<double>();
-          x1.col(k) = _map_feats_normalized[J][vec_matchesInd[k]._j].coords().cast<double>();
 
-          // export observation for BA.
-          std::vector < double > temp0, temp1;
 
-          temp0.push_back( x1.col(k)(0));
-          temp0.push_back( x1.col(k)(1));
-          temp0.push_back( SubJ );
-
-          obsR1.push_back(temp0);
-
-          temp1.push_back( x2.col(k)(0));
-          temp1.push_back( x2.col(k)(1));
-          temp1.push_back( SubI );
-
-          obsR0.push_back(temp1);
-
+        // compute 3D point
+        for (size_t k = 0; k < x1.cols(); ++k) {
+          const Vec2 & x1_ = x1.col(k),
+            & x2_ = x2.col(k);
+            
+          Vec3 X;
+          TriangulateDLT(cam1._P, x1_, cam2._P, x2_, &X);
+          vec_allScenes.push_back(X);
         }
-      }
 
-      // compute 3D point
-      for (size_t k = 0; k < x1.cols(); ++k) {
-        const Vec2 & x1_ = x1.col(k),
-          & x2_ = x2.col(k);
-        Vec3 X;
-        TriangulateDLT(cam1._P, x1_, cam2._P, x2_, &X);
-        vec_allScenes.push_back(X);
-      }
     } // end loop on matches inter-rigs
+
+    // export point cloud associated to pair (I,J). Only for debug purpose
+    std::ostringstream pairIJ;
+    pairIJ << R0 << "_" << R1 << ".ply";
+
+    plyHelper::exportToPly(vec_allScenes, stlplus::create_filespec(_sOutDirectory,"pointCloud_rot_raw"+pairIJ.str()) );
 
     // now do bundle adjustment
     using namespace std;
@@ -1750,7 +1730,14 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
           Vec3 tRigTwo(cam[3], cam[4], cam[5]);
         }
+
         RelativeCameraMotion(RotRigOne, tRigOne, RotRigTwo, tRigTwo, &Rrig, &tRig);
+
+        // export point cloud associated to pair (I,J). Only for debug purpose
+        std::ostringstream pairIJ;
+        pairIJ << R0 << "_" << R1 << ".ply";
+
+        plyHelper::exportToPly(finalPoint, stlplus::create_filespec(_sOutDirectory,"pointCloud_rot_"+pairIJ.str()) );
 
     }
 
