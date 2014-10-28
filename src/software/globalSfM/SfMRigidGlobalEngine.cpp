@@ -1693,6 +1693,10 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         ba_problem.mutable_camera_intrinsic_for_observation(k) );
     }
 
+    // fix rig one position
+    problem.SetParameterBlockConstant(
+      ba_problem.mutable_rig_extrinsic(0) );
+
     // Configure a BA engine and run it
     //  Make Ceres automatically detect the bundle structure.
     ceres::Solver::Options options;
