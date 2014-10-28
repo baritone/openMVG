@@ -1442,7 +1442,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         relposeproblem_ptr(
         new sac_problems::relative_pose::NoncentralRelativePoseSacProblem(
         adapter,
-        sac_problems::relative_pose::NoncentralRelativePoseSacProblem::GE));
+        sac_problems::relative_pose::NoncentralRelativePoseSacProblem::SIXPT));
     ransac.sac_model_ = relposeproblem_ptr;
     ransac.threshold_ = 2.0*(1.0 - cos(atan(sqrt(2.0) * 2.5 / averageFocal )));
     ransac.max_iterations_ = 4096;
