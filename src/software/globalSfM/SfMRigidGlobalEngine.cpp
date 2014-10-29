@@ -674,7 +674,30 @@ bool GlobalRigidReconstructionEngine::Process()
 
     openMVG::Timer timerLP_triplet;
 
-    computePutativeTranslation_EdgesCoverage(map_globalR, vec_triplets, vec_initialRijTijEstimates, newpairMatches);
+    bool  bComputeTrifocal=false;
+    if(bComputeTrifocal){
+       computePutativeTranslation_EdgesCoverage(map_globalR, vec_triplets, vec_initialRijTijEstimates, newpairMatches);
+    }
+    else
+    {
+       vec_initialRijTijEstimates.clear();
+       for(Map_RelativeRT::const_iterator  iter = map_relatives.begin();
+              iter != map_relatives.end(); ++iter )
+       {
+           // compute relative rotation of rig pair
+           const size_t I = iter->first.first;
+           const size_t J = iter->first.second;
+
+           const Mat3  RI = map_globalR.find(I)->second;
+           const Mat3  RJ = map_globalR.find(J)->second;
+
+           const Mat3  RIJ = RJ * RI.transpose() ;
+
+           vec_initialRijTijEstimates.push_back( std::make_pair(iter->first , std::make_pair(RIJ, iter->second.second) ) ) ;
+
+       }
+
+    }
     const double timeLP_triplet = timerLP_triplet.elapsed();
     std::cout << "TRIPLET COVERAGE TIMING: " << timeLP_triplet << " seconds" << std::endl;
 
@@ -715,7 +738,7 @@ bool GlobalRigidReconstructionEngine::Process()
 
     std::cout << "\n\n"
       << "We targeting to estimates: " << map_globalR.size()
-      << " and we have estimation for: " << set_representedImageIndex.size() << " images" << std::endl;
+      << " and we have estimation for: " << set_representedImageIndex.size() << " rigs " << std::endl;
 
     //-- Clean global rotations that are not in the TRIPLET GRAPH
     KeepOnlyReferencedElement(set_representedImageIndex, map_globalR);
@@ -723,7 +746,7 @@ bool GlobalRigidReconstructionEngine::Process()
     KeepOnlyReferencedElement(set_representedImageIndex, newpairMatches);
     // clean _map_matches_E?
 
-    std::cout << "\nRemaining cameras after inference filter: \n"
+    std::cout << "\nRemaining rigsafter inference filter: \n"
       << map_globalR.size() << " from a total of " << _vec_fileNames.size() << std::endl;
   }
 
@@ -732,10 +755,12 @@ bool GlobalRigidReconstructionEngine::Process()
   //-------------------
 
   {
-    const size_t iNview = map_globalR.size();
+    const size_t iNRigs = map_globalR.size();
+    const size_t iNview = _vec_fileNames.size();
+
     std::cout << "\n-------------------------------" << "\n"
       << " Global translations computation: " << "\n"
-      << "   - Ready to compute " << iNview << " global translations." << "\n"
+      << "   - Ready to compute " << iNRigs << " global translations." << "\n"
       << "     from " << vec_initialRijTijEstimates.size() << " relative translations\n" << std::endl;
 
     //-- Update initial estimates in range [0->Ncam]
@@ -771,7 +796,7 @@ bool GlobalRigidReconstructionEngine::Process()
         double gamma = -1.0;
         std::vector<double> vec_solution;
         {
-          vec_solution.resize(iNview*3 + vec_initialRijTijEstimates.size()/3 + 1);
+          vec_solution.resize(iNRigs*3 + vec_initialRijTijEstimates.size()/3 + 1);
           using namespace openMVG::linearProgramming;
           #ifdef OPENMVG_HAVE_MOSEK
             MOSEK_SolveWrapper solverLP(vec_solution.size());
@@ -822,10 +847,10 @@ bool GlobalRigidReconstructionEngine::Process()
         std::cout << "Found solution:\n";
         std::copy(vec_solution.begin(), vec_solution.end(), std::ostream_iterator<double>(std::cout, " "));
 
-        std::vector<double> vec_camTranslation(iNview*3,0);
-        std::copy(&vec_solution[0], &vec_solution[iNview*3], &vec_camTranslation[0]);
+        std::vector<double> vec_camTranslation(iNRigs*3,0);
+        std::copy(&vec_solution[0], &vec_solution[iNRigs*3], &vec_camTranslation[0]);
 
-        std::vector<double> vec_camRelLambdas(&vec_solution[iNview*3], &vec_solution[iNview*3 + vec_initialRijTijEstimates.size()/3]);
+        std::vector<double> vec_camRelLambdas(&vec_solution[iNRigs*3], &vec_solution[iNRigs*3 + vec_initialRijTijEstimates.size()/3]);
         std::cout << "\ncam position: " << std::endl;
         std::copy(vec_camTranslation.begin(), vec_camTranslation.end(), std::ostream_iterator<double>(std::cout, " "));
         std::cout << "\ncam Lambdas: " << std::endl;
@@ -833,7 +858,7 @@ bool GlobalRigidReconstructionEngine::Process()
 
     // Build a Pinhole camera for each considered Id
     std::vector<Vec3>  vec_C;
-    for (size_t i = 0; i < iNview; ++i)
+    for (size_t i = 0; i < iNRigs; ++i)
     {
       Vec3 t(vec_camTranslation[i*3], vec_camTranslation[i*3+1], vec_camTranslation[i*3+2]);
       const size_t camNodeId = _reindexBackward[i];
@@ -1746,7 +1771,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
           // angle axis to rotation matrix
           ceres::AngleAxisToRotationMatrix(cam, RotRigTwo.data());
 
-          Vec3 tRigTwo(cam[3], cam[4], cam[5]);
+          tRigTwo[0] = cam[3]; tRigTwo[1] = cam[4]; tRigTwo[2]=cam[5];
         }
 
         RelativeCameraMotion(RotRigOne, tRigOne, RotRigTwo, tRigTwo, &Rrig, &tRig);
