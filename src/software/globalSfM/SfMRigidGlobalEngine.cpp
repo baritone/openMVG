@@ -847,26 +847,40 @@ bool GlobalRigidReconstructionEngine::Process()
         std::cout << "Found solution:\n";
         std::copy(vec_solution.begin(), vec_solution.end(), std::ostream_iterator<double>(std::cout, " "));
 
-        std::vector<double> vec_camTranslation(iNRigs*3,0);
-        std::copy(&vec_solution[0], &vec_solution[iNRigs*3], &vec_camTranslation[0]);
+        std::vector<double> vec_RigTranslation(iNRigs*3,0);
+        std::copy(&vec_solution[0], &vec_solution[iNRigs*3], &vec_RigTranslation[0]);
 
-        std::vector<double> vec_camRelLambdas(&vec_solution[iNRigs*3], &vec_solution[iNRigs*3 + vec_initialRijTijEstimates.size()/3]);
-        std::cout << "\ncam position: " << std::endl;
-        std::copy(vec_camTranslation.begin(), vec_camTranslation.end(), std::ostream_iterator<double>(std::cout, " "));
-        std::cout << "\ncam Lambdas: " << std::endl;
-        std::copy(vec_camRelLambdas.begin(), vec_camRelLambdas.end(), std::ostream_iterator<double>(std::cout, " "));
+        std::vector<double> vec_rigRelLambdas(&vec_solution[iNRigs*3], &vec_solution[iNRigs*3 + vec_initialRijTijEstimates.size()/3]);
+        std::cout << "\nrig position: " << std::endl;
+        std::copy(vec_RigTranslation.begin(), vec_RigTranslation.end(), std::ostream_iterator<double>(std::cout, " "));
+        std::cout << "\nrig Lambdas: " << std::endl;
+        std::copy(vec_rigRelLambdas.begin(), vec_rigRelLambdas.end(), std::ostream_iterator<double>(std::cout, " "));
 
-    // Build a Pinhole camera for each considered Id
-    std::vector<Vec3>  vec_C;
-    for (size_t i = 0; i < iNRigs; ++i)
-    {
-      Vec3 t(vec_camTranslation[i*3], vec_camTranslation[i*3+1], vec_camTranslation[i*3+2]);
-      const size_t camNodeId = _reindexBackward[i];
-      const Mat3 & Ri = map_globalR[camNodeId];
-      const Mat3 & _K = _vec_intrinsicGroups[_map_IntrinsicIdPerImageId[camNodeId]].m_K;   // The same K matrix is used by all the camera
-      _map_camera[camNodeId] = PinholeCamera(_K, Ri, t);
-      //-- Export camera center
-      vec_C.push_back(_map_camera[camNodeId]._C);
+        // Build a Pinhole camera for each considered Id
+        std::vector<Vec3>  vec_C;
+        for (size_t i = 0; i < iNview; ++i)
+        {
+          const size_t rigId     = _map_RigIdPerImageId.find(i)->second;
+          const size_t rigNum    = _reindexForward[rigId];
+          const size_t subCamId  = _map_IntrinsicIdPerImageId.find(i)->second;
+
+          printf("\n I %ld RigId %ld rigNum %ld Subcam Id %ld \n", i, rigId, rigNum, subCamId);
+
+          // compute camera rotation
+          const Mat3 & Ri = map_globalR[rigId] ;
+          const Mat3 & Rcam = _vec_intrinsicGroups[subCamId].m_R;
+          const Mat3 & R = Rcam * Ri;
+
+          // compute camera translation
+          Vec3 Rigt(vec_RigTranslation[rigNum*3], vec_RigTranslation[rigNum*3+1], vec_RigTranslation[rigNum*3+2]);
+          const Vec3 tCam = -Rcam * _vec_intrinsicGroups[subCamId].m_rigC ;
+          const Vec3 t =  Rcam * Rigt + tCam ;
+
+          const Mat3 & _K = _vec_intrinsicGroups[subCamId].m_K;   // The same K matrix is used by all the camera
+          _map_camera[i] = PinholeCamera(_K, R, t);
+
+          //-- Export camera center
+          vec_C.push_back(_map_camera[i]._C);
         }
         plyHelper::exportToPly(vec_C, stlplus::create_filespec(_sOutDirectory, "cameraPath", "ply"));
       }
@@ -938,156 +952,107 @@ bool GlobalRigidReconstructionEngine::Process()
   //-- Initial triangulation of the scene from the computed global motions
   //-------------------
   {
-    // Build tracks from selected triplets (Union of all the validated triplet tracks (newpairMatches))
-    //  triangulate tracks    //  refine translations
+    std::vector<double> vec_residuals;
+    std::vector<Vec3>   vec_allScenes;
+    std::vector< std::pair<vector <double>, vector<double> > > pointInfo;
+
+    // loop on rigs
+    for (RigWiseMatches::const_iterator iter = _map_Matches_Rig.begin();
+         iter != _map_Matches_Rig.end(); ++iter )
     {
-      TracksBuilder tracksBuilder;
-      tracksBuilder.Build(newpairMatches);
-      tracksBuilder.Filter(3);
-      tracksBuilder.ExportToSTL(_map_selectedTracks);
-
-      std::cout << std::endl << "Track stats" << std::endl;
+      // loop on inter-rig correspondences
+      for( PairWiseMatches::const_iterator iterMatch =  iter->second.begin() ;
+                iterMatch != iter->second.end() ; ++iterMatch )
       {
-        std::ostringstream osTrack;
-        //-- Display stats:
-        //    - number of images
-        //    - number of tracks
-        std::set<size_t> set_imagesId;
-        TracksUtilsMap::ImageIdInTracks(_map_selectedTracks, set_imagesId);
-        osTrack << "------------------" << "\n"
-          << "-- Tracks Stats --" << "\n"
-          << " Tracks number: " << tracksBuilder.NbTracks() << "\n"
-          << " Images Id: " << "\n";
-        std::copy(set_imagesId.begin(),
-          set_imagesId.end(),
-          std::ostream_iterator<size_t>(osTrack, ", "));
-        osTrack << "\n------------------" << "\n";
+        // extract camera id and subchannel number
+        const size_t I = iterMatch->first.first;
+        const size_t J = iterMatch->first.second;
+        const size_t SubI = _map_IntrinsicIdPerImageId[I];
+        const size_t SubJ = _map_IntrinsicIdPerImageId[J];
 
-        std::map<size_t, size_t> map_Occurence_TrackLength;
-        TracksUtilsMap::TracksLength(_map_selectedTracks, map_Occurence_TrackLength);
-        osTrack << "TrackLength, Occurrence" << "\n";
-        for (std::map<size_t, size_t>::const_iterator iter = map_Occurence_TrackLength.begin();
-          iter != map_Occurence_TrackLength.end(); ++iter)  {
-          osTrack << "\t" << iter->first << "\t" << iter->second << "\n";
+        Mat x1(2, iterMatch->second.size()), x2(2, iterMatch->second.size());
+
+        for (size_t k = 0; k < iterMatch->second.size(); ++k)
+        {
+            x1.col(k) = _map_feats[I][iterMatch->second[k]._i].coords().cast<double>();
+            x2.col(k) = _map_feats[J][iterMatch->second[k]._j].coords().cast<double>();
         }
-        osTrack << "\n";
-        std::cout << osTrack.str();
+
+        // compute 3D point
+        for (size_t k = 0; k < x1.cols(); ++k) {
+          const Vec2 & x1_ = x1.col(k),
+            & x2_ = x2.col(k);
+
+          // Look to the features required for the triangulation task
+          Triangulation trianObj;
+          // Build the P matrix
+          trianObj.add(_map_camera[I]._P, x1_ );
+          trianObj.add(_map_camera[J]._P, x2_ );
+
+          // Compute the 3D point and keep point index with negative depth
+          const Vec3 X = trianObj.compute();
+          vec_allScenes.push_back(X);
+
+          // compute residual
+          vec_residuals.push_back(  0.5 * _map_camera[I].Residual(X, x1_)
+                                  + 0.5 * _map_camera[J].Residual(X, x2_) );
+
+          // export observation for BA.
+          std::vector < double > temp0, temp1;
+
+          temp0.push_back( iter->first.first );  // rig index
+          temp0.push_back( x1.col(k)(0));        // feature coordinate
+          temp0.push_back( x1.col(k)(1));
+          temp0.push_back( SubI );               // camera intrinsic number
+
+          temp1.push_back( iter->first.second ); // rig index
+          temp1.push_back( x2.col(k)(0));        // feature coordinate
+          temp1.push_back( x2.col(k)(1));
+          temp1.push_back( SubJ );               // camera intrinsic number
+
+          pointInfo.push_back(std::make_pair(temp0, temp1));
+
+        }
       }
     }
 
-    // Triangulation of all the tracks
-    _vec_allScenes.resize(_map_selectedTracks.size());
+    plyHelper::exportToPly(vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
+
     {
-      std::vector<double> vec_residuals;
-      vec_residuals.reserve(_map_selectedTracks.size());
-      std::set<size_t> set_idx_to_remove;
+      // Display some statistics of reprojection errors
+      std::cout << "\n\nResidual statistics:\n" << std::endl;
+      minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end());
+      double min, max, mean, median;
+      minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(), min, max, mean, median);
 
-      C_Progress_display my_progress_bar_triangulation( _map_selectedTracks.size(),
-       std::cout, "Initial triangulation:\n");
+      Histogram<float> histo(0.f, *max_element(vec_residuals.begin(),vec_residuals.end())*1.1f);
+      histo.Add(vec_residuals.begin(), vec_residuals.end());
+      std::cout << std::endl << "Residual Error pixels: " << std::endl << histo.ToString() << std::endl;
 
-#ifdef USE_OPENMP
-      #pragma omp parallel for schedule(dynamic)
-#endif
-      for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
+      // Histogram between 0 and 10 pixels
       {
-        STLMAPTracks::const_iterator iterTracks = _map_selectedTracks.begin();
-        std::advance(iterTracks, idx);
-
-        const submapTrack & subTrack = iterTracks->second;
-
-        // Look to the features required for the triangulation task
-        Triangulation trianObj;
-        for (submapTrack::const_iterator iter = subTrack.begin(); iter != subTrack.end(); ++iter) {
-
-          const size_t imaIndex = iter->first;
-          const size_t featIndex = iter->second;
-          const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
-          // Build the P matrix
-          trianObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
-        }
-
-        // Compute the 3D point and keep point index with negative depth
-        const Vec3 Xs = trianObj.compute();
-        _vec_allScenes[idx] = Xs;
-
-#ifdef USE_OPENMP
-  #pragma omp critical
-#endif
-        {
-          if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
-               || !is_finite(Xs[2]) )  {
-            set_idx_to_remove.insert(idx);
-          }
-
-          //-- Compute residual over all the projections
-          for (submapTrack::const_iterator iter = subTrack.begin(); iter != subTrack.end(); ++iter) {
-            const size_t imaIndex = iter->first;
-            const size_t featIndex = iter->second;
-            const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
-            vec_residuals.push_back(_map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>()));
-            // no ordering in vec_residuals since there is parallelism
-          }
-          ++my_progress_bar_triangulation;
-        }
-      }
-
-      //-- Remove useless tracks and 3D points
-      {
-        std::vector<Vec3> vec_allScenes_cleaned;
-        for(size_t i = 0; i < _vec_allScenes.size(); ++i)
-        {
-          if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
-          {
-            vec_allScenes_cleaned.push_back(_vec_allScenes[i]);
-          }
-        }
-        _vec_allScenes.swap(vec_allScenes_cleaned);
-
-        for( std::set<size_t>::const_iterator iter = set_idx_to_remove.begin();
-          iter != set_idx_to_remove.end(); ++iter)
-        {
-          _map_selectedTracks.erase(*iter);
-        }
-        std::cout << "\n #Tracks removed: " << set_idx_to_remove.size() << std::endl;
-      }
-      plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
-
-      {
-        // Display some statistics of reprojection errors
-        std::cout << "\n\nResidual statistics:\n" << std::endl;
-        minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end());
-        double min, max, mean, median;
-        minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(), min, max, mean, median);
-
-        Histogram<float> histo(0.f, *max_element(vec_residuals.begin(),vec_residuals.end())*1.1f);
+        std::cout << "\n Histogram between 0 and 10 pixels: \n";
+        Histogram<float> histo(0.f, 10.f, 20);
         histo.Add(vec_residuals.begin(), vec_residuals.end());
         std::cout << std::endl << "Residual Error pixels: " << std::endl << histo.ToString() << std::endl;
+      }
 
-        // Histogram between 0 and 10 pixels
-        {
-          std::cout << "\n Histogram between 0 and 10 pixels: \n";
-          Histogram<float> histo(0.f, 10.f, 20);
-          histo.Add(vec_residuals.begin(), vec_residuals.end());
-          std::cout << std::endl << "Residual Error pixels: " << std::endl << histo.ToString() << std::endl;
-        }
+      //-- Export initial triangulation statistics
+      if (_bHtmlReport)
+      {
+        using namespace htmlDocument;
+        std::ostringstream os;
+        os << "Initial triangulation statistics.";
+        _htmlDocStream->pushInfo("<hr>");
+        _htmlDocStream->pushInfo(htmlMarkup("h1",os.str()));
 
-        //-- Export initial triangulation statistics
-        if (_bHtmlReport)
-        {
-          using namespace htmlDocument;
-          std::ostringstream os;
-          os << "Initial triangulation statistics.";
-          _htmlDocStream->pushInfo("<hr>");
-          _htmlDocStream->pushInfo(htmlMarkup("h1",os.str()));
-
-          os.str("");
-          os << "-------------------------------" << "<br>"
-            << "-- #tracks: " << _map_selectedTracks.size() << ".<br>"
-            << "-- #observation: " << vec_residuals.size() << ".<br>"
-            << "-- residual mean (RMSE): " << std::sqrt(mean) << ".<br>"
-            << "-------------------------------" << "<br>";
-          _htmlDocStream->pushInfo(os.str());
-        }
+        os.str("");
+        os << "-------------------------------" << "<br>"
+          << "-- #tracks: " << _map_selectedTracks.size() << ".<br>"
+          << "-- #observation: " << vec_residuals.size() << ".<br>"
+          << "-- residual mean (RMSE): " << std::sqrt(mean) << ".<br>"
+          << "-------------------------------" << "<br>";
+        _htmlDocStream->pushInfo(os.str());
       }
     }
   }
