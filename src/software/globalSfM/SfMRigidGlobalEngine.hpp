@@ -111,6 +111,7 @@ public:
   //--
   typedef std::map< std::pair<size_t, size_t>, std::pair<Mat3, Vec3> > Map_RelativeRT;
   typedef std::map<size_t, PinholeCamera > Map_Camera;
+  typedef std::map<size_t, std::pair<Mat3, Vec3 > > Map_Rig;
 
 private:
   /// Read input data (point correspondences, K matrix)
@@ -152,7 +153,7 @@ private:
   void bundleAdjustment(
     Map_Camera & map_camera,
     std::vector<Vec3> & vec_allScenes,
-    const STLMAPTracks & map_tracksSelected,
+    const std::vector< std::pair<vector <double>, vector<double> > > pointInfo,
     bool bRefineRotation = true,
     bool bRefineTranslation = true,
     bool bRefineIntrinsics = false);
@@ -205,6 +206,8 @@ private:
   //-----
   // Cameras (Motion)
   Map_Camera _map_camera;
+  // Rigs (Motion)
+  Map_Rig  _map_rig;
   // Structure
   std::vector<Vec3> _vec_allScenes;
   // Structure visibility
