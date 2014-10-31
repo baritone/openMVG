@@ -1386,7 +1386,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         adapter,
         sac_problems::relative_pose::NoncentralRelativePoseSacProblem::SIXPT));
     ransac.sac_model_ = relposeproblem_ptr;
-    ransac.threshold_ = 2.0*(1.0 - cos(atan(sqrt(2.0) * 0.5 / averageFocal )));
+    ransac.threshold_ = 2.0*(1.0 - cos(atan(sqrt(2.0) * 2.5 / averageFocal )));
     ransac.max_iterations_ = 16384;
 
    //Run the experiment
@@ -2165,10 +2165,9 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
       pt3D = Vec3(pt[0], pt[1], pt[2]);
     }
 
-    // Get back camera
+    // Get back camera intrinsics
     i = 0;
-    for (Map_Camera::iterator iter = map_camera.begin();
-      iter != map_camera.end(); ++iter, ++i)
+    for (i = 0 ; i < _vec_intrinsicGroups.size() ; ++i)
     {
       // camera motion [R|t]
       const double * cam = ba_problem.mutable_cameras_extrinsic(i);
@@ -2178,15 +2177,39 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
       Vec3 t(cam[3], cam[4], cam[5]);
 
       // camera intrinsics [f,ppx,ppy]
-      const size_t intrinsicId = _map_IntrinsicIdPerImageId[i];
-      double * intrinsics = ba_problem.mutable_cameras_intrinsic(intrinsicId);
-      Mat3 K = iter->second._K;
+      double * intrinsics = ba_problem.mutable_cameras_intrinsic(i);
+      Mat3 K = Mat3::Identity();
       K << intrinsics[0], 0, intrinsics[1],
            0, intrinsics[0], intrinsics[2],
            0, 0, 1;
       // Update the camera
-      PinholeCamera & sCam = iter->second;
-      sCam = PinholeCamera(K, R, t);
+      _vec_intrinsicGroups[i].m_R    = R;
+      _vec_intrinsicGroups[i].m_rigC = -R.transpose() * t ;
+      _vec_intrinsicGroups[i].m_K    = K;
+    }
+
+    // get back camera positions
+    i = 0;
+    for (Map_Camera::iterator iter = map_camera.begin();
+      iter != map_camera.end(); ++iter, ++i)
+    {
+      // camera motion [R|t]
+      const size_t intrinsicId = _map_IntrinsicIdPerImageId[i];
+      const size_t rigId       = _map_RigIdPerImageId[i];
+
+      // compute camera rotation
+      const Mat3 & Ri = _map_rig.find(rigId)->second.first ;
+      const Mat3 & Rcam = _vec_intrinsicGroups[intrinsicId].m_R;
+      const Mat3 & R = Rcam * Ri;
+
+      // compute camera translation
+      Vec3 Rigt = _map_rig.find(rigId)->second.second ;
+      const Vec3 tCam = -Rcam * _vec_intrinsicGroups[intrinsicId].m_rigC ;
+      const Vec3 t = Rcam * Rigt + tCam;
+
+      const Mat3 & _K = _vec_intrinsicGroups[intrinsicId].m_K;   // The same K matrix is used by all the camera
+      _map_camera[i] = PinholeCamera(_K, R, t);
+
     }
 
     {
