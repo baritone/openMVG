@@ -9,17 +9,7 @@
 #include "openMVG/image/image.hpp"
 #include "openMVG/features/features.hpp"
 
-/// Generic Image Collection image matching
-#include "openMVG/matching_image_collection/Matcher_AllInMemory.hpp"
-#include "openMVG/matching_image_collection/GeometricFilter.hpp"
-#include "openMVG/matching_image_collection/F_ACRobust.hpp"
-#include "openMVG/matching_image_collection/E_ACRobust.hpp"
-#include "openMVG/matching_image_collection/H_ACRobust.hpp"
-#include "software/SfM/pairwiseAdjacencyDisplay.hpp"
 #include "software/SfM/SfMIOHelper.hpp"
-#include "openMVG/matching/matcher_brute_force.hpp"
-#include "openMVG/matching/matcher_kdtree_flann.hpp"
-#include "openMVG/matching/indMatch_utils.hpp"
 
 /// Feature detector and descriptor interface
 #include "nonFree/sift/SIFT.hpp"
@@ -38,8 +28,6 @@
 #include <vector>
 
 using namespace openMVG;
-using namespace openMVG::matching;
-using namespace openMVG::robust;
 using namespace std;
 
 int main(int argc, char **argv)
