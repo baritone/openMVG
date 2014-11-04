@@ -150,7 +150,7 @@ struct indexedImageGraph
   {
     map_size_t_to_node[*iter] = g.addNode();
     (*map_nodeMapIndex) [map_size_t_to_node[*iter]] = *iter;
-    (*map_codeMapName) [map_size_t_to_node[*iter]] = vec_fileNames[subCameraNumber * (*iter)];
+    (*map_codeMapName) [map_size_t_to_node[*iter]] = vec_fileNames[(*iter)];
   }
 
   //C-- Add weighted edges from the "map_indexedMatches" object
@@ -197,7 +197,7 @@ struct indexedImageGraph
   {
     map_size_t_to_node[*iter] = g.addNode();
     (*map_nodeMapIndex) [map_size_t_to_node[*iter]] = *iter;
-    (*map_codeMapName) [map_size_t_to_node[*iter]] = vec_fileNames[subCameraNumber * (*iter)];
+    (*map_codeMapName) [map_size_t_to_node[*iter]] = vec_fileNames[(*iter)];
   }
 
   //C-- Add weighted edges from the pairs object
