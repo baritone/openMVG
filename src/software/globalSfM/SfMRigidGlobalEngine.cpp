@@ -534,7 +534,6 @@ bool GlobalRigidReconstructionEngine::Process()
   // compute liste of pairwise matches per rig
   //--------------------
   ComputeMapMatchesRig();
-  printf("matches  computed \n");
 
   //-- Export input graph
   {
@@ -546,8 +545,6 @@ bool GlobalRigidReconstructionEngine::Process()
       stlplus::create_filespec(_sOutDirectory, "input_graph"),
       putativeGraph.g);
   }
-
-  printf("graph exported \n");
 
 
   openMVG::Timer total_reconstruction_timer;
@@ -906,7 +903,7 @@ bool GlobalRigidReconstructionEngine::Process()
   TracksBuilder tracksBuilder;
   {
     tracksBuilder.Build(_map_Matches_Rig);
-    tracksBuilder.Filter(2);
+    tracksBuilder.Filter(3);
     tracksBuilder.ExportToSTL(_map_selectedTracks);
   }
 
@@ -1244,7 +1241,6 @@ void GlobalRigidReconstructionEngine::ComputeMapMatchesRig()
   for (PairWiseMatches::const_iterator iter = _map_Matches_E.begin();
     iter != _map_Matches_E.end(); ++iter)
   {
-
      // extract rig id from image id
      const size_t  I = min(_map_RigIdPerImageId[iter->first.first], _map_RigIdPerImageId[iter->first.second]);
      const size_t  J = max(_map_RigIdPerImageId[iter->first.first], _map_RigIdPerImageId[iter->first.second]);
