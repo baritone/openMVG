@@ -1405,77 +1405,86 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     // compute point cloud associated and do BA to refine pose of rigs
     Mat3  K = Mat3::Identity();
     std::vector<Vec3> vec_allScenes;
-    std::vector< std::vector <double> > obsR0;
-    std::vector< std::vector <double> > obsR1;
 
     // count the number of observations
     size_t nbmeas = 0;
 
-    // loop on inter-rig correspondences
-    for( PairWiseMatches::const_iterator iterMatch =  iter->second.begin() ;
-              iterMatch != iter->second.end() ; ++iterMatch ){
+    // compute tracks between rigs
+    RigWiseMatches map_matchesR0R1;
+    map_matchesR0R1.insert(*_map_Matches_Rig.find(std::make_pair(R0,R1)));
 
-      // extract camera id and subchannel number
-      size_t I = iterMatch->first.first;
-      size_t J = iterMatch->first.second;
+    // Compute tracks:
+    openMVG::tracks::STLMAPTracks map_tracks;
+    TracksBuilder tracksBuilder;
+    {
+      tracksBuilder.Build(map_matchesR0R1);
+      tracksBuilder.Filter(2);
+      tracksBuilder.ExportToSTL(map_tracks);
+    }
 
-      const size_t SubI = _map_IntrinsicIdPerImageId[I];
-      const size_t SubJ = _map_IntrinsicIdPerImageId[J];
+    // Triangulation of all the tracks
+    // vec_allScenes.resize(map_tracks.size());
+    {
+      Map_Camera map_camera;
+      std::vector<double> vec_residuals;
+      vec_residuals.reserve(map_tracks.size());
 
-      // compute pose of each cameras
-      Mat3 Rcam0 = _vec_intrinsicGroups[SubI].m_R;
-      Mat3 Rcam1 = _vec_intrinsicGroups[SubJ].m_R;
+#ifdef USE_OPENMP
+      #pragma comment omp parallel for schedule(dynamic)
+#endif
+      size_t idx = 0;
+      for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
+             iterTracks != map_tracks.end(); ++iterTracks )
+      {
+        const submapTrack & subTrack = iterTracks->second;
 
-      Vec3 CI = _vec_intrinsicGroups[SubI].m_rigC;
-      Vec3 CJ = _vec_intrinsicGroups[SubJ].m_rigC;
+        // Look to the features required for the triangulation task
+        Triangulation trianObj;
+        for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack)
+        {
+          const size_t imaIndex = iterSubTrack->first;
+          const size_t featIndex = iterSubTrack->second;
+          const SIOPointFeature & pt = _map_feats_normalized[imaIndex][featIndex];
 
-      Vec3 tI, tJ;
-      Mat3 RI, RJ;
+          // extract camera id and subchannel number
+          const size_t SubI  = _map_IntrinsicIdPerImageId[imaIndex];
+          const size_t rigId = _map_RigIdPerImageId[imaIndex];
 
-      RI = Rcam0;
-      RJ = Rcam1 * Rrig;
-      tI =-Rcam0 * CI;
-      tJ = RJ*(-CRig - Rrig.transpose() * CJ);
+          // compute pose of each cameras
+          const Mat3 RcamI = _vec_intrinsicGroups[SubI].m_R;
+          const Vec3 CI = _vec_intrinsicGroups[SubI].m_rigC;
 
-      // build associated camera
-      PinholeCamera cam1(K, RI, tI);
-      PinholeCamera cam2(K, RJ, tJ);
+          Vec3 tI; Mat3 RI;
 
-      Mat x1(2, iterMatch->second.size()), x2(2, iterMatch->second.size());
-
-      for (size_t k = 0; k < iterMatch->second.size(); ++k)
+          if( rigId == R0)
           {
-            x1.col(k) = _map_feats_normalized[I][iterMatch->second[k]._i].coords().cast<double>();
-            x2.col(k) = _map_feats_normalized[J][iterMatch->second[k]._j].coords().cast<double>();
+             RI = RcamI;
+             tI = -RcamI * CI;
+          }
+          else
+          {
+            RI = RcamI * Rrig;
+            tI = RI*(-CRig - Rrig.transpose() * CI);
+          }
 
-            // export observation for BA.
-            std::vector < double > temp0, temp1;
+          // build associated camera
+          PinholeCamera cam(K, RI, tI);
+          map_camera[imaIndex] = cam;
 
-            temp0.push_back( x1.col(k)(0));
-            temp0.push_back( x1.col(k)(1));
-            temp0.push_back( SubI );
-
-            obsR0.push_back(temp0);
-
-            temp1.push_back( x2.col(k)(0));
-            temp1.push_back( x2.col(k)(1));
-            temp1.push_back( SubJ );
-
-            obsR1.push_back(temp1);
+          // Build the P matrix
+          trianObj.add(map_camera[imaIndex]._P, pt.coords().cast<double>());
         }
 
+        // Compute the 3D point and keep point index with negative depth
+        const Vec3 Xs = trianObj.compute();
+        vec_allScenes.push_back(Xs);
+        ++idx;
 
-        // compute 3D point
-        for (size_t k = 0; k < x1.cols(); ++k) {
-          const Vec2 & x1_ = x1.col(k),
-            & x2_ = x2.col(k);
-
-          Vec3 X;
-          TriangulateDLT(cam1._P, x1_, cam2._P, x2_, &X);
-          vec_allScenes.push_back(X);
-        }
-
-    } // end loop on matches inter-rigs
+#ifdef USE_OPENMP
+  #pragma comment omp critical
+#endif
+      }
+    }
 
     // export point cloud associated to pair (I,J). Only for debug purpose
     std::ostringstream pairIJ;
@@ -1491,7 +1500,13 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     const size_t nbPoints3D = vec_allScenes.size();
 
     // Count the number of measurement (sum of the reconstructed track length)
-    size_t nbmeasurements = 2 * obsR0.size() ;
+    size_t nbmeasurements = 0;
+    for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
+      iterTracks != map_tracks.end(); ++iterTracks)
+    {
+      const submapTrack & subTrack = iterTracks->second;
+      nbmeasurements += subTrack.size();
+    }
 
     // Setup a BA problem
     using namespace openMVG::bundle_adjustment;
@@ -1587,22 +1602,42 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     }
 
     // Fill the measurements
-    for (size_t k = 0; k < obsR0.size(); ++k) {
+    size_t k = 0;
+    for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
+      iterTracks != map_tracks.end(); ++iterTracks, ++k)
+    {
+      // Look through the track and add point position
+      const tracks::submapTrack & track = iterTracks->second;
 
-      ba_problem.observations_.push_back( obsR0[k][0] );
-      ba_problem.observations_.push_back( obsR0[k][1] );
-      ba_problem.camera_index_intrinsic.push_back( (size_t) obsR0[k][2] );
-      ba_problem.camera_index_extrinsic.push_back( (size_t) obsR0[k][2] );
-      ba_problem.point_index_.push_back(k);
-      ba_problem.rig_index_extrinsic.push_back(0);
+      for( tracks::submapTrack::const_iterator iterTrack = track.begin();
+        iterTrack != track.end();
+        ++iterTrack)
+      {
+        const size_t imageId = iterTrack->first;
+        const size_t featId = iterTrack->second;
 
-      ba_problem.observations_.push_back( obsR1[k][0] );
-      ba_problem.observations_.push_back( obsR1[k][1] );
-      ba_problem.camera_index_intrinsic.push_back( (size_t) obsR1[k][2] );
-      ba_problem.camera_index_extrinsic.push_back( (size_t) obsR1[k][2] );
-      ba_problem.point_index_.push_back(k);
-      ba_problem.rig_index_extrinsic.push_back(1);
+        // If imageId reconstructed:
+        //  - Add measurements (the feature position)
+        //  - Add camidx (map the image number to the camera index)
+        //  - Add ptidx (the 3D corresponding point index) (must be increasing)
 
+        //if ( set_camIndex.find(imageId) != set_camIndex.end())
+        {
+          const std::vector<SIOPointFeature> & vec_feats = _map_feats_normalized[imageId];
+          const SIOPointFeature & ptFeat = vec_feats[featId];
+
+          ba_problem.observations_.push_back( ptFeat.x() );
+          ba_problem.observations_.push_back( ptFeat.y() );
+
+          ba_problem.point_index_.push_back(k);
+          ba_problem.camera_index_extrinsic.push_back(_map_IntrinsicIdPerImageId[imageId]);
+          ba_problem.camera_index_intrinsic.push_back(_map_IntrinsicIdPerImageId[imageId]);
+          if ( _map_RigIdPerImageId[imageId] == R0 )
+             ba_problem.rig_index_extrinsic.push_back(0);
+          else
+             ba_problem.rig_index_extrinsic.push_back(1);
+        }
+      }
     }
 
     // Create residuals for each observation in the bundle adjustment problem. The
