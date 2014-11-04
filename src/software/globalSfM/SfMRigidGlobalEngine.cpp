@@ -899,114 +899,106 @@ bool GlobalRigidReconstructionEngine::Process()
   //-------------------
   //-- Initial triangulation of the scene from the computed global motions
   //-------------------
-  std::vector< std::pair<vector <double>, vector<double> > > pointInfo;
+  // Compute tracks
+  TracksBuilder tracksBuilder;
+  {
+    tracksBuilder.Build(_map_Matches_Rig);
+    tracksBuilder.Filter(3);
+    tracksBuilder.ExportToSTL(_map_selectedTracks);
+  }
 
   {
     std::vector<double> vec_residuals;
 
-    // loop on rigs
-    for (RigWiseMatches::const_iterator iter = _map_Matches_Rig.begin();
-         iter != _map_Matches_Rig.end(); ++iter )
+    // Triangulation of all the tracks
+    _vec_allScenes.resize(_map_selectedTracks.size());
+
     {
-      // loop on inter-rig correspondences
-      for( PairWiseMatches::const_iterator iterMatch =  iter->second.begin() ;
-                iterMatch != iter->second.end() ; ++iterMatch )
+
+#ifdef USE_OPENMP
+      #pragma comment omp parallel for schedule(dynamic)
+#endif
+      std::vector<double> vec_residuals;
+      vec_residuals.reserve(_map_selectedTracks.size());
+
+      size_t idx = 0;
+      for (STLMAPTracks::const_iterator iterTracks = _map_selectedTracks.begin();
+             iterTracks != _map_selectedTracks.end(); ++iterTracks, ++idx)
       {
-        // extract camera id and subchannel number
-        const size_t I = iterMatch->first.first;
-        const size_t J = iterMatch->first.second;
-        const size_t SubI = _map_IntrinsicIdPerImageId[I];
-        const size_t SubJ = _map_IntrinsicIdPerImageId[J];
+        const submapTrack & subTrack = iterTracks->second;
 
-        Mat x1(2, iterMatch->second.size()), x2(2, iterMatch->second.size());
-
-        for (size_t k = 0; k < iterMatch->second.size(); ++k)
-        {
-            x1.col(k) = _map_feats[I][iterMatch->second[k]._i].coords().cast<double>();
-            x2.col(k) = _map_feats[J][iterMatch->second[k]._j].coords().cast<double>();
-        }
-
-        // compute 3D point
-        for (size_t k = 0; k < x1.cols(); ++k) {
-          const Vec2 & x1_ = x1.col(k),
-            & x2_ = x2.col(k);
-
+        // Look to the features required for the triangulation task
         Triangulation trianObj;
+        for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack)
+        {
+          const size_t imaIndex = iterSubTrack->first;
+          const size_t featIndex = iterSubTrack->second;
+          const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
 
-        trianObj.add(_map_camera[I]._P, x1_ );
-        trianObj.add(_map_camera[J]._P, x2_ );
+          // Build the P matrix
+          trianObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
+        }
 
         // Compute the 3D point and keep point index with negative depth
-        const Vec3 X = trianObj.compute();
+        const Vec3 Xs = trianObj.compute();
+        _vec_allScenes[idx] = Xs;
 
-        if (trianObj.minDepth() > 0 || is_finite(X[0]) || is_finite(X[1])
-             || is_finite(X[2]) )  {
-
-          _vec_allScenes.push_back(X);
-
-          // compute residual
-          vec_residuals.push_back(  0.5 * _map_camera[I].Residual(X, x1_)
-                                  + 0.5 * _map_camera[J].Residual(X, x2_) );
-
-          // export observation for BA.
-          std::vector < double > temp0, temp1;
-
-          temp0.push_back( iter->first.first );  // rig index
-          temp0.push_back( SubI );               // camera intrinsic number
-          temp0.push_back( x1_(0));        // feature coordinate
-          temp0.push_back( x1_(1));
-
-          temp1.push_back( iter->first.second ); // rig index
-          temp1.push_back( SubJ );               // camera intrinsic number
-          temp1.push_back( x2_(0));        // feature coordinate
-          temp1.push_back( x2_(1));
-
-          pointInfo.push_back(std::make_pair(temp0, temp1));
+        //-- Compute residual over all the projections
+        {
+          for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
+            const size_t imaIndex = iterSubTrack->first;
+            const size_t featIndex = iterSubTrack->second;
+            const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
+            vec_residuals.push_back(_map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>()));
+            // no ordering in vec_residuals since there is parallelism
+          }
         }
 
+#ifdef USE_OPENMP
+  #pragma comment omp critical
+#endif
       }
+
+      {
+        // Display some statistics of reprojection errors
+        std::cout << "\n\nResidual statistics:\n" << std::endl;
+        minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end());
+        double min, max, mean, median;
+        minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(), min, max, mean, median);
+
+        Histogram<float> histo(0.f, *max_element(vec_residuals.begin(),vec_residuals.end())*1.1f);
+        histo.Add(vec_residuals.begin(), vec_residuals.end());
+        std::cout << std::endl << "Residual Error pixels: " << std::endl << histo.ToString() << std::endl;
+
+        // Histogram between 0 and 10 pixels
+        {
+          std::cout << "\n Histogram between 0 and 10 pixels: \n";
+          Histogram<float> histo(0.f, 10.f, 20);
+          histo.Add(vec_residuals.begin(), vec_residuals.end());
+          std::cout << std::endl << "Residual Error pixels: " << std::endl << histo.ToString() << std::endl;
+        }
+
+        //-- Export initial triangulation statistics
+        if (_bHtmlReport)
+        {
+          using namespace htmlDocument;
+          std::ostringstream os;
+          os << "Initial triangulation statistics.";
+          _htmlDocStream->pushInfo("<hr>");
+          _htmlDocStream->pushInfo(htmlMarkup("h1",os.str()));
+
+          os.str("");
+          os << "-------------------------------" << "<br>"
+            << "-- #tracks: " << _map_selectedTracks.size() << ".<br>"
+            << "-- #observation: " << vec_residuals.size() << ".<br>"
+            << "-- residual mean (RMSE): " << std::sqrt(mean) << ".<br>"
+            << "-------------------------------" << "<br>";
+          _htmlDocStream->pushInfo(os.str());
+        }
       }
     }
 
     plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
-
-    {
-      // Display some statistics of reprojection errors
-      std::cout << "\n\nResidual statistics:\n" << std::endl;
-      minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end());
-      double min, max, mean, median;
-      minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(), min, max, mean, median);
-
-      Histogram<float> histo(0.f, *max_element(vec_residuals.begin(),vec_residuals.end())*1.1f);
-      histo.Add(vec_residuals.begin(), vec_residuals.end());
-      std::cout << std::endl << "Residual Error pixels: " << std::endl << histo.ToString() << std::endl;
-
-      // Histogram between 0 and 10 pixels
-      {
-        std::cout << "\n Histogram between 0 and 10 pixels: \n";
-        Histogram<float> histo(0.f, 10.f, 20);
-        histo.Add(vec_residuals.begin(), vec_residuals.end());
-        std::cout << std::endl << "Residual Error pixels: " << std::endl << histo.ToString() << std::endl;
-      }
-
-      //-- Export initial triangulation statistics
-      if (_bHtmlReport)
-      {
-        using namespace htmlDocument;
-        std::ostringstream os;
-        os << "Initial triangulation statistics.";
-        _htmlDocStream->pushInfo("<hr>");
-        _htmlDocStream->pushInfo(htmlMarkup("h1",os.str()));
-
-        os.str("");
-        os << "-------------------------------" << "<br>"
-          << "-- #tracks: " << _map_selectedTracks.size() << ".<br>"
-          << "-- #observation: " << vec_residuals.size() << ".<br>"
-          << "-- residual mean (RMSE): " << std::sqrt(mean) << ".<br>"
-          << "-------------------------------" << "<br>";
-        _htmlDocStream->pushInfo(os.str());
-      }
-    }
   }
 
   //-------------------
@@ -1014,17 +1006,17 @@ bool GlobalRigidReconstructionEngine::Process()
   //-------------------
 
   // Refine only Structure and translations
-  bundleAdjustment(_map_camera, _vec_allScenes, pointInfo, false, true, false);
+  bundleAdjustment(_map_camera, _vec_allScenes, _map_selectedTracks, false, true, false);
   plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_T_Xi", "ply"));
 
   // Refine Structure, rotations and translations
-  bundleAdjustment(_map_camera, _vec_allScenes, pointInfo, true, true, false);
+  bundleAdjustment(_map_camera, _vec_allScenes, _map_selectedTracks, true, true, false);
   plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_RT_Xi", "ply"));
 
   if (_bRefineIntrinsics)
   {
     // Refine Structure, rotations, translations and intrinsics
-    bundleAdjustment(_map_camera, _vec_allScenes, pointInfo, true, true, true);
+    bundleAdjustment(_map_camera, _vec_allScenes, _map_selectedTracks, true, true, true);
     plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_KRT_Xi", "ply"));
   }
 
@@ -1423,7 +1415,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     }
 
     // Triangulation of all the tracks
-    // vec_allScenes.resize(map_tracks.size());
     {
       Map_Camera map_camera;
       std::vector<double> vec_residuals;
@@ -1950,7 +1941,7 @@ void GlobalRigidReconstructionEngine::tripletRotationRejection(
 void GlobalRigidReconstructionEngine::bundleAdjustment(
     Map_Camera & map_camera,
     std::vector<Vec3> & vec_allScenes,
-    std::vector< std::pair<vector <double>, vector<double> > > pointInfo,
+    const STLMAPTracks & map_tracksSelected,
     bool bRefineRotation,
     bool bRefineTranslation,
     bool bRefineIntrinsics)
@@ -1962,7 +1953,13 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
   const size_t nbPoints3D = vec_allScenes.size();
 
   // Count the number of measurement (sum of the reconstructed track length)
-  size_t nbmeasurements = 2 * vec_allScenes.size() ;
+  size_t nbmeasurements = 0;
+  for (STLMAPTracks::const_iterator iterTracks = map_tracksSelected.begin();
+    iterTracks != map_tracksSelected.end(); ++iterTracks)
+  {
+    const submapTrack & subTrack = iterTracks->second;
+    nbmeasurements += subTrack.size();
+  }
 
   // Setup a BA problem
   using namespace openMVG::bundle_adjustment;
@@ -2043,34 +2040,39 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
   }
 
   // Fill the measurements
-  for (size_t k = 0; k < vec_allScenes.size(); ++k) {
+  size_t k = 0;
+  for (STLMAPTracks::const_iterator iterTracks = map_tracksSelected.begin();
+    iterTracks != map_tracksSelected.end(); ++iterTracks, ++k)
+  {
+    // Look through the track and add point position
+    const tracks::submapTrack & track = iterTracks->second;
 
-    // extract information of first image
-    size_t  rigIndex = pointInfo[k].first[0] ;
-    size_t  subcamIndex = pointInfo[k].first[1];
-    double  x = pointInfo[k].first[2];
-    double  y = pointInfo[k].first[3];
+    for( tracks::submapTrack::const_iterator iterTrack = track.begin();
+      iterTrack != track.end();
+      ++iterTrack)
+    {
+      const size_t imageId = iterTrack->first;
+      const size_t featId = iterTrack->second;
 
-    ba_problem.observations_.push_back( x );
-    ba_problem.observations_.push_back( y );
-    ba_problem.camera_index_intrinsic.push_back( subcamIndex );
-    ba_problem.camera_index_extrinsic.push_back( subcamIndex );
-    ba_problem.point_index_.push_back(k);
-    ba_problem.rig_index_extrinsic.push_back(rigIndex);
+      // If imageId reconstructed:
+      //  - Add measurements (the feature position)
+      //  - Add camidx (map the image number to the camera index)
+      //  - Add ptidx (the 3D corresponding point index) (must be increasing)
 
-    // extract information of second image
-    rigIndex = pointInfo[k].second[0] ;
-    subcamIndex = pointInfo[k].second[1];
-    x = pointInfo[k].second[2];
-    y = pointInfo[k].second[3];
+      //if ( set_camIndex.find(imageId) != set_camIndex.end())
+      {
+        const std::vector<SIOPointFeature> & vec_feats = _map_feats[imageId];
+        const SIOPointFeature & ptFeat = vec_feats[featId];
 
-    ba_problem.observations_.push_back( x );
-    ba_problem.observations_.push_back( y );
-    ba_problem.camera_index_intrinsic.push_back( subcamIndex );
-    ba_problem.camera_index_extrinsic.push_back( subcamIndex );
-    ba_problem.point_index_.push_back(k);
-    ba_problem.rig_index_extrinsic.push_back(rigIndex);
+        ba_problem.observations_.push_back( ptFeat.x() );
+        ba_problem.observations_.push_back( ptFeat.y() );
 
+        ba_problem.point_index_.push_back(k);
+        ba_problem.camera_index_extrinsic.push_back(_map_IntrinsicIdPerImageId[imageId]);
+        ba_problem.camera_index_intrinsic.push_back(_map_IntrinsicIdPerImageId[imageId]);
+        ba_problem.rig_index_extrinsic.push_back(_map_RigIdPerImageId[imageId]);
+      }
+    }
   }
 
   // Create residuals for each observation in the bundle adjustment problem. The

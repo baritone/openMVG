@@ -153,7 +153,7 @@ private:
   void bundleAdjustment(
     Map_Camera & map_camera,
     std::vector<Vec3> & vec_allScenes,
-    const std::vector< std::pair<vector <double>, vector<double> > > pointInfo,
+    const STLMAPTracks & map_tracksSelected,
     bool bRefineRotation = true,
     bool bRefineTranslation = true,
     bool bRefineIntrinsics = false);
