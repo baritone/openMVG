@@ -379,9 +379,11 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
       tracksBuilder.ExportToSTL(map_tracks);
     }
 #ifdef USE_OPENMP
-  #pragma comment omp critical
+  #pragma omp critical
 #endif
+   {
     map_tracksPerTriplets[i] = map_tracks.size();
+   }
   }
 
   typedef std::pair<size_t,size_t> myEdge;
@@ -407,7 +409,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
   std::cout << std::endl
     << "Computation of the relative translations over the graph with an edge coverage algorithm" << std::endl;
   #ifdef USE_OPENMP
-  #pragma comment omp parallel for schedule(dynamic)
+  #pragma omp parallel for schedule(dynamic)
   #endif
   for (int k = 0; k < vec_edges.size(); ++k)
   {

@@ -917,10 +917,10 @@ bool GlobalRigidReconstructionEngine::Process()
       vec_residuals.reserve(_map_selectedTracks.size());
 
       C_Progress_display my_progress_bar_triangulation( _map_selectedTracks.size(),
-      std::cout, "Initial triangulation:\n");
+      std::cout, "\n\n Initial triangulation:\n");
 
 #ifdef USE_OPENMP
-      #pragma comment omp parallel for schedule(dynamic)
+      #pragma omp parallel for schedule(dynamic)
 #endif
 
       for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
@@ -947,7 +947,7 @@ bool GlobalRigidReconstructionEngine::Process()
           _vec_allScenes[idx] = Xs;
 
 #ifdef USE_OPENMP
-#pragma comment omp critical
+#pragma omp critical
 #endif
         //-- Compute residual over all the projections
         {
@@ -1285,16 +1285,13 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 {
   // For each pair, compute the rotation from pairwise point matches:
   C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n*" );
-#if USE_OPENMP
-  #pragma comment omp parallel for schedule(dynamic)
-#endif
 
   // create rig structure using openGV
   translations_t  rigOffsets;
   rotations_t     rigRotations;
   double          averageFocal=0.0;
 
-  for(int k(0) ; k < _vec_intrinsicGroups.size(); ++k)
+  for(int k=0; k < _vec_intrinsicGroups.size(); ++k)
   {
       translation_t   t = _vec_intrinsicGroups[k].m_rigC;
       rotation_t      R = _vec_intrinsicGroups[k].m_R.transpose();
@@ -1306,6 +1303,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
   averageFocal /= (double) _vec_intrinsicGroups.size();
 
+#ifdef USE_OPENMP
+    #pragma omp parallel for schedule(dynamic)
+#endif
   // loop on rigs
   for (int i = 0; i < _map_Matches_Rig.size(); ++i)
   {
@@ -1382,7 +1382,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         sac_problems::relative_pose::NoncentralRelativePoseSacProblem::SIXPT));
     ransac.sac_model_ = relposeproblem_ptr;
     ransac.threshold_ = 2.0*(1.0 - cos(atan(sqrt(2.0) * 2.5 / averageFocal )));
-    ransac.max_iterations_ = 16384;
+    ransac.max_iterations_ = 4095;
 
    //Run the experiment
     struct timeval tic;
@@ -1422,14 +1422,13 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
       Map_Camera map_camera;
       std::vector<double> vec_residuals;
       vec_residuals.reserve(map_tracks.size());
+      vec_allScenes.resize(map_tracks.size());
 
-#ifdef USE_OPENMP
-      #pragma comment omp parallel for schedule(dynamic)
-#endif
-      size_t idx = 0;
-      for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
-             iterTracks != map_tracks.end(); ++iterTracks )
+       for (int idx = 0; idx < map_tracks.size(); ++idx)
       {
+        STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
+        std::advance(iterTracks, idx);
+
         const submapTrack & subTrack = iterTracks->second;
 
         // Look to the features required for the triangulation task
@@ -1471,12 +1470,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         // Compute the 3D point and keep point index with negative depth
         const Vec3 Xs = trianObj.compute();
-        vec_allScenes.push_back(Xs);
-        ++idx;
-
-#ifdef USE_OPENMP
-  #pragma comment omp critical
-#endif
+        vec_allScenes[idx] = Xs;
       }
     }
 
@@ -1729,7 +1723,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         plyHelper::exportToPly(finalPoint, stlplus::create_filespec(_sOutDirectory,"pointCloud_rot_"+pairIJ.str()) );
 
     }
-
     // export rotation for rotation avereging
     vec_relatives[iter->first] = std::make_pair(Rrig,tRig);
     ++my_progress_bar;
