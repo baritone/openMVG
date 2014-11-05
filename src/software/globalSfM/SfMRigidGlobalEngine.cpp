@@ -899,50 +899,56 @@ bool GlobalRigidReconstructionEngine::Process()
   //-------------------
   //-- Initial triangulation of the scene from the computed global motions
   //-------------------
-  // Compute tracks
-  TracksBuilder tracksBuilder;
   {
-    tracksBuilder.Build(_map_Matches_Rig);
-    tracksBuilder.Filter(3);
-    tracksBuilder.ExportToSTL(_map_selectedTracks);
-  }
+    // Compute tracks
+    TracksBuilder tracksBuilder;
+    {
+      tracksBuilder.Build(_map_Matches_Rig);
+      tracksBuilder.Filter(3);
+      tracksBuilder.ExportToSTL(_map_selectedTracks);
+    }
 
-  {
     std::vector<double> vec_residuals;
 
     // Triangulation of all the tracks
     _vec_allScenes.resize(_map_selectedTracks.size());
-
     {
+      std::vector<double> vec_residuals;
+      vec_residuals.reserve(_map_selectedTracks.size());
+
+      C_Progress_display my_progress_bar_triangulation( _map_selectedTracks.size(),
+      std::cout, "Initial triangulation:\n");
 
 #ifdef USE_OPENMP
       #pragma comment omp parallel for schedule(dynamic)
 #endif
-      std::vector<double> vec_residuals;
-      vec_residuals.reserve(_map_selectedTracks.size());
 
-      size_t idx = 0;
-      for (STLMAPTracks::const_iterator iterTracks = _map_selectedTracks.begin();
-             iterTracks != _map_selectedTracks.end(); ++iterTracks, ++idx)
+      for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
       {
-        const submapTrack & subTrack = iterTracks->second;
+          STLMAPTracks::const_iterator iterTracks = _map_selectedTracks.begin();
+          std::advance(iterTracks, idx);
 
-        // Look to the features required for the triangulation task
-        Triangulation trianObj;
-        for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack)
-        {
-          const size_t imaIndex = iterSubTrack->first;
-          const size_t featIndex = iterSubTrack->second;
-          const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
+          const submapTrack & subTrack = iterTracks->second;
 
-          // Build the P matrix
-          trianObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
-        }
+          // Look to the features required for the triangulation task
+          Triangulation trianObj;
+          for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack)
+          {
+            const size_t imaIndex = iterSubTrack->first;
+            const size_t featIndex = iterSubTrack->second;
+            const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
 
-        // Compute the 3D point and keep point index with negative depth
-        const Vec3 Xs = trianObj.compute();
-        _vec_allScenes[idx] = Xs;
+            // Build the P matrix
+            trianObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
+          }
 
+          // Compute the 3D point and keep point index with negative depth
+          const Vec3 Xs = trianObj.compute();
+          _vec_allScenes[idx] = Xs;
+
+#ifdef USE_OPENMP
+#pragma comment omp critical
+#endif
         //-- Compute residual over all the projections
         {
           for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
@@ -952,11 +958,8 @@ bool GlobalRigidReconstructionEngine::Process()
             vec_residuals.push_back(_map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>()));
             // no ordering in vec_residuals since there is parallelism
           }
+          ++my_progress_bar_triangulation;
         }
-
-#ifdef USE_OPENMP
-  #pragma comment omp critical
-#endif
       }
 
       {
