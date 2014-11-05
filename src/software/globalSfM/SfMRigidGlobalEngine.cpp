@@ -1392,339 +1392,349 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     gettimeofday( &toc, 0 );
     double ransac_time = TIMETODOUBLE(timeval_minus(toc,tic));
 
-    // retrieve relative rig orientation and translation
-    Mat3  Rrig = ransac.model_coefficients_.block<3,3>(0,0).transpose();
-    Vec3  CRig = ransac.model_coefficients_.col(3);
-    Vec3  tRig = -Rrig * CRig;
+    if(ransac.inliers_.size() > 1000 ){
 
-    // compute point cloud associated and do BA to refine pose of rigs
-    Mat3  K = Mat3::Identity();
-    std::vector<Vec3> vec_allScenes;
+      std::cout << " Number of inliers is " << ransac.inliers_.size() << std::endl;
 
-    // count the number of observations
-    size_t nbmeas = 0;
+      // retrieve relative rig orientation and translation
+      Mat3  Rrig = ransac.model_coefficients_.block<3,3>(0,0).transpose();
+      Vec3  CRig = ransac.model_coefficients_.col(3);
+      Vec3  tRig = -Rrig * CRig;
 
-    // compute tracks between rigs
-    RigWiseMatches map_matchesR0R1;
-    map_matchesR0R1.insert(*_map_Matches_Rig.find(std::make_pair(R0,R1)));
+      // compute point cloud associated and do BA to refine pose of rigs
+      Mat3  K = Mat3::Identity();
+      std::vector<Vec3> vec_allScenes;
 
-    // Compute tracks:
-    openMVG::tracks::STLMAPTracks map_tracks;
-    TracksBuilder tracksBuilder;
-    {
-      tracksBuilder.Build(map_matchesR0R1);
-      tracksBuilder.Filter(2);
-      tracksBuilder.ExportToSTL(map_tracks);
-    }
+      // count the number of observations
+      size_t nbmeas = 0;
 
-    // Triangulation of all the tracks
-    {
-      Map_Camera map_camera;
-      std::vector<double> vec_residuals;
-      vec_residuals.reserve(map_tracks.size());
-      vec_allScenes.resize(map_tracks.size());
+      // compute tracks between rigs
+      RigWiseMatches map_matchesR0R1;
+      map_matchesR0R1.insert(*_map_Matches_Rig.find(std::make_pair(R0,R1)));
 
-       for (int idx = 0; idx < map_tracks.size(); ++idx)
+      // Compute tracks:
+      openMVG::tracks::STLMAPTracks map_tracks;
+      TracksBuilder tracksBuilder;
       {
-        STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
-        std::advance(iterTracks, idx);
+        tracksBuilder.Build(map_matchesR0R1);
+        tracksBuilder.Filter(2);
+        tracksBuilder.ExportToSTL(map_tracks);
+      }
 
+      // Triangulation of all the tracks
+      {
+        Map_Camera map_camera;
+        std::vector<double> vec_residuals;
+        vec_residuals.reserve(map_tracks.size());
+        vec_allScenes.resize(map_tracks.size());
+
+         for (int idx = 0; idx < map_tracks.size(); ++idx)
+        {
+          STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
+          std::advance(iterTracks, idx);
+
+          const submapTrack & subTrack = iterTracks->second;
+
+          // Look to the features required for the triangulation task
+          Triangulation trianObj;
+          for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack)
+          {
+            const size_t imaIndex = iterSubTrack->first;
+            const size_t featIndex = iterSubTrack->second;
+            const SIOPointFeature & pt = _map_feats_normalized[imaIndex][featIndex];
+
+            // extract camera id and subchannel number
+            const size_t SubI  = _map_IntrinsicIdPerImageId[imaIndex];
+            const size_t rigId = _map_RigIdPerImageId[imaIndex];
+
+            // compute pose of each cameras
+            const Mat3 RcamI = _vec_intrinsicGroups[SubI].m_R;
+            const Vec3 CI = _vec_intrinsicGroups[SubI].m_rigC;
+
+            Vec3 tI; Mat3 RI;
+
+            if( rigId == R0)
+            {
+               RI = RcamI;
+               tI = -RcamI * CI;
+            }
+            else
+            {
+              RI = RcamI * Rrig;
+              tI = RI*(-CRig - Rrig.transpose() * CI);
+            }
+
+            // build associated camera
+            PinholeCamera cam(K, RI, tI);
+            map_camera[imaIndex] = cam;
+
+            // Build the P matrix
+            trianObj.add(map_camera[imaIndex]._P, pt.coords().cast<double>());
+          }
+
+          // Compute the 3D point and keep point index with negative depth
+          const Vec3 Xs = trianObj.compute();
+          vec_allScenes[idx] = Xs;
+        }
+      }
+
+      // export point cloud associated to pair (I,J). Only for debug purpose
+      std::ostringstream pairIJ;
+      pairIJ << R0 << "_" << R1 << ".ply";
+
+      plyHelper::exportToPly(vec_allScenes, stlplus::create_filespec(_sOutDirectory,"pointCloud_rot_raw"+pairIJ.str()) );
+
+      // now do bundle adjustment
+      using namespace std;
+
+      const size_t nbRigs = 2;
+      const size_t nbCams = _vec_intrinsicGroups.size();
+      const size_t nbPoints3D = vec_allScenes.size();
+
+      // Count the number of measurement (sum of the reconstructed track length)
+      size_t nbmeasurements = 0;
+      for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
+        iterTracks != map_tracks.end(); ++iterTracks)
+      {
         const submapTrack & subTrack = iterTracks->second;
-
-        // Look to the features required for the triangulation task
-        Triangulation trianObj;
-        for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack)
-        {
-          const size_t imaIndex = iterSubTrack->first;
-          const size_t featIndex = iterSubTrack->second;
-          const SIOPointFeature & pt = _map_feats_normalized[imaIndex][featIndex];
-
-          // extract camera id and subchannel number
-          const size_t SubI  = _map_IntrinsicIdPerImageId[imaIndex];
-          const size_t rigId = _map_RigIdPerImageId[imaIndex];
-
-          // compute pose of each cameras
-          const Mat3 RcamI = _vec_intrinsicGroups[SubI].m_R;
-          const Vec3 CI = _vec_intrinsicGroups[SubI].m_rigC;
-
-          Vec3 tI; Mat3 RI;
-
-          if( rigId == R0)
-          {
-             RI = RcamI;
-             tI = -RcamI * CI;
-          }
-          else
-          {
-            RI = RcamI * Rrig;
-            tI = RI*(-CRig - Rrig.transpose() * CI);
-          }
-
-          // build associated camera
-          PinholeCamera cam(K, RI, tI);
-          map_camera[imaIndex] = cam;
-
-          // Build the P matrix
-          trianObj.add(map_camera[imaIndex]._P, pt.coords().cast<double>());
-        }
-
-        // Compute the 3D point and keep point index with negative depth
-        const Vec3 Xs = trianObj.compute();
-        vec_allScenes[idx] = Xs;
+        nbmeasurements += subTrack.size();
       }
-    }
 
-    // export point cloud associated to pair (I,J). Only for debug purpose
-    std::ostringstream pairIJ;
-    pairIJ << R0 << "_" << R1 << ".ply";
+      // Setup a BA problem
+      using namespace openMVG::bundle_adjustment;
+      BA_Problem_data_rigMotionAndIntrinsic<6,6,3> ba_problem; // Will refine [Rotations|Translations] and 3D points
 
-    plyHelper::exportToPly(vec_allScenes, stlplus::create_filespec(_sOutDirectory,"pointCloud_rot_raw"+pairIJ.str()) );
+      // Configure the size of the problem
+      ba_problem.num_rigs_ = nbRigs;
+      ba_problem.num_cameras_ = nbCams;
+      ba_problem.num_intrinsics_ = nbCams;
+      ba_problem.num_points_ = nbPoints3D;
+      ba_problem.num_observations_ = nbmeasurements;
 
-    // now do bundle adjustment
-    using namespace std;
+      ba_problem.rig_index_extrinsic.reserve(ba_problem.num_observations_);
+      ba_problem.point_index_.reserve(ba_problem.num_observations_);
+      ba_problem.camera_index_extrinsic.reserve(ba_problem.num_observations_);
+      ba_problem.camera_index_intrinsic.reserve(ba_problem.num_observations_);
+      ba_problem.observations_.reserve(2 * ba_problem.num_observations_);
 
-    const size_t nbRigs = 2;
-    const size_t nbCams = _vec_intrinsicGroups.size();
-    const size_t nbPoints3D = vec_allScenes.size();
+      ba_problem.num_parameters_ =
+        6 * ba_problem.num_rigs_         // rigs rotations / translations
+        + 6 * ba_problem.num_cameras_    // #[Rotation|translation] = [3x1]|[3x1]
+        + 3 * ba_problem.num_intrinsics_ // cameras intrinsics (focal and principal point)
+        + 3 * ba_problem.num_points_;    // 3DPoints = [3x1]
+      ba_problem.parameters_.reserve(ba_problem.num_parameters_);
 
-    // Count the number of measurement (sum of the reconstructed track length)
-    size_t nbmeasurements = 0;
-    for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
-      iterTracks != map_tracks.end(); ++iterTracks)
-    {
-      const submapTrack & subTrack = iterTracks->second;
-      nbmeasurements += subTrack.size();
-    }
-
-    // Setup a BA problem
-    using namespace openMVG::bundle_adjustment;
-    BA_Problem_data_rigMotionAndIntrinsic<6,6,3> ba_problem; // Will refine [Rotations|Translations] and 3D points
-
-    // Configure the size of the problem
-    ba_problem.num_rigs_ = nbRigs;
-    ba_problem.num_cameras_ = nbCams;
-    ba_problem.num_intrinsics_ = nbCams;
-    ba_problem.num_points_ = nbPoints3D;
-    ba_problem.num_observations_ = nbmeasurements;
-
-    ba_problem.rig_index_extrinsic.reserve(ba_problem.num_observations_);
-    ba_problem.point_index_.reserve(ba_problem.num_observations_);
-    ba_problem.camera_index_extrinsic.reserve(ba_problem.num_observations_);
-    ba_problem.camera_index_intrinsic.reserve(ba_problem.num_observations_);
-    ba_problem.observations_.reserve(2 * ba_problem.num_observations_);
-
-    ba_problem.num_parameters_ =
-      6 * ba_problem.num_rigs_         // rigs rotations / translations
-      + 6 * ba_problem.num_cameras_    // #[Rotation|translation] = [3x1]|[3x1]
-      + 3 * ba_problem.num_intrinsics_ // cameras intrinsics (focal and principal point)
-      + 3 * ba_problem.num_points_;    // 3DPoints = [3x1]
-    ba_problem.parameters_.reserve(ba_problem.num_parameters_);
-
-    // Fill rigs
-    {
-      Mat3 R = Mat3::Identity();
-      double angleAxis[3];
-      ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
-
-      // translation
-      Vec3 t = Vec3::Zero();
-
-      ba_problem.parameters_.push_back(angleAxis[0]);
-      ba_problem.parameters_.push_back(angleAxis[1]);
-      ba_problem.parameters_.push_back(angleAxis[2]);
-      ba_problem.parameters_.push_back(t[0]);
-      ba_problem.parameters_.push_back(t[1]);
-      ba_problem.parameters_.push_back(t[2]);
-    }
-
-    {
-      Mat3 R = Rrig;
-      double angleAxis[3];
-      ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
-
-      // translation
-      Vec3 t = tRig;
-
-      ba_problem.parameters_.push_back(angleAxis[0]);
-      ba_problem.parameters_.push_back(angleAxis[1]);
-      ba_problem.parameters_.push_back(angleAxis[2]);
-      ba_problem.parameters_.push_back(t[0]);
-      ba_problem.parameters_.push_back(t[1]);
-      ba_problem.parameters_.push_back(t[2]);
-    }
-
-    // Setup rig camera position parameters
-    for (size_t iter=0; iter < ba_problem.num_cameras_ ; ++iter )
-    {
-
-      const Mat3 R = _vec_intrinsicGroups[iter].m_R;
-      double angleAxis[3];
-      ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
-      // translation
-      const Vec3 t = -R * _vec_intrinsicGroups[iter].m_rigC;
-      ba_problem.parameters_.push_back(angleAxis[0]);
-      ba_problem.parameters_.push_back(angleAxis[1]);
-      ba_problem.parameters_.push_back(angleAxis[2]);
-      ba_problem.parameters_.push_back(t[0]);
-      ba_problem.parameters_.push_back(t[1]);
-      ba_problem.parameters_.push_back(t[2]);
-    }
-
-    // Setup rig camera intrinsics parameters
-    for (size_t iter=0; iter < ba_problem.num_cameras_ ; ++iter )
-    {
-      ba_problem.parameters_.push_back( 1.0 );
-      ba_problem.parameters_.push_back( 0.0 );
-      ba_problem.parameters_.push_back( 0.0 );
-    }
-
-    // Fill 3D points
-    for (std::vector<Vec3>::const_iterator iter = vec_allScenes.begin();
-      iter != vec_allScenes.end();
-      ++iter)
-    {
-      const Vec3 & pt3D = *iter;
-      ba_problem.parameters_.push_back(pt3D[0]);
-      ba_problem.parameters_.push_back(pt3D[1]);
-      ba_problem.parameters_.push_back(pt3D[2]);
-    }
-
-    // Fill the measurements
-    size_t k = 0;
-    for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
-      iterTracks != map_tracks.end(); ++iterTracks, ++k)
-    {
-      // Look through the track and add point position
-      const tracks::submapTrack & track = iterTracks->second;
-
-      for( tracks::submapTrack::const_iterator iterTrack = track.begin();
-        iterTrack != track.end();
-        ++iterTrack)
+      // Fill rigs
       {
-        const size_t imageId = iterTrack->first;
-        const size_t featId = iterTrack->second;
+        Mat3 R = Mat3::Identity();
+        double angleAxis[3];
+        ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
 
-        // If imageId reconstructed:
-        //  - Add measurements (the feature position)
-        //  - Add camidx (map the image number to the camera index)
-        //  - Add ptidx (the 3D corresponding point index) (must be increasing)
+        // translation
+        Vec3 t = Vec3::Zero();
 
-        //if ( set_camIndex.find(imageId) != set_camIndex.end())
+        ba_problem.parameters_.push_back(angleAxis[0]);
+        ba_problem.parameters_.push_back(angleAxis[1]);
+        ba_problem.parameters_.push_back(angleAxis[2]);
+        ba_problem.parameters_.push_back(t[0]);
+        ba_problem.parameters_.push_back(t[1]);
+        ba_problem.parameters_.push_back(t[2]);
+      }
+
+      {
+        Mat3 R = Rrig;
+        double angleAxis[3];
+        ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
+
+        // translation
+        Vec3 t = tRig;
+
+        ba_problem.parameters_.push_back(angleAxis[0]);
+        ba_problem.parameters_.push_back(angleAxis[1]);
+        ba_problem.parameters_.push_back(angleAxis[2]);
+        ba_problem.parameters_.push_back(t[0]);
+        ba_problem.parameters_.push_back(t[1]);
+        ba_problem.parameters_.push_back(t[2]);
+      }
+
+      // Setup rig camera position parameters
+      for (size_t iterCam=0; iterCam < ba_problem.num_cameras_ ; ++iterCam )
+      {
+
+        const Mat3 R = _vec_intrinsicGroups[iterCam].m_R;
+        double angleAxis[3];
+        ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
+        // translation
+        const Vec3 t = -R * _vec_intrinsicGroups[iterCam].m_rigC;
+        ba_problem.parameters_.push_back(angleAxis[0]);
+        ba_problem.parameters_.push_back(angleAxis[1]);
+        ba_problem.parameters_.push_back(angleAxis[2]);
+        ba_problem.parameters_.push_back(t[0]);
+        ba_problem.parameters_.push_back(t[1]);
+        ba_problem.parameters_.push_back(t[2]);
+      }
+
+      // Setup rig camera intrinsics parameters
+      for (size_t iterCam=0; iterCam < ba_problem.num_cameras_ ; ++iterCam )
+      {
+        ba_problem.parameters_.push_back( 1.0 );
+        ba_problem.parameters_.push_back( 0.0 );
+        ba_problem.parameters_.push_back( 0.0 );
+      }
+
+      // Fill 3D points
+      for (std::vector<Vec3>::const_iterator iterPoint = vec_allScenes.begin();
+        iterPoint != vec_allScenes.end();
+        ++iterPoint)
+      {
+        const Vec3 & pt3D = *iterPoint;
+        ba_problem.parameters_.push_back(pt3D[0]);
+        ba_problem.parameters_.push_back(pt3D[1]);
+        ba_problem.parameters_.push_back(pt3D[2]);
+      }
+
+      // Fill the measurements
+      size_t k = 0;
+      for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
+        iterTracks != map_tracks.end(); ++iterTracks, ++k)
+      {
+        // Look through the track and add point position
+        const tracks::submapTrack & track = iterTracks->second;
+
+        for( tracks::submapTrack::const_iterator iterTrack = track.begin();
+          iterTrack != track.end();
+          ++iterTrack)
         {
-          const std::vector<SIOPointFeature> & vec_feats = _map_feats_normalized[imageId];
-          const SIOPointFeature & ptFeat = vec_feats[featId];
+          const size_t imageId = iterTrack->first;
+          const size_t featId = iterTrack->second;
 
-          ba_problem.observations_.push_back( ptFeat.x() );
-          ba_problem.observations_.push_back( ptFeat.y() );
+          // If imageId reconstructed:
+          //  - Add measurements (the feature position)
+          //  - Add camidx (map the image number to the camera index)
+          //  - Add ptidx (the 3D corresponding point index) (must be increasing)
 
-          ba_problem.point_index_.push_back(k);
-          ba_problem.camera_index_extrinsic.push_back(_map_IntrinsicIdPerImageId[imageId]);
-          ba_problem.camera_index_intrinsic.push_back(_map_IntrinsicIdPerImageId[imageId]);
-          if ( _map_RigIdPerImageId[imageId] == R0 )
-             ba_problem.rig_index_extrinsic.push_back(0);
-          else
-             ba_problem.rig_index_extrinsic.push_back(1);
+          //if ( set_camIndex.find(imageId) != set_camIndex.end())
+          {
+            const std::vector<SIOPointFeature> & vec_feats = _map_feats_normalized[imageId];
+            const SIOPointFeature & ptFeat = vec_feats[featId];
+
+            ba_problem.observations_.push_back( ptFeat.x() );
+            ba_problem.observations_.push_back( ptFeat.y() );
+
+            ba_problem.point_index_.push_back(k);
+            ba_problem.camera_index_extrinsic.push_back(_map_IntrinsicIdPerImageId[imageId]);
+            ba_problem.camera_index_intrinsic.push_back(_map_IntrinsicIdPerImageId[imageId]);
+            if ( _map_RigIdPerImageId[imageId] == R0 )
+               ba_problem.rig_index_extrinsic.push_back(0);
+            else
+               ba_problem.rig_index_extrinsic.push_back(1);
+          }
         }
       }
-    }
 
-    // Create residuals for each observation in the bundle adjustment problem. The
-    // parameters for cameras and points are added automatically.
-    ceres::Problem problem;
-    // Set a LossFunction to be less penalized by false measurements
-    //  - set it to NULL if you don't want use a lossFunction.
-    ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
-    for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
-      // Each Residual block takes a point and a camera as input and outputs a 2
-      // dimensional residual. Internally, the cost function stores the observed
-      // image location and compares the reprojection against the observation.
+      // Create residuals for each observation in the bundle adjustment problem. The
+      // parameters for cameras and points are added automatically.
+      ceres::Problem problem;
+      // Set a LossFunction to be less penalized by false measurements
+      //  - set it to NULL if you don't want use a lossFunction.
+      ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
+      for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
+        // Each Residual block takes a point and a camera as input and outputs a 2
+        // dimensional residual. Internally, the cost function stores the observed
+        // image location and compares the reprojection against the observation.
 
-      ceres::CostFunction* cost_function =
-        new ceres::AutoDiffCostFunction<rig_pinhole_reprojectionError::ErrorFunc_Refine_Rig_Motion_3DPoints, 2, 3, 6, 6, 3>(
-          new rig_pinhole_reprojectionError::ErrorFunc_Refine_Rig_Motion_3DPoints(
-            &ba_problem.observations()[2 * k]));
+        ceres::CostFunction* cost_function =
+          new ceres::AutoDiffCostFunction<rig_pinhole_reprojectionError::ErrorFunc_Refine_Rig_Motion_3DPoints, 2, 3, 6, 6, 3>(
+            new rig_pinhole_reprojectionError::ErrorFunc_Refine_Rig_Motion_3DPoints(
+              &ba_problem.observations()[2 * k]));
 
-      problem.AddResidualBlock(cost_function,
-        p_LossFunction,
-        ba_problem.mutable_camera_intrinsic_for_observation(k),
-        ba_problem.mutable_camera_extrinsic_for_observation(k),
-        ba_problem.mutable_rig_extrinsic_for_observation(k),
-        ba_problem.mutable_point_for_observation(k));
+        problem.AddResidualBlock(cost_function,
+          p_LossFunction,
+          ba_problem.mutable_camera_intrinsic_for_observation(k),
+          ba_problem.mutable_camera_extrinsic_for_observation(k),
+          ba_problem.mutable_rig_extrinsic_for_observation(k),
+          ba_problem.mutable_point_for_observation(k));
 
-      // fix intrinsic rig parameters
+        // fix intrinsic rig parameters
+        problem.SetParameterBlockConstant(
+          ba_problem.mutable_camera_extrinsic_for_observation(k) );
+        problem.SetParameterBlockConstant(
+          ba_problem.mutable_camera_intrinsic_for_observation(k) );
+      }
+
+      // fix rig one position
       problem.SetParameterBlockConstant(
-        ba_problem.mutable_camera_extrinsic_for_observation(k) );
-      problem.SetParameterBlockConstant(
-        ba_problem.mutable_camera_intrinsic_for_observation(k) );
+        ba_problem.mutable_rig_extrinsic(0) );
+
+      // Configure a BA engine and run it
+      //  Make Ceres automatically detect the bundle structure.
+      ceres::Solver::Options options;
+      // Use a dense back-end since we only consider a two view problem
+      options.linear_solver_type = ceres::DENSE_SCHUR;
+      options.minimizer_progress_to_stdout = false;
+      options.logging_type = ceres::SILENT;
+
+      // Solve BA
+      ceres::Solver::Summary summary;
+      ceres::Solve(options, &problem, &summary);
+
+      // If no error, get back refined parameters
+      if (summary.IsSolutionUsable())
+      {
+          // Get back 3D points
+          size_t k = 0;
+          std::vector<Vec3>  finalPoint;
+
+          for (std::vector<Vec3>::iterator iterPoint = vec_allScenes.begin();
+                iterPoint != vec_allScenes.end(); ++iterPoint, ++k)
+          {
+              const double * pt = ba_problem.mutable_points() + k*3;
+              Vec3 & pt3D = *iterPoint;
+              pt3D = Vec3(pt[0], pt[1], pt[2]);
+              finalPoint.push_back(pt3D);
+          }
+
+          // retrieve relative translation and rotation of rig
+          // Get back rig 1
+          Mat3  RotRigOne, RotRigTwo;
+          Vec3  tRigOne, tRigTwo;
+
+          {
+            const double * cam = ba_problem.mutable_rig_extrinsic() + 0*6;
+
+            // angle axis to rotation matrix
+            ceres::AngleAxisToRotationMatrix(cam, RotRigOne.data());
+
+            tRigOne[0] = cam[3]; tRigOne[1] = cam[4]; tRigOne[2] = cam[5];
+
+          }
+          // Get back rig 2
+          {
+            const double * cam = ba_problem.mutable_rig_extrinsic() + 1*6;
+
+            // angle axis to rotation matrix
+            ceres::AngleAxisToRotationMatrix(cam, RotRigTwo.data());
+
+            tRigTwo[0] = cam[3]; tRigTwo[1] = cam[4]; tRigTwo[2]=cam[5];
+          }
+
+          RelativeCameraMotion(RotRigOne, tRigOne, RotRigTwo, tRigTwo, &Rrig, &tRig);
+
+          // export point cloud associated to pair (I,J). Only for debug purpose
+          std::ostringstream pairIJ;
+          pairIJ << R0 << "_" << R1 << ".ply";
+
+          plyHelper::exportToPly(finalPoint, stlplus::create_filespec(_sOutDirectory,"pointCloud_rot_"+pairIJ.str()) );
+
+      }
+      // export rotation for rotation avereging
+      vec_relatives[std::make_pair(R0,R1)] = std::make_pair(Rrig,tRig);
     }
-
-    // fix rig one position
-    problem.SetParameterBlockConstant(
-      ba_problem.mutable_rig_extrinsic(0) );
-
-    // Configure a BA engine and run it
-    //  Make Ceres automatically detect the bundle structure.
-    ceres::Solver::Options options;
-    // Use a dense back-end since we only consider a two view problem
-    options.linear_solver_type = ceres::DENSE_SCHUR;
-    options.minimizer_progress_to_stdout = false;
-    options.logging_type = ceres::SILENT;
-
-    // Solve BA
-    ceres::Solver::Summary summary;
-    ceres::Solve(options, &problem, &summary);
-
-    // If no error, get back refined parameters
-    if (summary.IsSolutionUsable())
+    else
     {
-        // Get back 3D points
-        size_t k = 0;
-        std::vector<Vec3>  finalPoint;
-
-        for (std::vector<Vec3>::iterator iter = vec_allScenes.begin();
-              iter != vec_allScenes.end(); ++iter, ++k)
-        {
-            const double * pt = ba_problem.mutable_points() + k*3;
-            Vec3 & pt3D = *iter;
-            pt3D = Vec3(pt[0], pt[1], pt[2]);
-            finalPoint.push_back(pt3D);
-        }
-
-        // retrieve relative translation and rotation of rig
-        // Get back rig 1
-        Mat3  RotRigOne, RotRigTwo;
-        Vec3  tRigOne, tRigTwo;
-
-        {
-          const double * cam = ba_problem.mutable_rig_extrinsic() + 0*6;
-
-          // angle axis to rotation matrix
-          ceres::AngleAxisToRotationMatrix(cam, RotRigOne.data());
-
-          tRigOne[0] = cam[3]; tRigOne[1] = cam[4]; tRigOne[2] = cam[5];
-
-        }
-        // Get back rig 2
-        {
-          const double * cam = ba_problem.mutable_rig_extrinsic() + 1*6;
-
-          // angle axis to rotation matrix
-          ceres::AngleAxisToRotationMatrix(cam, RotRigTwo.data());
-
-          tRigTwo[0] = cam[3]; tRigTwo[1] = cam[4]; tRigTwo[2]=cam[5];
-        }
-
-        RelativeCameraMotion(RotRigOne, tRigOne, RotRigTwo, tRigTwo, &Rrig, &tRig);
-
-        // export point cloud associated to pair (I,J). Only for debug purpose
-        std::ostringstream pairIJ;
-        pairIJ << R0 << "_" << R1 << ".ply";
-
-        plyHelper::exportToPly(finalPoint, stlplus::create_filespec(_sOutDirectory,"pointCloud_rot_"+pairIJ.str()) );
-
+      std::cout << " Pose of rigs " << R0 << " and " << R1 << " is rejected. Number of inliers is "
+      << ransac.inliers_.size() << std::endl;
     }
-    // export rotation for rotation avereging
-    vec_relatives[iter->first] = std::make_pair(Rrig,tRig);
     ++my_progress_bar;
   }
 }
