@@ -1284,8 +1284,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
   Map_RelativeRT & vec_relatives)
 {
   // For each pair, compute the rotation from pairwise point matches:
-  C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n*" );
-
   // create rig structure using openGV
   translations_t  rigOffsets;
   rotations_t     rigRotations;
@@ -1392,14 +1390,16 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     gettimeofday( &toc, 0 );
     double ransac_time = TIMETODOUBLE(timeval_minus(toc,tic));
 
-    if(ransac.inliers_.size() > 1000 ){
+    if( (ransac.inliers_.size() / ( (double) camCorrespondencesRigOne.size() ) > 0.60 )
+        && ( ransac.inliers_.size() > 50 * rigOffsets.size() ) ){
 
-      std::cout << " Number of inliers is " << ransac.inliers_.size() << std::endl;
+      std::cout << ransac.inliers_.size() / ( (double) camCorrespondencesRigOne.size() )
+                << "  " << camCorrespondencesRigOne.size() << std::endl;
 
       // retrieve relative rig orientation and translation
-      Mat3  Rrig = ransac.model_coefficients_.block<3,3>(0,0).transpose();
-      Vec3  CRig = ransac.model_coefficients_.col(3);
-      Vec3  tRig = -Rrig * CRig;
+      const Mat3  Rrig = ransac.model_coefficients_.block<3,3>(0,0).transpose();
+      const Vec3  CRig = ransac.model_coefficients_.col(3);
+      const Vec3  tRig = -Rrig * CRig;
 
       // compute point cloud associated and do BA to refine pose of rigs
       Mat3  K = Mat3::Identity();
@@ -1542,19 +1542,16 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
       }
 
       {
-        Mat3 R = Rrig;
         double angleAxis[3];
-        ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
+        ceres::RotationMatrixToAngleAxis((const double*)Rrig.data(), angleAxis);
 
         // translation
-        Vec3 t = tRig;
-
         ba_problem.parameters_.push_back(angleAxis[0]);
         ba_problem.parameters_.push_back(angleAxis[1]);
         ba_problem.parameters_.push_back(angleAxis[2]);
-        ba_problem.parameters_.push_back(t[0]);
-        ba_problem.parameters_.push_back(t[1]);
-        ba_problem.parameters_.push_back(t[2]);
+        ba_problem.parameters_.push_back(tRig[0]);
+        ba_problem.parameters_.push_back(tRig[1]);
+        ba_problem.parameters_.push_back(tRig[2]);
       }
 
       // Setup rig camera position parameters
@@ -1679,6 +1676,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
       ceres::Solve(options, &problem, &summary);
 
       // If no error, get back refined parameters
+      Mat3  R = Mat3::Identity();
+      Vec3  t = Vec3::Zero();
+
       if (summary.IsSolutionUsable())
       {
           // Get back 3D points
@@ -1718,7 +1718,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             tRigTwo[0] = cam[3]; tRigTwo[1] = cam[4]; tRigTwo[2]=cam[5];
           }
 
-          RelativeCameraMotion(RotRigOne, tRigOne, RotRigTwo, tRigTwo, &Rrig, &tRig);
+          RelativeCameraMotion(RotRigOne, tRigOne, RotRigTwo, tRigTwo, &R, &t);
 
           // export point cloud associated to pair (I,J). Only for debug purpose
           std::ostringstream pairIJ;
@@ -1728,14 +1728,13 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
       }
       // export rotation for rotation avereging
-      vec_relatives[std::make_pair(R0,R1)] = std::make_pair(Rrig,tRig);
+      vec_relatives[std::make_pair(R0,R1)] = std::make_pair(R,t);
     }
     else
     {
       std::cout << " Pose of rigs " << R0 << " and " << R1 << " is rejected. Number of inliers is "
       << ransac.inliers_.size() << std::endl;
     }
-    ++my_progress_bar;
   }
 }
 
