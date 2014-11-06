@@ -756,14 +756,14 @@ bool GlobalRigidReconstructionEngine::Process()
 
   {
     const size_t iNRigs = map_globalR.size();
-    const size_t iNview = _vec_fileNames.size();
+    const size_t iNview = iNRigs * _vec_intrinsicGroups.size() ;
 
     std::cout << "\n-------------------------------" << "\n"
       << " Global translations computation: " << "\n"
       << "   - Ready to compute " << iNRigs << " global translations." << "\n"
       << "     from " << vec_initialRijTijEstimates.size() << " relative translations\n" << std::endl;
 
-    //-- Update initial estimates in range [0->Ncam]
+    //-- Update initial estimates in range [0->Nrigs]
     std::map<size_t, size_t> _reindexForward, _reindexBackward;
 
     std::vector< std::pair<size_t,size_t> > vec_pairs;
@@ -776,7 +776,7 @@ bool GlobalRigidReconstructionEngine::Process()
 
     reindex( vec_pairs, _reindexForward, _reindexBackward);
 
-    //-- Update initial estimates in range [0->Ncam]
+    //-- Update initial estimates in range [0->Nrigs]
     for(size_t i = 0; i < vec_initialRijTijEstimates.size(); ++i)
     {
       openMVG::relativeInfo & rel = vec_initialRijTijEstimates[i];
@@ -856,32 +856,39 @@ bool GlobalRigidReconstructionEngine::Process()
         std::cout << "\nrig Lambdas: " << std::endl;
         std::copy(vec_rigRelLambdas.begin(), vec_rigRelLambdas.end(), std::ostream_iterator<double>(std::cout, " "));
 
-        // Build a Pinhole camera for each considered Id
+        // Build a Pinhole camera for each considered rigs
         std::vector<Vec3>  vec_C;
-        for (size_t i = 0; i < iNview; ++i)
+        for (size_t i = 0; i < iNRigs; ++i)
         {
-          const size_t rigId     = _map_RigIdPerImageId.find(i)->second;
-          const size_t rigNum    = _reindexBackward[rigId];
-          const size_t subCamId  = _map_IntrinsicIdPerImageId.find(i)->second;
+          const size_t rigNum    = _reindexBackward[i];
+          const std::vector<size_t> ImageList = _map_ImagesIdPerRigId[rigNum];
 
-          // compute camera rotation
+          // extract rig pose
           const Mat3 & Ri = map_globalR[rigNum];
-          const Mat3 & Rcam = _vec_intrinsicGroups[subCamId].m_R;
-          const Mat3 & R = Rcam * Ri;
+          const Vec3 Rigt(vec_RigTranslation[rigNum*3], vec_RigTranslation[rigNum*3+1], vec_RigTranslation[rigNum*3+2]);
 
-          // compute camera translation
-          Vec3 Rigt(vec_RigTranslation[rigNum*3], vec_RigTranslation[rigNum*3+1], vec_RigTranslation[rigNum*3+2]);
-          const Vec3 tCam = -Rcam * _vec_intrinsicGroups[subCamId].m_rigC ;
-          const Vec3 t = Rcam * Rigt + tCam;
+          for(size_t j= 0 ; j < ImageList.size(); ++j)
+          {
+            const size_t I = ImageList[j];
+            const size_t subCamId  = _map_IntrinsicIdPerImageId.find(I)->second;
 
-          const Mat3 & _K = _vec_intrinsicGroups[subCamId].m_K;   // The same K matrix is used by all the camera
-          _map_camera[i] = PinholeCamera(_K, R, t);
+            // compute camera rotation
+            const Mat3 & Rcam = _vec_intrinsicGroups[subCamId].m_R;
+            const Mat3 & R = Rcam * Ri;
+
+            // compute camera translation
+            const Vec3 tCam = -Rcam * _vec_intrinsicGroups[subCamId].m_rigC ;
+            const Vec3 t = Rcam * Rigt + tCam;
+
+            const Mat3 & _K = _vec_intrinsicGroups[subCamId].m_K;   // The same K matrix is used by all the camera
+            _map_camera[I] = PinholeCamera(_K, R, t);
+
+            //-- Export camera center
+            vec_C.push_back(_map_camera[I]._C);
+          }
 
           //update rig map
           _map_rig[rigNum] = std::make_pair(Ri, Rigt);
-
-          //-- Export camera center
-          vec_C.push_back(_map_camera[i]._C);
         }
         plyHelper::exportToPly(vec_C, stlplus::create_filespec(_sOutDirectory, "cameraPath", "ply"));
       }
@@ -900,10 +907,22 @@ bool GlobalRigidReconstructionEngine::Process()
   //-- Initial triangulation of the scene from the computed global motions
   //-------------------
   {
+    // keep tracks that are seen in remaining rigs
+    RigWiseMatches newpairMatches;
+    for(RigWiseMatches::const_iterator iter = _map_Matches_Rig.begin();
+          iter != _map_Matches_Rig.end(); ++iter )
+    {
+      const size_t RigOne = iter->first.first;
+      const size_t RigTwo = iter->first.second;
+
+      if( _map_rig.find(RigOne) != _map_rig.end() && _map_rig.find(RigTwo) != _map_rig.end() )
+        newpairMatches[iter->first] = iter->second;
+    }
+
     // Compute tracks
     TracksBuilder tracksBuilder;
     {
-      tracksBuilder.Build(_map_Matches_Rig);
+      tracksBuilder.Build(newpairMatches);
       tracksBuilder.Filter(3);
       tracksBuilder.ExportToSTL(_map_selectedTracks);
     }
@@ -1009,17 +1028,17 @@ bool GlobalRigidReconstructionEngine::Process()
   //-------------------
 
   // Refine only Structure and translations
-  bundleAdjustment(_map_camera, _vec_allScenes, _map_selectedTracks, false, true, false);
+  bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, false, true, false);
   plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_T_Xi", "ply"));
 
   // Refine Structure, rotations and translations
-  bundleAdjustment(_map_camera, _vec_allScenes, _map_selectedTracks, true, true, false);
+  bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, false);
   plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_RT_Xi", "ply"));
 
   if (_bRefineIntrinsics)
   {
     // Refine Structure, rotations, translations and intrinsics
-    bundleAdjustment(_map_camera, _vec_allScenes, _map_selectedTracks, true, true, true);
+    bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, true);
     plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_KRT_Xi", "ply"));
   }
 
@@ -1390,8 +1409,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     gettimeofday( &toc, 0 );
     double ransac_time = TIMETODOUBLE(timeval_minus(toc,tic));
 
-    if( (ransac.inliers_.size() / ( (double) camCorrespondencesRigOne.size() ) > 0.60 )
-        && ( ransac.inliers_.size() > 50 * rigOffsets.size() ) ){
+    double inlierProportion = ransac.inliers_.size() / ( (double) camCorrespondencesRigOne.size() );
+
+    if( inlierProportion > 0.70 ){
 
       std::cout << ransac.inliers_.size() / ( (double) camCorrespondencesRigOne.size() )
                 << "  " << camCorrespondencesRigOne.size() << std::endl;
@@ -1732,8 +1752,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     }
     else
     {
-      std::cout << " Pose of rigs " << R0 << " and " << R1 << " is rejected. Number of inliers is "
-      << ransac.inliers_.size() << std::endl;
+      std::cout << " Pose of rigs " << R0 << " and " << R1 << " is rejected. proportion of inliers is "
+      << inlierProportion << std::endl;
     }
   }
 }
@@ -1944,6 +1964,7 @@ void GlobalRigidReconstructionEngine::tripletRotationRejection(
 }
 
 void GlobalRigidReconstructionEngine::bundleAdjustment(
+    Map_Rig & map_rig,
     Map_Camera & map_camera,
     std::vector<Vec3> & vec_allScenes,
     const STLMAPTracks & map_tracksSelected,
@@ -1953,7 +1974,7 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
 {
   using namespace std;
 
-  const size_t nbRigs = _map_ImagesIdPerRigId.size();
+  const size_t nbRigs = map_rig.size();
   const size_t nbCams = _vec_intrinsicGroups.size();
   const size_t nbPoints3D = vec_allScenes.size();
 
@@ -1991,15 +2012,21 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
   ba_problem.parameters_.reserve(ba_problem.num_parameters_);
 
   // Fill rigs
-  for (Map_Rig::const_iterator iter=_map_rig.begin(); iter != _map_rig.end() ; ++iter )
+  std::set<size_t> set_rigIndex;
+  std::map<size_t,size_t> map_rigIndexToNumber_extrinsic;
+  size_t cpt = 0;
+  for (Map_Rig::const_iterator iter = map_rig.begin();
+    iter != map_rig.end();  ++iter, ++cpt)
   {
+    // in order to map camera index to contiguous number
+    set_rigIndex.insert(iter->first);
+    map_rigIndexToNumber_extrinsic.insert(std::make_pair(iter->first, cpt));
+
     const Mat3 R = iter->second.first;
     double angleAxis[3];
     ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
-
     // translation
     const Vec3 t = iter->second.second;
-
     ba_problem.parameters_.push_back(angleAxis[0]);
     ba_problem.parameters_.push_back(angleAxis[1]);
     ba_problem.parameters_.push_back(angleAxis[2]);
@@ -2058,6 +2085,7 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
     {
       const size_t imageId = iterTrack->first;
       const size_t featId = iterTrack->second;
+      const size_t rigId = _map_RigIdPerImageId[imageId];
 
       // If imageId reconstructed:
       //  - Add measurements (the feature position)
@@ -2075,7 +2103,8 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
         ba_problem.point_index_.push_back(k);
         ba_problem.camera_index_extrinsic.push_back(_map_IntrinsicIdPerImageId[imageId]);
         ba_problem.camera_index_intrinsic.push_back(_map_IntrinsicIdPerImageId[imageId]);
-        ba_problem.rig_index_extrinsic.push_back(_map_RigIdPerImageId[imageId]);
+        ba_problem.rig_index_extrinsic.push_back(map_rigIndexToNumber_extrinsic[rigId]);
+
       }
     }
   }
@@ -2183,8 +2212,8 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
 
     // Get back rigs
     size_t i = 0;
-    for (Map_Rig::iterator iter = _map_rig.begin();
-      iter != _map_rig.end(); ++iter, ++i)
+    for (Map_Rig::iterator iter = map_rig.begin();
+      iter != map_rig.end(); ++iter, ++i)
     {
       // camera motion [R|t]
       const double * cam = ba_problem.mutable_rig_extrinsic(i);
@@ -2236,21 +2265,22 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
       iter != map_camera.end(); ++iter, ++i)
     {
       // camera motion [R|t]
-      const size_t intrinsicId = _map_IntrinsicIdPerImageId[i];
-      const size_t rigId       = _map_RigIdPerImageId[i];
+      const size_t I = iter->first;
+      const size_t intrinsicId = _map_IntrinsicIdPerImageId[I];
+      const size_t rigId       = _map_RigIdPerImageId[I];
 
       // compute camera rotation
-      const Mat3 & Ri = _map_rig.find(rigId)->second.first ;
+      const Mat3 & Ri = map_rig.find(rigId)->second.first ;
       const Mat3 & Rcam = _vec_intrinsicGroups[intrinsicId].m_R;
       const Mat3 & R = Rcam * Ri;
 
       // compute camera translation
-      Vec3 Rigt = _map_rig.find(rigId)->second.second ;
+      Vec3 Rigt = map_rig.find(rigId)->second.second ;
       const Vec3 tCam = -Rcam * _vec_intrinsicGroups[intrinsicId].m_rigC ;
       const Vec3 t = Rcam * Rigt + tCam;
 
       const Mat3 & _K = _vec_intrinsicGroups[intrinsicId].m_K;   // The same K matrix is used by all the camera
-      _map_camera[i] = PinholeCamera(_K, R, t);
+      map_camera[I] = PinholeCamera(_K, R, t);
 
     }
 

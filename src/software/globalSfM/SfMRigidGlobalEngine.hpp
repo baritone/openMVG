@@ -151,6 +151,7 @@ private:
 
   // Bundle adjustment : refine structure Xis and camera parameters (with optional refined parameters)
   void bundleAdjustment(
+    Map_Rig & map_rig,
     Map_Camera & map_camera,
     std::vector<Vec3> & vec_allScenes,
     const STLMAPTracks & map_tracksSelected,
