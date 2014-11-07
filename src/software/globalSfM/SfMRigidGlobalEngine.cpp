@@ -1340,6 +1340,10 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     std::vector<int>  camCorrespondencesRigOne;
     std::vector<int>  camCorrespondencesRigTwo;
 
+    // set of subcam that are matched
+    std::set<size_t>  setSubCam_rigOne;
+    std::set<size_t>  setSubCam_rigTwo;
+
     // loop on inter-rig correspondences
     for( PairWiseMatches::const_iterator iterMatch =  iter->second.begin() ;
               iterMatch != iter->second.end() ; ++iterMatch ){
@@ -1350,6 +1354,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
       const size_t SubI = _map_IntrinsicIdPerImageId[I];
       const size_t SubJ = _map_IntrinsicIdPerImageId[J];
+
+      setSubCam_rigOne.insert(SubI);
+      setSubCam_rigTwo.insert(SubJ);
 
       // extracts features for each pair in order to construct bearing vectors.
       for (size_t l = 0; l < iterMatch->second.size(); ++l)
@@ -1411,10 +1418,11 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     double inlierProportion = ransac.inliers_.size() / ( (double) camCorrespondencesRigOne.size() );
 
-    if( inlierProportion > 0.70 ){
+    if( inlierProportion > 0.65
+         &&  setSubCam_rigOne.size() > 0.24 * rigOffsets.size()
+         &&  setSubCam_rigTwo.size() > 0.24 * rigOffsets.size() ){
 
-      std::cout << ransac.inliers_.size() / ( (double) camCorrespondencesRigOne.size() )
-                << "  " << camCorrespondencesRigOne.size() << std::endl;
+      std::cout << inlierProportion << "  " << camCorrespondencesRigOne.size() << std::endl;
 
       // retrieve relative rig orientation and translation
       const Mat3  Rrig = ransac.model_coefficients_.block<3,3>(0,0).transpose();
@@ -1497,12 +1505,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
           vec_allScenes[idx] = Xs;
         }
       }
-
-      // export point cloud associated to pair (I,J). Only for debug purpose
-      std::ostringstream pairIJ;
-      pairIJ << R0 << "_" << R1 << ".ply";
-
-      plyHelper::exportToPly(vec_allScenes, stlplus::create_filespec(_sOutDirectory,"pointCloud_rot_raw"+pairIJ.str()) );
 
       // now do bundle adjustment
       using namespace std;
@@ -1740,20 +1742,15 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
           RelativeCameraMotion(RotRigOne, tRigOne, RotRigTwo, tRigTwo, &R, &t);
 
-          // export point cloud associated to pair (I,J). Only for debug purpose
-          std::ostringstream pairIJ;
-          pairIJ << R0 << "_" << R1 << ".ply";
-
-          plyHelper::exportToPly(finalPoint, stlplus::create_filespec(_sOutDirectory,"pointCloud_rot_"+pairIJ.str()) );
-
       }
       // export rotation for rotation avereging
       vec_relatives[std::make_pair(R0,R1)] = std::make_pair(R,t);
     }
     else
     {
-      std::cout << " Pose of rigs " << R0 << " and " << R1 << " is rejected. proportion of inliers is "
-      << inlierProportion << std::endl;
+      std::cout << " Pose of rigs " << R0 << " and " << R1 << " is rejected. Matching camera "
+      << setSubCam_rigOne.size() << "  " << setSubCam_rigTwo.size()
+      << " Inliers proportion  " << inlierProportion << std::endl;
     }
   }
 }
