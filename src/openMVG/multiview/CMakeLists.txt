@@ -16,16 +16,6 @@ file(GLOB_RECURSE MULTIVIEWTESTDATA *_data_sets*)
 list(REMOVE_ITEM multiview_files_cpp ${REMOVEFILESUNITTEST})
 list(REMOVE_ITEM multiview_files_cpp ${MULTIVIEWTESTDATA})
 
-#check for opengv include files
-IF(APPLE)
-	INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/third_party/opengv/include/ ${CMAKE_SOURCE_DIR}/third_party/opengv/third_party/)
-ELSE()
-	INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/third_party/opengv/include/)
-ENDIF()
-
-FIND_LIBRARY(OPENGV_LIBRARY opengv ${CMAKE_BINARY_DIR}/third_party/opengv/lib)
-FIND_LIBRARY(OPENGV_LIBRARY random_generators ${CMAKE_BINARY_DIR}/third_party/opengv/lib)
-
 ADD_LIBRARY(openMVG_multiview
 	${multiview_files_header}
 	${multiview_files_cpp})

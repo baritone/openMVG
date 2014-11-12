@@ -36,7 +36,6 @@
 #include <opengv/types.hpp>
 #include <opengv/relative_pose/methods.hpp>
 #include <opengv/relative_pose/NoncentralRelativeAdapter.hpp>
-#include <opengv/sac/Ransac.hpp>
 #include <opengv/sac_problems/relative_pose/NoncentralRelativePoseSacProblem.hpp>
 
 namespace openMVG {

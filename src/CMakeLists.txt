@@ -133,6 +133,26 @@ SET_PROPERTY(TARGET lib_clp PROPERTY FOLDER OpenMVG/3rdParty/osi_clp)
 #--END-- LINEAR PROGRAMMING SOLVER
 #===============================
 
+
+#===============================
+#---- OPENGV LIBRARY
+#===============================
+#check for opengv include files
+IF(APPLE)
+  SET( OPENGV_INCLUDE_DIRS
+       ${CMAKE_SOURCE_DIR}/third_party/opengv/include/
+       ${CMAKE_SOURCE_DIR}/third_party/opengv/third_party/ )
+ELSE()
+  SET( OPENGV_INCLUDE_DIRS
+       ${CMAKE_SOURCE_DIR}/third_party/opengv/include/)
+ENDIF()
+
+FIND_LIBRARY(OPENGV_LIBRARY opengv ${CMAKE_BINARY_DIR}/third_party/opengv/lib)
+FIND_LIBRARY(OPENGV_LIBRARY random_generators ${CMAKE_BINARY_DIR}/third_party/opengv/lib)
+#===============================
+#---- END OPENGV LIBRARY
+#===============================
+
 # ==============================================================================
 # Opencv is not used by openMVG but some samples show how to use openCV
 #  and openMVG simultaneously
@@ -178,6 +198,7 @@ SET(OpenMVG_INCLUDES
   ${JPEG_INCLUDE_DIR}
   ${PNG_INCLUDE_DIRS}
   ${TIFF_INCLUDE_DIR}
+  ${OPENGV_INCLUDE_DIRS}
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/eigen
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lemon
   ${PROJECT_BINARY_DIR}/third_party/lemon
@@ -226,7 +247,9 @@ SET(OpenMVG_LIBS "${OpenMVG_LIBS}"
   stlplus
   flann_cpp_s
   ceres
-  lemon)
+  lemon
+  opengv
+  random_generators)
 SET(OpenMVG_LIBS "${OpenMVG_LIBS}"
   ${OPENMVG_LIBRARY_DEPENDENCIES} CACHE STRING "openMVG library names")
 
