@@ -27,6 +27,13 @@
 //  by the generic ACRANSAC routine.
 //
 
+#include <opengv/types.hpp>
+#include <opengv/relative_pose/methods.hpp>
+#include <opengv/relative_pose/NoncentralRelativeAdapter.hpp>
+#include <opengv/sac_problems/relative_pose/NoncentralRelativePoseSacProblem.hpp>
+
+using namespace opengv;
+
 namespace openMVG {
 namespace robust{
 
@@ -290,6 +297,81 @@ private:
   Mat3 N1_, N2_;      // Matrix used to normalize data
   double logalpha0_; // Alpha0 is used to make the error adaptive to the image size
   Mat3 K1_, K2_;      // Intrinsic camera parameter
+};
+
+/// Essential matrix Kernel adaptator for the A contrario model estimator
+template <typename SolverArg,
+  typename ErrorArg,
+  typename UnnormalizerArg,
+  typename ModelArg = Mat34>
+class ACKernelAdaptorRigPose
+{
+public:
+  typedef SolverArg Solver;
+  typedef ModelArg  Model;
+  typedef ErrorArg ErrorT;
+
+  ACKernelAdaptorRigPose(
+    const bearingVectors_t & b1,
+    const bearingVectors_t & b2,
+    const std::vector<int> & scIdOne,
+    const std::vector<int> & scIdTwo,
+    const translations_t & rigOffsets,
+    const rotations_t & rigRotations,
+    const size_t & w, const size_t & h )
+    : b1_(b1), b2_(b2),
+      scIdOne_(scIdOne), scIdTwo_(scIdTwo),
+      offSets(rigOffsets), rotations(rigRotations),
+      logalpha0_(0.0)
+{
+    assert(3 == b1_.size());
+    assert(b1_.size() == b2_.size());
+
+    //Point to line probability (line is the epipolar line)
+    double D = sqrt(w*(double)w + h*(double)h); // diameter
+    double A = w*(double)h; // area
+    logalpha0_ = log10(2.0*D/A * .5);
+  }
+
+  enum { MINIMUM_SAMPLES = Solver::MINIMUM_SAMPLES };
+  enum { MAX_MODELS = Solver::MAX_MODELS };
+
+  void Fit(const std::vector<size_t> &samples,
+    relative_pose::NoncentralRelativeAdapter & adapter,
+    transformation_t & relativePose)
+  const {
+    Solver::Solve(adapter, relativePose, samples);
+  }
+
+  double Error(size_t sample, const transformation_t & relativePose) const
+  {
+    const Vec3 bearingOne = b1_[sample];
+    const Vec3 bearingTwo = b2_[sample];
+
+    const Vec2 x1 = bearingOne.head(2) / bearingOne(2) ;
+    const Vec2 x2 = bearingTwo.head(2) / bearingTwo(2);
+
+    const Mat3 R1 = rotations[scIdOne_[sample]];
+    const Mat3 R2 = rotations[scIdTwo_[sample]];
+
+    const Vec3 t1 = - R1 * offSets[scIdOne_[sample]];
+    const Vec3 t2 = - R2 * offSets[scIdTwo_[sample]];
+
+    return ErrorT::Error(relativePose, x1, R1, t1, x2, R2, t2);
+  }
+
+  size_t NumSamples() const { return b1_.size(); }
+  void Unnormalize(Model * model) const {}
+  double logalpha0() const {return logalpha0_;}
+  double multError() const {return 0.5;} // point to line error
+  double unormalizeError(double val) const { return val; }
+
+private:
+  bearingVectors_t b1_, b2_; // bearing vectors.
+  std::vector<int> scIdOne_, scIdTwo_ ; // cam correspondences
+  translations_t offSets ; // camera position in rigid rig frame
+  rotations_t  rotations ; // rig subcamera orientation
+  double logalpha0_; // Alpha0 is used to make the error adaptive to the image size
 };
 
 /// Two view Kernel adaptator for the A contrario model estimator.
