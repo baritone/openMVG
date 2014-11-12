@@ -133,7 +133,6 @@ SET_PROPERTY(TARGET lib_clp PROPERTY FOLDER OpenMVG/3rdParty/osi_clp)
 #--END-- LINEAR PROGRAMMING SOLVER
 #===============================
 
-
 # ==============================================================================
 # Opencv is not used by openMVG but some samples show how to use openCV
 #  and openMVG simultaneously
@@ -218,7 +217,7 @@ SET(OpenMVG_LIBS
 FOREACH(omvglib ${OpenMVG_LIBS})
     SET_PROPERTY(TARGET ${omvglib} PROPERTY FOLDER OpenMVG/OpenMVG)
 ENDFOREACH()
-  
+
 # concat lists
 SET(OpenMVG_LIBS "${OpenMVG_LIBS}" ${openMVG_linearProgramming})
 #third_party libs

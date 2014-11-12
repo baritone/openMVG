@@ -30,10 +30,11 @@
 #define OPENMVG_MULTIVIEW_SOLVER_NONCENTRAL_KERNEL_H_
 
 #include <vector>
-#include "openMVG/numeric/numeric.h"
 #include <opengv/types.hpp>
 #include <opengv/relative_pose/methods.hpp>
 #include <opengv/relative_pose/NoncentralRelativeAdapter.hpp>
+#include <opengv/sac/Ransac.hpp>
+#include <opengv/sac_problems/relative_pose/NoncentralRelativePoseSacProblem.hpp>
 
 namespace openMVG {
 namespace noncentral {
@@ -50,7 +51,6 @@ struct SixPointSolver {
   enum { MINIMUM_SAMPLES = 6 };
   enum { MAX_MODELS = 1 };
   static void Solve(adapter_t & adapter,
-                    sac_problems::relative_pose::NoncentralRelativePoseSacProblem::SIXPT,
                     model_t & relativePose,
                     const std::vector<int> &indices);
 };
