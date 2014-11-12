@@ -45,7 +45,10 @@ using namespace opengv;
 
 /**
  * Six point solver for non central camera system,
- * \see http://www.vis.uky.edu/~stewe/publications/stewenius_05_omnivis_sm26gen.pdf
+ * // [1] "Solutions to minimal generalized relative pose problems".
+ * // authors: Stewenius, H., Nister, D., Oskarsson, M., & Astrom K,
+ * // Date: 2005:
+ * // Conference: Workshop on omnidirectional vision 2005.
  */
 struct SixPointSolver {
   enum { MINIMUM_SAMPLES = 6 };
