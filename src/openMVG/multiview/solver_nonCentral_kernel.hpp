@@ -30,6 +30,9 @@
 #define OPENMVG_MULTIVIEW_SOLVER_NONCENTRAL_KERNEL_H_
 
 #include <vector>
+#include "openMVG/numeric/numeric.h"
+#include "openMVG/multiview/triangulation.hpp"
+#include "openMVG/cameras/PinholeCamera.hpp"
 #include <opengv/types.hpp>
 #include <opengv/relative_pose/methods.hpp>
 #include <opengv/relative_pose/NoncentralRelativeAdapter.hpp>
@@ -53,36 +56,37 @@ using namespace opengv;
 struct SixPointSolver {
   enum { MINIMUM_SAMPLES = 6 };
   enum { MAX_MODELS = 1 };
-  static void Solve(adapter_t & adapter,
-                    model_t & relativePose,
+  static void Solve(relative_pose::NoncentralRelativeAdapter & adapter,
+                    transformation_t & relativePose,
                     const std::vector<int> &indices);
 };
 
 
 // compute reprojection error
 struct RigProjError {
-  static double Error(const model_t & relativePose;
-                      const Vec3 &x1, const Mat3 &R1, const Vec3 &t1,
-                      const Vec3 &x2, const Mat3 &R2, const Vec3 &t2)
+  static double Error(const transformation_t & relativePose,
+                      const Vec2 &x1, const Mat3 &R1, const Vec3 &t1,
+                      const Vec2 &x2, const Mat3 &R2, const Vec3 &t2)
   {
     // retrieve relative pose of rigs
-    const translation_t translation = relativePose.col(3);
-    const rotation_t rotation = relativePose.block<3,3>(0,0);
+    const translation_t CRig = relativePose.col(3);
+    const rotation_t rRig = relativePose.block<3,3>(0,0);
+    const Vec3  tRig = -rRig * CRig;
 
     // compute relative pose of cameras
-    const rotation_t R = R2 * rotation.transpose() * R1.transpose() ;
-    const translation_t t = directRotation * (-t1 - R1.transpose() * translation) + t2;
+    const rotation_t R = R2 * rRig.transpose() * R1.transpose() ;
+    const translation_t t = -R * t1 + R2 * tRig + t2;
 
     // compute 3d point and reprojection error
     const Mat3 K = Mat3::Identity();
 
-    const PinholeCamera cam1(K, Mat3::Identity(), Vec3::Zeros() );
+    const PinholeCamera cam1(K, Mat3::Identity(), Vec3::Zero() );
     const PinholeCamera cam2(K, R, t);
 
     Vec3 X;
     TriangulateDLT(cam1._P, x1, cam2._P, x2, &X);
 
-    return Cam1.Residual(X,x1) +  Cam2.Residual(X,x2);
+    return cam1.Residual(X,x1) +  cam2.Residual(X,x2);
   }
 };
 typedef RigProjError SimpleError;

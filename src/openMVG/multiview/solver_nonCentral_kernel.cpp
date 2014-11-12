@@ -36,18 +36,18 @@ namespace kernel {
 using namespace std;
 using namespace opengv;
 
-void SixPointSolver::Solve(adapter_t & adapter,
-                  model_t & relativePose,
+void SixPointSolver::Solve(relative_pose::NoncentralRelativeAdapter & adapter,
+                  transformation_t & relativePose,
                   const std::vector<int> &indices)
 {
    // create non central relative sac problem
-   NoncentralRelativePoseSacProblem
+   sac_problems::relative_pose::NoncentralRelativePoseSacProblem
               problem(adapter,
                       sac_problems::relative_pose::NoncentralRelativePoseSacProblem::SIXPT,
                       false);
 
    // solve pose problem
-   problem.computeModelCoefficients(std::vector<int> &indices, relativePose);
+   problem.computeModelCoefficients(indices, relativePose);
 }
 
 }  // namespace kernel
