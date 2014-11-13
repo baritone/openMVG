@@ -28,6 +28,7 @@
 
 #include "openMVG/multiview/solver_nonCentral_kernel.hpp"
 #include "openMVG/numeric/poly.h"
+#include <set>
 
 namespace openMVG {
 namespace noncentral {
@@ -37,9 +38,27 @@ using namespace std;
 using namespace opengv;
 
 void SixPointSolver::Solve(relative_pose::NoncentralRelativeAdapter & adapter,
-                  transformation_t & relativePose,
-                  const std::vector<int> &indices)
+                  std::vector<transformation_t> * models,
+                  const std::vector<size_t> &indices)
 {
+
+  // convert size_t to int for opengv call
+  std::set<int>  fullIndices;
+  std::vector<int> idx;
+
+  for(size_t i=0; i < indices.size(); ++i)
+  {
+     idx.push_back( (int) indices[i]);
+     fullIndices.insert( idx[i] );
+  }
+
+  // fill index list
+  for(int i=0 ; i < adapter.getNumberCorrespondences() ; ++i)
+  {
+     if(fullIndices.insert(i).second == true )
+       idx.push_back(i);
+  }
+
    // create non central relative sac problem
    sac_problems::relative_pose::NoncentralRelativePoseSacProblem
               problem(adapter,
@@ -47,7 +66,10 @@ void SixPointSolver::Solve(relative_pose::NoncentralRelativeAdapter & adapter,
                       false);
 
    // solve pose problem
-   problem.computeModelCoefficients(indices, relativePose);
+   transformation_t relativePose;
+   problem.computeModelCoefficients(idx, relativePose);
+
+   models->push_back(relativePose);
 }
 
 }  // namespace kernel

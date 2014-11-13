@@ -299,11 +299,10 @@ private:
   Mat3 K1_, K2_;      // Intrinsic camera parameter
 };
 
-/// Essential matrix Kernel adaptator for the A contrario model estimator
+/// Rig Pose Kernel adaptator for the A contrario model estimator
 template <typename SolverArg,
   typename ErrorArg,
-  typename UnnormalizerArg,
-  typename ModelArg = Mat34>
+  typename ModelArg = transformation_t >
 class ACKernelAdaptorRigPose
 {
 public:
@@ -322,40 +321,49 @@ public:
     : b1_(b1), b2_(b2),
       scIdOne_(scIdOne), scIdTwo_(scIdTwo),
       offSets(rigOffsets), rotations(rigRotations),
-      logalpha0_(0.0)
+      logalpha0_(log10(M_PI))
 {
-    assert(3 == b1_.size());
     assert(b1_.size() == b2_.size());
 
     //Point to line probability (line is the epipolar line)
     double D = sqrt(w*(double)w + h*(double)h); // diameter
     double A = w*(double)h; // area
     logalpha0_ = log10(2.0*D/A * .5);
+    // ratio of area : unit circle over image area
+    //logalpha0_ = log10(M_PI/(w*(double)h));
   }
 
   enum { MINIMUM_SAMPLES = Solver::MINIMUM_SAMPLES };
   enum { MAX_MODELS = Solver::MAX_MODELS };
 
-  void Fit(const std::vector<size_t> &samples,
-    relative_pose::NoncentralRelativeAdapter & adapter,
-    transformation_t & relativePose)
+  void Fit(const std::vector<size_t> &samples, std::vector<Model> *models)
   const {
-    Solver::Solve(adapter, relativePose, samples);
+    //create non-central relative adapter
+    relative_pose::NoncentralRelativeAdapter adapter(
+          b1_, b2_, scIdOne_ , scIdTwo_,
+          offSets, rotations);
+
+    Solver::Solve(adapter, models, samples);
   }
 
   double Error(size_t sample, const transformation_t & relativePose) const
   {
-    const Vec3 bearingOne = b1_[sample];
-    const Vec3 bearingTwo = b2_[sample];
+    //create non-central relative adapter
+    relative_pose::NoncentralRelativeAdapter adapter(
+          b1_, b2_, scIdOne_ , scIdTwo_,
+          offSets, rotations);
 
-    const Vec2 x1 = bearingOne.head(2) / bearingOne(2) ;
+    const Vec3 bearingOne = adapter.getBearingVector1(sample);
+    const Vec3 bearingTwo = adapter.getBearingVector2(sample);
+
+    const Vec2 x1 = bearingOne.head(2) / bearingOne(2);
     const Vec2 x2 = bearingTwo.head(2) / bearingTwo(2);
 
-    const Mat3 R1 = rotations[scIdOne_[sample]];
-    const Mat3 R2 = rotations[scIdTwo_[sample]];
+    const Mat3 R1 = adapter.getCamRotation1(sample).transpose();
+    const Mat3 R2 = adapter.getCamRotation2(sample).transpose();
 
-    const Vec3 t1 = - R1 * offSets[scIdOne_[sample]];
-    const Vec3 t2 = - R2 * offSets[scIdTwo_[sample]];
+    const Vec3 t1 = - R1 * adapter.getCamOffset1(sample);
+    const Vec3 t2 = - R2 * adapter.getCamOffset2(sample);
 
     return ErrorT::Error(relativePose, x1, R1, t1, x2, R2, t2);
   }
@@ -364,6 +372,8 @@ public:
   void Unnormalize(Model * model) const {}
   double logalpha0() const {return logalpha0_;}
   double multError() const {return 0.5;} // point to line error
+  Mat3 normalizer1() const {return Mat3::Identity();}
+  Mat3 normalizer2() const {return Mat3::Identity();}
   double unormalizeError(double val) const { return val; }
 
 private:

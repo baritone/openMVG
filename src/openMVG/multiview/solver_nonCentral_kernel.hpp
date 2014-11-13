@@ -56,8 +56,8 @@ struct SixPointSolver {
   enum { MINIMUM_SAMPLES = 6 };
   enum { MAX_MODELS = 1 };
   static void Solve(relative_pose::NoncentralRelativeAdapter & adapter,
-                    transformation_t & relativePose,
-                    const std::vector<int> &indices);
+                    std::vector<transformation_t> * models,
+                    const std::vector<size_t> &indices);
 };
 
 
@@ -69,17 +69,17 @@ struct RigProjError {
   {
     // retrieve relative pose of rigs
     const translation_t CRig = relativePose.col(3);
-    const rotation_t rRig = relativePose.block<3,3>(0,0);
+    const rotation_t rRig = relativePose.block<3,3>(0,0).transpose();
     const Vec3  tRig = -rRig * CRig;
 
     // compute relative pose of cameras
-    const rotation_t R = R2 * rRig.transpose() * R1.transpose() ;
-    const translation_t t = -R * t1 + R2 * tRig + t2;
+    const rotation_t R = R2 * rRig ;
+    const translation_t t = R2 * tRig + t2 ;
 
     // compute 3d point and reprojection error
     const Mat3 K = Mat3::Identity();
 
-    const PinholeCamera cam1(K, Mat3::Identity(), Vec3::Zero() );
+    const PinholeCamera cam1(K, R1, t1);
     const PinholeCamera cam2(K, R, t);
 
     Vec3 X;
