@@ -164,14 +164,15 @@ bool estimate_Rt_fromE(const Mat3 & K1, const Mat3 & K2,
 /**
  * @brief Estimate the relative rig pose from normalized point matches.
  *
- * @param[in] K1 camera 1 intrinsics
- * @param[in] K2 camera 2 intrinsics
- * @param[in] x1 camera 1 image points
- * @param[in] x2 camera 2 image points
- * @param[out] pE essential matrix (can be NULL)
+ * @param[in] b1 bearing vectors of rig one
+ * @param[in] b2 bearing vectors of rig two
+ * @param[in] scIdOne subcamera id of each bearing vector of rig one
+ * @param[in] scIdTwo subcamera id of each bearing vector of rig two
+ * @param[in] rigOffsets center of cameras in rig rig referential
+ * @param[in] rigRotations rotation matrices of subcameras
+ * @param[out] transformation_t relative pose of second rig (R and t)
  * @param[out] pvec_inliers inliers indices (can be empty)
- * @param[in] size_ima1 width, height of image 1
- * @param[in] size_ima2 width, height of image 2
+ * @param[in] size_ima1 width, height of image
  * @param[out] errorMax upper bound of the reprojection error of the found solution
  * @param[in] precision upper bound of the desired solution
  */
