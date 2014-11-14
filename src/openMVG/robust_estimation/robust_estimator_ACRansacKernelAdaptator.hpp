@@ -329,8 +329,6 @@ public:
     double D = sqrt(w*(double)w + h*(double)h); // diameter
     double A = w*(double)h; // area
     logalpha0_ = log10(2.0*D/A * .5);
-    // ratio of area : unit circle over image area
-    //logalpha0_ = log10(M_PI/(w*(double)h));
   }
 
   enum { MINIMUM_SAMPLES = Solver::MINIMUM_SAMPLES };

@@ -1361,8 +1361,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
       setSubCam_rigOne.insert(SubI);
       setSubCam_rigTwo.insert(SubJ);
 
-      imageSize.first = _vec_intrinsicGroups[SubI].m_w ;
-      imageSize.second = _vec_intrinsicGroups[SubI].m_w ;
+      imageSize.first  = _vec_intrinsicGroups[SubI].m_w ;
+      imageSize.second = _vec_intrinsicGroups[SubI].m_h ;
 
       // extracts features for each pair in order to construct bearing vectors.
       for (size_t l = 0; l < iterMatch->second.size(); ++l)
@@ -1399,8 +1399,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     transformation_t  pose;
     std::vector<size_t> vec_inliers;
 
-    if(setSubCam_rigOne.size() > 0.40 * rigOffsets.size() &&
-         setSubCam_rigTwo.size() > 0.40 * rigOffsets.size() )
+    if(setSubCam_rigOne.size() > 0.25 * rigOffsets.size() &&
+         setSubCam_rigTwo.size() > 0.25 * rigOffsets.size() )
     {
 
       if (!SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
@@ -1584,9 +1584,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         // Setup rig camera intrinsics parameters
         for (size_t iterCam=0; iterCam < ba_problem.num_cameras_ ; ++iterCam )
         {
-          ba_problem.parameters_.push_back( 1.0 );
-          ba_problem.parameters_.push_back( 0.0 );
-          ba_problem.parameters_.push_back( 0.0 );
+          ba_problem.parameters_.push_back( 1.0 );   // FOCAL LENGTH
+          ba_problem.parameters_.push_back( 0.0 );   // PRINCIPAL POINT
+          ba_problem.parameters_.push_back( 0.0 );   // PRINCIPAL POINT
         }
 
         // Fill 3D points
@@ -2039,9 +2039,9 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
   for (size_t iter=0; iter < ba_problem.num_cameras_ ; ++iter )
   {
     const Mat3 K = _vec_intrinsicGroups[iter].m_K;
-    ba_problem.parameters_.push_back( K(0,0) );
-    ba_problem.parameters_.push_back( K(0,2) );
-    ba_problem.parameters_.push_back( K(1,2) );
+    ba_problem.parameters_.push_back( K(0,0) );  // FOCAL LENGTH
+    ba_problem.parameters_.push_back( K(0,2) );  // PRINCIPAL POINT
+    ba_problem.parameters_.push_back( K(1,2) );  // PRINCIPAL POINT
   }
 
   // Fill 3D points
