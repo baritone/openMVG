@@ -170,7 +170,7 @@ bool estimate_Rt_fromE(const Mat3 & K1, const Mat3 & K2,
  * @param[in] scIdTwo subcamera id of each bearing vector of rig two
  * @param[in] rigOffsets center of cameras in rig rig referential
  * @param[in] rigRotations rotation matrices of subcameras
- * @param[out] transformation_t relative pose of second rig (R and t)
+ * @param[out] transformation_t relative pose of second rig (R^T and C)
  * @param[out] pvec_inliers inliers indices (can be empty)
  * @param[in] size_ima1 width, height of image
  * @param[out] errorMax upper bound of the reprojection error of the found solution
@@ -196,7 +196,7 @@ bool robustRigPose(
   // Define the AContrario adaptor
   typedef ACKernelAdaptorRigPose<
       SolverType,
-      openMVG::noncentral::kernel::RigProjError,
+      openMVG::noncentral::kernel::RigAngularError,
       transformation_t>
       KernelType;
 
@@ -204,10 +204,10 @@ bool robustRigPose(
 
   // Robustly estimation of the Essential matrix and it's precision
   std::pair<double,double> acRansacOut = ACRANSAC(kernel, *pvec_inliers,
-    ACRANSAC_ITER, relativePose, precision, false);
+    1024, relativePose, precision, false);
   *errorMax = acRansacOut.first;
 
-  return pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES;
+  return pvec_inliers->size() > 80 * rigOffsets.size() ;
 }
 
 /// Triangulate a set of points between two view

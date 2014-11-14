@@ -328,7 +328,8 @@ public:
     //Point to line probability (line is the epipolar line)
     double D = sqrt(w*(double)w + h*(double)h); // diameter
     double A = w*(double)h; // area
-    logalpha0_ = log10(2.0*D/A * .5);
+    //logalpha0_ = log10(2.0*D/A * .5);
+    logalpha0_ = log10(1.0/2.0);
   }
 
   enum { MINIMUM_SAMPLES = Solver::MINIMUM_SAMPLES };
@@ -344,26 +345,14 @@ public:
     Solver::Solve(adapter, models, samples);
   }
 
-  double Error(size_t sample, const transformation_t & relativePose) const
+  double Error(size_t sample, const Model & model) const
   {
     //create non-central relative adapter
     relative_pose::NoncentralRelativeAdapter adapter(
           b1_, b2_, scIdOne_ , scIdTwo_,
           offSets, rotations);
 
-    const Vec3 bearingOne = adapter.getBearingVector1(sample);
-    const Vec3 bearingTwo = adapter.getBearingVector2(sample);
-
-    const Vec2 x1 = bearingOne.head(2) / bearingOne(2);
-    const Vec2 x2 = bearingTwo.head(2) / bearingTwo(2);
-
-    const Mat3 R1 = adapter.getCamRotation1(sample).transpose();
-    const Mat3 R2 = adapter.getCamRotation2(sample).transpose();
-
-    const Vec3 t1 = - R1 * adapter.getCamOffset1(sample);
-    const Vec3 t2 = - R2 * adapter.getCamOffset2(sample);
-
-    return ErrorT::Error(relativePose, x1, R1, t1, x2, R2, t2);
+    return ErrorT::Error(sample, model, adapter);
   }
 
   size_t NumSamples() const { return b1_.size(); }

@@ -1394,24 +1394,21 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondances
     double errorMax = std::numeric_limits<double>::max();
-    double maxExpectedError = 2.5 / averageFocal ;
+    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 2.5 / averageFocal )));
 
     transformation_t  pose;
     std::vector<size_t> vec_inliers;
 
-    if(setSubCam_rigOne.size() > 0.25 * rigOffsets.size() &&
-         setSubCam_rigTwo.size() > 0.25 * rigOffsets.size() )
-    {
 
-      if (!SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
+    if (!SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
         camCorrespondencesRigOne, camCorrespondencesRigTwo,
         rigOffsets, rigRotations, &pose, &vec_inliers, imageSize,
         &errorMax, maxExpectedError) )
       {
-          std::cout << " /!\\ Failed to compute R|t for theses rig "
-          << std::endl;
+          ++my_progress_bar;
           continue;
-      }{
+      }
+      else {
         // retrieve relative rig orientation and translation
         const Mat3  Rrig = pose.block<3,3>(0,0).transpose();
         const Vec3  CRig = pose.col(3);
@@ -1734,10 +1731,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         // export rotation for rotation avereging
         vec_relatives[std::make_pair(R0,R1)] = std::make_pair(R,t);
       }
-    }
-    #ifdef USE_OPENMP
-        #pragma omp critical
-    #endif
     ++my_progress_bar;
   }
 }
