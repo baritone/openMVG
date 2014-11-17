@@ -115,8 +115,8 @@ struct RigAngularError {
     rotation_t rotation = model.block<3,3>(0,0);
 
     //  initialize variable
-    Eigen::Matrix<double,4,1> p_hom;
-        p_hom[3] = 1.0;
+    Vec4 p_hom;
+    p_hom[3] = 1.0;
 
     // compute pose
     translation_t cam1Offset = _adapter.getCamOffset1(index);
@@ -140,10 +140,8 @@ struct RigAngularError {
 
     p_hom.block<3,1>(0,0) =
         opengv::triangulation::triangulate2(_adapter,index);
-    bearingVector_t reprojection1 = p_hom.block<3,1>(0,0);
-    bearingVector_t reprojection2 = inverseSolution * p_hom;
-    reprojection1 = reprojection1 / reprojection1.norm();
-    reprojection2 = reprojection2 / reprojection2.norm();
+    bearingVector_t reprojection1 = p_hom.block<3,1>(0,0).normalized();
+    bearingVector_t reprojection2 = (inverseSolution * p_hom).normalized();
     bearingVector_t f1 = _adapter.getBearingVector1(index);
     bearingVector_t f2 = _adapter.getBearingVector2(index);
 

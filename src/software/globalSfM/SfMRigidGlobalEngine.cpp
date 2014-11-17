@@ -1405,6 +1405,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         rigOffsets, rigRotations, &pose, &vec_inliers, imageSize,
         &errorMax, maxExpectedError) )
       {
+        #ifdef USE_OPENMP
+          #pragma omp critical
+        #endif
           ++my_progress_bar;
           continue;
       }
@@ -1731,6 +1734,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         // export rotation for rotation avereging
         vec_relatives[std::make_pair(R0,R1)] = std::make_pair(R,t);
       }
+      #ifdef USE_OPENMP
+        #pragma omp critical
+      #endif
     ++my_progress_bar;
   }
 }
