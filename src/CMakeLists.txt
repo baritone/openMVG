@@ -134,6 +134,25 @@ SET_PROPERTY(TARGET lib_clp PROPERTY FOLDER OpenMVG/3rdParty/osi_clp)
 #===============================
 
 
+#===============================
+#---- OPENGV LIBRARY
+#===============================
+#check for opengv include files
+IF(APPLE)
+  SET( OPENGV_INCLUDE_DIRS
+       ${CMAKE_SOURCE_DIR}/third_party/opengv/include/
+       ${CMAKE_SOURCE_DIR}/third_party/opengv/third_party/ )
+ELSE()
+  SET( OPENGV_INCLUDE_DIRS
+       ${CMAKE_SOURCE_DIR}/third_party/opengv/include/)
+ENDIF()
+
+FIND_LIBRARY(OPENGV_LIBRARY opengv ${CMAKE_BINARY_DIR}/third_party/opengv/lib)
+FIND_LIBRARY(OPENGV_LIBRARY random_generators ${CMAKE_BINARY_DIR}/third_party/opengv/lib)
+#===============================
+#---- END OPENGV LIBRARY
+#===============================
+
 # ==============================================================================
 # Opencv is not used by openMVG but some samples show how to use openCV
 #  and openMVG simultaneously
@@ -151,7 +170,7 @@ ENDIF (OpenMVG_BUILD_TESTS)
 MACRO (UNIT_TEST NAMESPACE NAME EXTRA_LIBS)
   IF (OpenMVG_BUILD_TESTS)
     ADD_EXECUTABLE(${NAMESPACE}_test_${NAME} ${NAME}_test.cpp)
-    
+
     SET_PROPERTY(TARGET ${NAMESPACE}_test_${NAME} PROPERTY FOLDER OpenMVG/test)
 
     TARGET_LINK_LIBRARIES(${NAMESPACE}_test_${NAME}
@@ -179,6 +198,7 @@ SET(OpenMVG_INCLUDES
   ${JPEG_INCLUDE_DIR}
   ${PNG_INCLUDE_DIRS}
   ${TIFF_INCLUDE_DIR}
+  ${OPENGV_INCLUDE_DIRS}
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/eigen
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lemon
   ${PROJECT_BINARY_DIR}/third_party/lemon
@@ -218,16 +238,18 @@ SET(OpenMVG_LIBS
 FOREACH(omvglib ${OpenMVG_LIBS})
     SET_PROPERTY(TARGET ${omvglib} PROPERTY FOLDER OpenMVG/OpenMVG)
 ENDFOREACH()
-  
+
 # concat lists
 SET(OpenMVG_LIBS "${OpenMVG_LIBS}" ${openMVG_linearProgramming})
 #third_party libs
-SET(OpenMVG_LIBS "${OpenMVG_LIBS}" 
+SET(OpenMVG_LIBS "${OpenMVG_LIBS}"
   vlsift
   stlplus
   flann_cpp_s
   ceres
-  lemon)
+  lemon
+  opengv
+  random_generators)
 SET(OpenMVG_LIBS "${OpenMVG_LIBS}"
   ${OPENMVG_LIBRARY_DEPENDENCIES} CACHE STRING "openMVG library names")
 

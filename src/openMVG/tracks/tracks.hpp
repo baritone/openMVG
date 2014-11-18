@@ -169,6 +169,84 @@ struct TracksBuilder
     return false;
   }
 
+  /// Build tracks for a given series of rigWise matches
+  bool Build( const RigWiseMatches &  map_pair_wise_matches)
+  {
+    typedef std::set<indexedFeaturePair> SetIndexedPair;
+    SetIndexedPair myset;
+    for (RigWiseMatches::const_iterator iter = map_pair_wise_matches.begin();
+      iter != map_pair_wise_matches.end();
+      ++iter)
+    {
+      const size_t & I = iter->first.first;
+      const size_t & J = iter->first.second;
+
+      for( PairWiseMatches::const_iterator iterPair = iter->second.begin();
+            iterPair != iter->second.end() ; ++iterPair )
+      {
+         const std::vector<IndMatch> & vec_FilteredMatches = iterPair->second;
+         // We have correspondences between I and J image index.
+
+         for( size_t k = 0; k < vec_FilteredMatches.size(); ++k)
+         {
+           // Look if one of the feature already belong to a track :
+           myset.insert(make_pair(iterPair->first.first,vec_FilteredMatches[k]._i));
+           myset.insert(make_pair(iterPair->first.second,vec_FilteredMatches[k]._j));
+         }
+      }
+    }
+
+    // Build the node indirection for each referenced feature
+    MapIndexNode my_Map;
+    my_Map.reserve(myset.size());
+    reverse_my_Map.reserve(myset.size());
+    for (SetIndexedPair::const_iterator iter = myset.begin();
+      iter != myset.end();
+      ++iter)
+    {
+      lemon::ListDigraph::Node node = g.addNode();
+      my_Map.push_back( std::make_pair(*iter, node));
+      reverse_my_Map.push_back( std::make_pair(node,*iter));
+    }
+
+    // Sort the flat_pair_map
+    my_Map.sort();
+    reverse_my_Map.sort();
+
+    // Add the element of myset to the UnionFind insert method.
+    index = auto_ptr<IndexMap>( new IndexMap(g) );
+    myTracksUF = auto_ptr<UnionFindObject>( new UnionFindObject(*index));
+    for (ListDigraph::NodeIt it(g); it != INVALID; ++it) {
+      myTracksUF->insert(it);
+    }
+
+    // Make the union according the pair matches
+    for (RigWiseMatches::const_iterator iter = map_pair_wise_matches.begin();
+      iter != map_pair_wise_matches.end();
+      ++iter)
+    {
+      const size_t & I = iter->first.first;
+      const size_t & J = iter->first.second;
+
+      for( PairWiseMatches::const_iterator iterPair = iter->second.begin();
+            iterPair != iter->second.end() ; ++iterPair )
+      {
+        const vector<IndMatch> & vec_FilteredMatches = iterPair->second;
+        // We have correspondences between I and J image index.
+
+        for( size_t k = 0; k < vec_FilteredMatches.size(); ++k)
+        {
+          indexedFeaturePair pairI = make_pair(iterPair->first.first,vec_FilteredMatches[k]._i);
+          indexedFeaturePair pairJ = make_pair(iterPair->first.second,vec_FilteredMatches[k]._j);
+          myTracksUF->join( my_Map[pairI], my_Map[pairJ] );
+        }
+      }
+
+    }
+    return false;
+  }
+
+
   /// Remove bad tracks, conflict tracks (many times the same image index in a track)
   bool Filter(size_t nLengthSupTo = 2)
   {

@@ -34,9 +34,10 @@ namespace linearProgramming  {
 // Public constraint codes
 #define FR                       ROWTYPE_EMPTY
 #define LE                       ROWTYPE_LE
-#define GE                       ROWTYPE_GE
 #define EQ                       ROWTYPE_EQ
 #define OF                       ROWTYPE_OF
+
+static const int GT = ROWTYPE_GE;
 
 /// OSI_X wrapper for the LP_Solver
 template<typename SOLVERINTERFACE>
@@ -155,7 +156,7 @@ bool OSI_X_SolverWrapper<SOLVERINTERFACE>::setup(const LP_Constraints & cstraint
       matrix->appendRow(row);
       indexRow++;
     }
-    if ( cstraints._vec_sign[i] == EQ || cstraints._vec_sign[i] == GE )
+    if ( cstraints._vec_sign[i] == EQ || cstraints._vec_sign[i] == GT )
     {
       int coef = -1;
       for ( int j = 0; j < A.cols() ; j++ )
@@ -257,7 +258,7 @@ bool OSI_X_SolverWrapper<SOLVERINTERFACE>::setup(const LP_Constraints_Sparse & c
       rowindex++;
     }
 
-    if ( cstraints._vec_sign[i] == EQ || cstraints._vec_sign[i] == GE )
+    if ( cstraints._vec_sign[i] == EQ || cstraints._vec_sign[i] == GT )
     {
       int coef = -1;
       for ( std::vector<double>::iterator iter_val = vec_value.begin();
@@ -341,4 +342,3 @@ bool OSI_X_SolverWrapper<SOLVERINTERFACE>::getSolution(std::vector<double> & est
 
 
 #endif // MIMATTE_LINEAR_PROGRAMMING_INTERFACE_OSICLP_H_
-

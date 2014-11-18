@@ -147,4 +147,3 @@ namespace openMVG {
 
 
 }  // namespace openMVG
-

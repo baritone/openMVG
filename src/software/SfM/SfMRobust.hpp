@@ -15,6 +15,7 @@
 #include "openMVG/multiview/solver_resection_kernel.hpp"
 #include "openMVG/multiview/solver_resection_p3p.hpp"
 #include "openMVG/multiview/solver_essential_kernel.hpp"
+#include "openMVG/multiview/solver_nonCentral_kernel.hpp"
 #include "openMVG/multiview/projection.hpp"
 #include "openMVG/multiview/triangulation.hpp"
 #include "openMVG/cameras/PinholeCamera.hpp"
@@ -25,11 +26,17 @@
 #include "openMVG/bundle_adjustment/problem_data_container.hpp"
 #include "openMVG/bundle_adjustment/pinhole_ceres_functor.hpp"
 
+#include "opengv/types.hpp"
+#include "opengv/relative_pose/methods.hpp"
+#include "opengv/relative_pose/NoncentralRelativeAdapter.hpp"
+#include "opengv/sac_problems/relative_pose/NoncentralRelativePoseSacProblem.hpp"
+
 namespace openMVG{
 namespace SfMRobust{
 
 using namespace openMVG::matching;
 using namespace openMVG::robust;
+using namespace opengv;
 
 static const size_t ACRANSAC_ITER = 4096;
 
@@ -152,6 +159,55 @@ bool estimate_Rt_fromE(const Mat3 & K1, const Mat3 & K2,
   (*t) = ts[index];
 
   return true;
+}
+
+/**
+ * @brief Estimate the relative rig pose from normalized point matches.
+ *
+ * @param[in] b1 bearing vectors of rig one
+ * @param[in] b2 bearing vectors of rig two
+ * @param[in] scIdOne subcamera id of each bearing vector of rig one
+ * @param[in] scIdTwo subcamera id of each bearing vector of rig two
+ * @param[in] rigOffsets center of cameras in rig rig referential
+ * @param[in] rigRotations rotation matrices of subcameras
+ * @param[out] transformation_t relative pose of second rig (R^T and C)
+ * @param[out] pvec_inliers inliers indices (can be empty)
+ * @param[in] size_ima1 width, height of image
+ * @param[out] errorMax upper bound of the reprojection error of the found solution
+ * @param[in] precision upper bound of the desired solution
+ */
+bool robustRigPose(
+  const bearingVectors_t & b1,
+  const bearingVectors_t & b2,
+  const std::vector<int> & scIdOne,
+  const std::vector<int> & scIdTwo,
+  const translations_t & rigOffsets,
+  const rotations_t & rigRotations,
+  transformation_t * relativePose,
+  std::vector<size_t> * pvec_inliers,
+  const std::pair<size_t, size_t> & size_ima1,
+  double * errorMax,
+  double precision = std::numeric_limits<double>::infinity())
+{
+  assert(pvec_inliers != NULL);
+
+  // Use the 6 point solver to the pose
+  typedef openMVG::noncentral::kernel::SixPointSolver SolverType;
+  // Define the AContrario adaptor
+  typedef ACKernelAdaptorRigPose<
+      SolverType,
+      openMVG::noncentral::kernel::RigAngularError,
+      transformation_t>
+      KernelType;
+
+  KernelType kernel(b1, b2, scIdOne, scIdTwo, rigOffsets, rigRotations, size_ima1.first, size_ima1.second);
+
+  // Robustly estimation of the Essential matrix and it's precision
+  std::pair<double,double> acRansacOut = ACRANSAC(kernel, *pvec_inliers,
+    1024, relativePose, precision, false);
+  *errorMax = acRansacOut.first;
+
+  return pvec_inliers->size() > 100 * rigOffsets.size() ;
 }
 
 /// Triangulate a set of points between two view
