@@ -50,7 +50,6 @@ int main(int argc, char **argv)
       std::cerr << "\nUsage: " << argv[0] << " [OPTIONS...] -o <outdir> <image> ...\n\n"
       << "OPTIONS: \n"
       << "-o|--outdir <path>           Destination directory\n"
-      << "-r|--distratio <ratio>       Distance ratio (default=0.6)\n"
       << "-s|--octminus1 [0|1]         When set to 1, SIFT will upscale the image x2\n"
       << "-p|--peakThreshold <thresh>  Peak threshold for SIFT, 0.04 (default) to 0.01\n"
       << std::endl;
