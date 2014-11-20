@@ -1341,10 +1341,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     std::vector<int>  camCorrespondencesRigOne;
     std::vector<int>  camCorrespondencesRigTwo;
 
-    // set of subcam that are matched
-    std::set<size_t>  setSubCam_rigOne;
-    std::set<size_t>  setSubCam_rigTwo;
-
     // loop on inter-rig correspondences
     std::pair<size_t, size_t> imageSize;
 
@@ -1357,9 +1353,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
       const size_t SubI = _map_IntrinsicIdPerImageId[I];
       const size_t SubJ = _map_IntrinsicIdPerImageId[J];
-
-      setSubCam_rigOne.insert(SubI);
-      setSubCam_rigTwo.insert(SubJ);
 
       imageSize.first  = _vec_intrinsicGroups[SubI].m_w ;
       imageSize.second = _vec_intrinsicGroups[SubI].m_h ;
