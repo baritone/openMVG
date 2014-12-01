@@ -934,6 +934,7 @@ bool GlobalRigidReconstructionEngine::Process()
     {
       std::vector<double> vec_residuals;
       vec_residuals.reserve(_map_selectedTracks.size());
+      std::set<size_t> set_idx_to_remove;
 
       C_Progress_display my_progress_bar_triangulation( _map_selectedTracks.size(),
       std::cout, "\n\n Initial triangulation:\n");
@@ -941,7 +942,6 @@ bool GlobalRigidReconstructionEngine::Process()
 #ifdef USE_OPENMP
       #pragma omp parallel for schedule(dynamic)
 #endif
-
       for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
       {
           STLMAPTracks::const_iterator iterTracks = _map_selectedTracks.begin();
@@ -968,8 +968,13 @@ bool GlobalRigidReconstructionEngine::Process()
 #ifdef USE_OPENMP
 #pragma omp critical
 #endif
-        //-- Compute residual over all the projections
         {
+          if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
+               || !is_finite(Xs[2]) )  {
+            set_idx_to_remove.insert(idx);
+          }
+
+          //-- Compute residual over all the projections
           for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
             const size_t imaIndex = iterSubTrack->first;
             const size_t featIndex = iterSubTrack->second;
@@ -980,6 +985,28 @@ bool GlobalRigidReconstructionEngine::Process()
           ++my_progress_bar_triangulation;
         }
       }
+
+      //-- Remove useless tracks and 3D points
+      {
+      std::vector<Vec3> vec_allScenes_cleaned;
+      for(size_t i = 0; i < _vec_allScenes.size(); ++i)
+      {
+        if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
+        {
+          vec_allScenes_cleaned.push_back(_vec_allScenes[i]);
+        }
+      }
+      _vec_allScenes.swap(vec_allScenes_cleaned);
+
+      for( std::set<size_t>::const_iterator iter = set_idx_to_remove.begin();
+        iter != set_idx_to_remove.end(); ++iter)
+      {
+        _map_selectedTracks.erase(*iter);
+      }
+      std::cout << "\n #Tracks removed: " << set_idx_to_remove.size() << std::endl;
+      }
+
+      plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
 
       {
         // Display some statistics of reprojection errors
@@ -1019,8 +1046,6 @@ bool GlobalRigidReconstructionEngine::Process()
         }
       }
     }
-
-    plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
   }
 
   //-------------------
@@ -1224,7 +1249,7 @@ bool GlobalRigidReconstructionEngine::InputDataIsCorrect()
       Mat3  D   = Mat3::Identity() - RRt;
 
       // R is a rotation matrix if |R| = + 1.0 and R.R^t = I_3
-      if( fabs(R.determinant()-1.0) > 1.0e-5 || D.squaredNorm() > 1.0e-8 )
+      if( fabs(R.determinant()-1.0) > 1.0e-5 || D.norm() > 1.0e-5 )
       {
         std::cerr << "Error : Input Rotation Matrix is not a rotation matrix \n";
         return false;
@@ -1436,6 +1461,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
           std::vector<double> vec_residuals;
           vec_residuals.reserve(map_tracks.size());
           vec_allScenes.resize(map_tracks.size());
+          std::set<size_t> set_idx_to_remove;
 
            for (int idx = 0; idx < map_tracks.size(); ++idx)
           {
@@ -1484,6 +1510,30 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             // Compute the 3D point and keep point index with negative depth
             const Vec3 Xs = trianObj.compute();
             vec_allScenes[idx] = Xs;
+
+            if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
+                 || !is_finite(Xs[2]) )  {
+              set_idx_to_remove.insert(idx);
+            }
+          }
+
+          //-- Remove useless tracks and 3D points
+          {
+            std::vector<Vec3> vec_allScenes_cleaned;
+            for(size_t ic = 0; ic < vec_allScenes.size(); ++ic)
+            {
+              if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), ic) == set_idx_to_remove.end())
+              {
+                vec_allScenes_cleaned.push_back(vec_allScenes[ic]);
+              }
+            }
+            vec_allScenes.swap(vec_allScenes_cleaned);
+
+            for( std::set<size_t>::const_iterator iterSet = set_idx_to_remove.begin();
+              iterSet != set_idx_to_remove.end(); ++iterSet)
+            {
+              map_tracks.erase(*iterSet);
+            }
           }
         }
 
@@ -1725,6 +1775,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         }
         // export rotation for rotation avereging
+        #ifdef USE_OPENMP
+          #pragma omp critical
+        #endif
         vec_relatives[std::make_pair(R0,R1)] = std::make_pair(R,t);
       }
       #ifdef USE_OPENMP
