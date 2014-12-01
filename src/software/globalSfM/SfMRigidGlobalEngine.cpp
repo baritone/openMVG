@@ -2162,6 +2162,12 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
       ba_problem.mutable_point_for_observation(k));
   }
 
+  // add parameter block for each camera. (To be sure no camera is missing)
+  for (size_t k = 0; k < ba_problem.num_intrinsics(); ++k) {
+    problem.AddParameterBlock(ba_problem.mutable_cameras_extrinsic(k), 6);
+    problem.AddParameterBlock(ba_problem.mutable_cameras_intrinsic(k), 3);
+  }
+
   // Configure a BA engine and run it
   //  Make Ceres automatically detect the bundle structure.
   ceres::Solver::Options options;
