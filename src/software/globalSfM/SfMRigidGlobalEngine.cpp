@@ -923,7 +923,7 @@ bool GlobalRigidReconstructionEngine::Process()
     TracksBuilder tracksBuilder;
     {
       tracksBuilder.Build(newpairMatches);
-      tracksBuilder.Filter(3);
+      tracksBuilder.Filter(_map_RigIdPerImageId, 3);
       tracksBuilder.ExportToSTL(_map_selectedTracks);
     }
 
@@ -1451,7 +1451,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         TracksBuilder tracksBuilder;
         {
           tracksBuilder.Build(map_matchesR0R1);
-          tracksBuilder.Filter(2);
+          tracksBuilder.Filter(_map_RigIdPerImageId);
           tracksBuilder.ExportToSTL(map_tracks);
         }
 
