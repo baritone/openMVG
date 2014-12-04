@@ -545,7 +545,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
               estimate_T_rig_triplet(
                     map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet, _K,
                     vec_tis, dPrecision, vec_inliers, ThresholdUpperBound,
-                    I, J, K, _sOutDirectory)) ;
+                    I, J, K, _sOutDirectory) )
           {
             std::cout << dPrecision * averageFocal << "\t" << vec_inliers.size() << std::endl;
 

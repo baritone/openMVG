@@ -235,7 +235,7 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
 
     const Mat3 & R  = Ri[indexRig];
     const Mat3 & Rc = rigRotation[indexCam];
-    const Vec3 & tc = rigOffsets[indexCam];
+    const Vec3 & tc = -Rc * rigOffsets[indexCam];
 
     const Mat3 & RcRi = Rc * R;
 
@@ -320,21 +320,23 @@ struct Rig_Translation_Structure_L1_ConstraintBuilder
 {
   Rig_Translation_Structure_L1_ConstraintBuilder(
     const std::vector<Mat3> & vec_Ri,
-    const Mat & M)
+    const Mat & M,
+    const std::vector<Mat3> & rigRotation,
+    const std::vector<Vec3> & rigOffsets)
   {
     _M = M;
     _vec_Ri = vec_Ri;
+    _rigRotation = rigRotation;
+    _rigOffsets = rigOffsets;
   }
 
   /// Setup constraints for the translation and structure problem,
   ///  in the LP_Constraints object.
-  bool Build(double gamma, LP_Constraints_Sparse & constraint,
-         std::vector<Mat3>& rigRotation,
-         std::vector<Vec3>& rigOffsets )
+  bool Build(double gamma, LP_Constraints_Sparse & constraint)
   {
     EncodeRigTiXi(_M, _vec_Ri,
-      rigRotation,
-      rigOffsets,
+      _rigRotation,
+      _rigOffsets,
       gamma,
       constraint._constraintMat,
       constraint._Cst_objective,
@@ -354,6 +356,8 @@ struct Rig_Translation_Structure_L1_ConstraintBuilder
 
   std::vector<Mat3> _vec_Ri;  // Rotation matrix
   Mat _M; // M contains (X,Y,index3dPoint, indexCam)^T
+  std::vector<Mat3> _rigRotation; // rotation of rig subcameras
+  std::vector<Vec3> _rigOffsets; // optical center of rig subcameras in rig referential frame
 };
 
 } // namespace lInfinityCV
