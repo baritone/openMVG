@@ -31,15 +31,15 @@ bool estimate_T_rig_triplet(
   const openMVG::tracks::STLMAPTracks & map_tracksCommon,
   const std::map<size_t, std::vector<SIOPointFeature> > & map_feats,
   const std::vector<Mat3> & vec_global_KR_Triplet,
-  const Mat3 & K,
+  const std::vector<Mat3> & vec_rigRotation,
+  const std::vector<Vec3> & vec_rigOffset,
+  const std::vector<Vec3> & vec_camIndex,
   std::vector<Vec3> & vec_tis,
   double & dPrecision, // UpperBound of the precision found by the AContrario estimator
   std::vector<size_t> & vec_inliers,
   const double ThresholdUpperBound, //Threshold used for the trifocal tensor estimation solver used in AContrario Ransac
-  const size_t nI,
-  const size_t nJ,
-  const size_t nK,
-  const std::string & sOutDirectory)
+  const std::string & sOutDirectory,
+  const size_t & nI, const size_t & nJ, const size_t & nK)
 {
   using namespace linearProgramming;
   using namespace lInfinityCV;
@@ -68,40 +68,49 @@ bool estimate_T_rig_triplet(
   using namespace openMVG::trifocal;
   using namespace openMVG::trifocal::kernel;
 
-  typedef TrifocalKernel_ACRansac_N_tisXis<
-    tisXisTrifocalSolver,
-    tisXisTrifocalSolver,
-    TrifocalTensorModel> KernelType;
-  KernelType kernel(x1, x2, x3, vec_global_KR_Triplet, K, ThresholdUpperBound);
+  typedef rig_TrifocalKernel_ACRansac_N_tisXis<
+    rigTisXisTrifocalSolver,
+    rigTisXisTrifocalSolver,
+    rigTrifocalTensorModel> KernelType;
+  KernelType kernel(x1, x2, x3, vec_global_KR_Triplet, vec_rigRotation,
+                    vec_rigOffset, vec_camIndex, ThresholdUpperBound);
 
   const size_t ORSA_ITER = 320;
 
-  TrifocalTensorModel T;
-  const Mat3 Kinv = K.inverse();
-  dPrecision = dPrecision * Kinv(0,0) * Kinv(0,0);//std::numeric_limits<double>::infinity();
+  rigTrifocalTensorModel T;
+  dPrecision = dPrecision ;//std::numeric_limits<double>::infinity();
   std::pair<double,double> acStat = robust::ACRANSAC(kernel, vec_inliers, ORSA_ITER, &T, dPrecision, false);
   dPrecision = acStat.first;
 
   //-- Export data in order to have an idea of the precision of the estimates
   vec_tis.resize(3);
-  Mat3 K2, R;
-  Vec3 t;
-  KRt_From_P(T.P1, &K2, &R, &t);
-  vec_tis[0] = t;
-  KRt_From_P(T.P2, &K2, &R, &t);
-  vec_tis[1] = t;
-  KRt_From_P(T.P3, &K2, &R, &t);
-  vec_tis[2] = t;
+  vec_tis[0] = T.t1;
+  vec_tis[1] = T.t2;
+  vec_tis[2] = T.t3;
 
   // Fill Xis
   std::vector<double> vec_residuals(vec_inliers.size());
   std::vector<Vec3> vec_Xis(vec_inliers.size());
   for (size_t i = 0; i < vec_inliers.size(); ++i)  {
 
+    // extract sucamera rotations and translation
+    size_t I = (size_t) vec_camIndex[vec_inliers[i]][0];
+    size_t J = (size_t) vec_camIndex[vec_inliers[i]][1];
+    size_t K = (size_t) vec_camIndex[vec_inliers[i]][2];
+
+    const Mat3 RI = vec_rigRotation[I];  const Vec3 tI = -RI * vec_rigOffset[I];
+    const Mat3 RJ = vec_rigRotation[J];  const Vec3 tJ = -RJ * vec_rigOffset[J];
+    const Mat3 RK = vec_rigRotation[K];  const Vec3 tK = -RK * vec_rigOffset[K];
+
+    //compute projection matrices
+    const Mat34 P1 = HStack(RI * T.R1, RI * T.t1 + tI);
+    const Mat34 P2 = HStack(RJ * T.R2, RJ * T.t2 + tJ);
+    const Mat34 P3 = HStack(RK * T.R3, RK * T.t3 + tK);
+
     Triangulation triangulation;
-    triangulation.add(T.P1, x1.col(vec_inliers[i]));
-    triangulation.add(T.P2, x2.col(vec_inliers[i]));
-    triangulation.add(T.P3, x3.col(vec_inliers[i]));
+    triangulation.add(P1, x1.col(vec_inliers[i]));
+    triangulation.add(P2, x2.col(vec_inliers[i]));
+    triangulation.add(P3, x3.col(vec_inliers[i]));
     vec_residuals[i] = triangulation.error();
     vec_Xis[i] = triangulation.compute();
   }
@@ -120,7 +129,7 @@ bool estimate_T_rig_triplet(
       << " total putative " << map_tracksCommon.size() << std::endl;
   }
 
-  bool bRefine = true;
+  bool bRefine = false;
   if (bRefine && bTest)
   {
     // BA on tis, Xis
@@ -152,7 +161,7 @@ bool estimate_T_rig_triplet(
     // Fill camera
     std::vector<double> vec_Rot(vec_Xis.size()*3, 0.0);
     {
-      Mat3 R = K.inverse() * vec_global_KR_Triplet[0];
+      Mat3 R = vec_global_KR_Triplet[0];
       double angleAxis[3];
       ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
       vec_Rot[0] = angleAxis[0];
@@ -165,7 +174,7 @@ bool estimate_T_rig_triplet(
       ba_problem.parameters_.push_back(vec_tis[0](2));
     }
     {
-      Mat3 R = K.inverse() * vec_global_KR_Triplet[1];
+      Mat3 R = vec_global_KR_Triplet[1];
       double angleAxis[3];
       ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
       vec_Rot[3] = angleAxis[0];
@@ -178,7 +187,7 @@ bool estimate_T_rig_triplet(
       ba_problem.parameters_.push_back(vec_tis[1](2));
     }
     {
-      Mat3 R = K.inverse() * vec_global_KR_Triplet[2];
+      Mat3 R = vec_global_KR_Triplet[2];
       double angleAxis[3];
       ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
       vec_Rot[6] = angleAxis[0];
@@ -205,7 +214,7 @@ bool estimate_T_rig_triplet(
     // Fill the measurements
     for (size_t i = 0; i < vec_inliers.size(); ++i)
     {
-      double ppx = K(0,2), ppy = K(1,2);
+      double ppx = 0.0, ppy = 0.0;
       Vec2 ptFeat = x1.col(vec_inliers[i]);
       ba_problem.observations_.push_back( ptFeat.x() - ppx );
       ba_problem.observations_.push_back( ptFeat.y() - ppy );
@@ -240,7 +249,7 @@ bool estimate_T_rig_triplet(
           new ceres::AutoDiffCostFunction<PinholeReprojectionError_t, 2, 3, 3>(
               new PinholeReprojectionError_t(
                   &ba_problem.observations()[2 * i + 0],
-                  K(0,0),
+                  1.0,
                   &vec_Rot[ba_problem.camera_index_[i]*3]));
 
       problem.AddResidualBlock(cost_function,
@@ -333,11 +342,20 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
     map_global_KR[iter->first] = _K * iter->second;
   }
 
-  // compute average focal for trifocal tensor tolerance computation
-  double  averageFocal=0.0;
+  // create rig structure using openGV
+  std::vector<Vec3>  rigOffsets;
+  std::vector<Mat3>  rigRotations;
+  double          averageFocal=0.0;
 
-  for(int k(0) ; k < _vec_intrinsicGroups.size(); ++k)
+  for(int k=0; k < _vec_intrinsicGroups.size(); ++k)
+  {
+      const Vec3 t = _vec_intrinsicGroups[k].m_rigC;
+      const Mat3 R = _vec_intrinsicGroups[k].m_R.transpose();
+
+      rigOffsets.push_back(t);
+      rigRotations.push_back(R);
       averageFocal += _vec_intrinsicGroups[k].m_focal ;
+  }
 
   averageFocal /= (double) _vec_intrinsicGroups.size();
 
@@ -483,115 +501,93 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
         TracksBuilder tracksBuilder;
         {
           tracksBuilder.Build(map_matchesIJK);
-          tracksBuilder.Filter(3);
+          tracksBuilder.Filter(_map_RigIdPerImageId,3);
           tracksBuilder.ExportToSTL(map_tracksCommon);
         }
 
-        // extract index of camera and associated subcamera id
-        size_t  camIndex_I = _vec_camImageNames.size()+1;
-        size_t  camIndex_J = _vec_camImageNames.size()+1;
-        size_t  camIndex_K = _vec_camImageNames.size()+1;
-        const submapTrack & subTrack = map_tracksCommon.find(0)->second;
+        // extract associated subcamera id for each tracks
+        std::vector<Vec3> camIndex;
 
-        for (submapTrack::const_iterator iter = subTrack.begin(); iter != subTrack.end(); ++iter)
-        {
-          const size_t imaIndex  = iter->first;
-          const size_t rigIndex = _map_RigIdPerImageId.find(imaIndex)->second ;
-
-          if( rigIndex == I )
-               camIndex_I = imaIndex;
-
-          if( rigIndex == J )
-               camIndex_J = imaIndex;
-
-          if( rigIndex == K )
-               camIndex_K = imaIndex;
-        }
-
-        // check triplet validity
-        if( _map_RigIdPerImageId.find(camIndex_I)->second != I ||
-            _map_RigIdPerImageId.find(camIndex_J)->second != J ||
-            _map_RigIdPerImageId.find(camIndex_K)->second != K )
-        {
-          std::cerr << " Error : this is not a valid rig triplet " << endl;
-        }
-        else{
-          // get subcamera index and rotations
-          const size_t subCamI = _map_IntrinsicIdPerImageId.find(camIndex_I)->second;
-          const size_t subCamJ = _map_IntrinsicIdPerImageId.find(camIndex_J)->second;
-          const size_t subCamK = _map_IntrinsicIdPerImageId.find(camIndex_K)->second;
-
-          const Mat3  RsI = _vec_intrinsicGroups[subCamI].m_R;
-          const Mat3  RsJ = _vec_intrinsicGroups[subCamJ].m_R;
-          const Mat3  RsK = _vec_intrinsicGroups[subCamK].m_R;
-
-          //--
-          // Try to estimate this triplet.
-          //--
-          // Get rotations:
-          std::vector<Mat3> vec_global_KR_Triplet;
-          vec_global_KR_Triplet.push_back(RsI * map_global_KR[I]);
-          vec_global_KR_Triplet.push_back(RsJ * map_global_KR[J]);
-          vec_global_KR_Triplet.push_back(RsK * map_global_KR[K]);
-
-          // update precision to have good value for normalized coordinates
-          double dPrecision = 4.0 / averageFocal / averageFocal;
-          const double ThresholdUpperBound = 0.5 / averageFocal;
-
-          std::vector<Vec3> vec_tis(3);
-          std::vector<size_t> vec_inliers;
-
-          if (map_tracksCommon.size() > 50 &&
-              estimate_T_rig_triplet(
-                    map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet, _K,
-                    vec_tis, dPrecision, vec_inliers, ThresholdUpperBound,
-                    I, J, K, _sOutDirectory) )
-          {
-            std::cout << dPrecision * averageFocal << "\t" << vec_inliers.size() << std::endl;
-
-            //-- Build the three camera:
-            const Mat3 RI = map_globalR.find(I)->second;
-            const Mat3 RJ = map_globalR.find(J)->second;
-            const Mat3 RK = map_globalR.find(K)->second;
-            const Vec3 ti = vec_tis[0];
-            const Vec3 tj = vec_tis[1];
-            const Vec3 tk = vec_tis[2];
-
-            // Build the 3 relative translations estimations.
-            // IJ, JK, IK
-
-            //--- ATOMIC
-            #ifdef USE_OPENMP
-            #pragma omp critical
-            #endif
-            {
-              Mat3 RijGt;
-              Vec3 tij;
-              RelativeCameraMotion(RI, ti, RJ, tj, &RijGt, &tij);
-              vec_initialEstimates.push_back(
-                std::make_pair(std::make_pair(I, J), std::make_pair(RijGt, tij)));
-
-              Mat3 RjkGt;
-              Vec3 tjk;
-              RelativeCameraMotion(RJ, tj, RK, tk, &RjkGt, &tjk);
-              vec_initialEstimates.push_back(
-                std::make_pair(std::make_pair(J, K), std::make_pair(RjkGt, tjk)));
-
-              Mat3 RikGt;
-              Vec3 tik;
-              RelativeCameraMotion(RI, ti, RK, tk, &RikGt, &tik);
-              vec_initialEstimates.push_back(
-                std::make_pair(std::make_pair(I, K), std::make_pair(RikGt, tik)));
-
-              // Add trifocal inliers as valid 3D points
-            }
-
-            //-- Remove the 3 edges validated by the trifocal tensor
-            m_mutexSet.discard(std::make_pair(std::min(I,J), std::max(I,J)));
-            m_mutexSet.discard(std::make_pair(std::min(I,K), std::max(I,K)));
-            m_mutexSet.discard(std::make_pair(std::min(J,K), std::max(J,K)));
-            break;
+        size_t cpt = 0;
+        for (STLMAPTracks::const_iterator iterTracks = map_tracksCommon.begin();
+          iterTracks != map_tracksCommon.end(); ++iterTracks, ++cpt) {
+          const submapTrack & subTrack = iterTracks->second;
+          size_t index = 0;
+          Vec3  cameraIndex;
+          for (submapTrack::const_iterator iter = subTrack.begin(); iter != subTrack.end(); ++iter, ++index) {
+            const size_t imaIndex = iter->first;
+            const size_t subcamIndex = _map_IntrinsicIdPerImageId.at(imaIndex);
+            cameraIndex[index] = subcamIndex;
           }
+          camIndex.push_back(cameraIndex);
+        }
+
+        //--
+        // Try to estimate this triplet.
+        //--
+        // Get rotations:
+        std::vector<Mat3> vec_global_KR_Triplet;
+        vec_global_KR_Triplet.push_back(map_global_KR[I]);
+        vec_global_KR_Triplet.push_back(map_global_KR[J]);
+        vec_global_KR_Triplet.push_back(map_global_KR[K]);
+
+        // update precision to have good value for normalized coordinates
+        double dPrecision = 4.0 / averageFocal / averageFocal;
+        const double ThresholdUpperBound = 0.5 / averageFocal;
+
+        std::vector<Vec3> vec_tis(3);
+        std::vector<size_t> vec_inliers;
+
+        if (map_tracksCommon.size() > 50 &&
+            estimate_T_rig_triplet(
+                  map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
+                  rigRotations, rigOffsets, camIndex,
+                  vec_tis, dPrecision, vec_inliers, ThresholdUpperBound, _sOutDirectory, I, J, K) )
+        {
+          std::cout << dPrecision * averageFocal << "\t" << vec_inliers.size() << std::endl;
+
+          //-- Build the three camera:
+          const Mat3 RI = map_globalR.find(I)->second;
+          const Mat3 RJ = map_globalR.find(J)->second;
+          const Mat3 RK = map_globalR.find(K)->second;
+          const Vec3 ti = vec_tis[0];
+          const Vec3 tj = vec_tis[1];
+          const Vec3 tk = vec_tis[2];
+
+          // Build the 3 relative translations estimations.
+          // IJ, JK, IK
+
+          //--- ATOMIC
+          #ifdef USE_OPENMP
+          #pragma omp critical
+          #endif
+          {
+            Mat3 RijGt;
+            Vec3 tij;
+            RelativeCameraMotion(RI, ti, RJ, tj, &RijGt, &tij);
+            vec_initialEstimates.push_back(
+              std::make_pair(std::make_pair(I, J), std::make_pair(RijGt, tij)));
+
+            Mat3 RjkGt;
+            Vec3 tjk;
+            RelativeCameraMotion(RJ, tj, RK, tk, &RjkGt, &tjk);
+            vec_initialEstimates.push_back(
+              std::make_pair(std::make_pair(J, K), std::make_pair(RjkGt, tjk)));
+
+            Mat3 RikGt;
+            Vec3 tik;
+            RelativeCameraMotion(RI, ti, RK, tk, &RikGt, &tik);
+            vec_initialEstimates.push_back(
+              std::make_pair(std::make_pair(I, K), std::make_pair(RikGt, tik)));
+
+            // Add trifocal inliers as valid 3D points
+          }
+
+          //-- Remove the 3 edges validated by the trifocal tensor
+          m_mutexSet.discard(std::make_pair(std::min(I,J), std::max(I,J)));
+          m_mutexSet.discard(std::make_pair(std::min(I,K), std::max(I,K)));
+          m_mutexSet.discard(std::make_pair(std::min(J,K), std::max(J,K)));
+          break;
         }
       }
     }

@@ -342,7 +342,6 @@ public:
     const std::vector<Mat3> & rigRotation,
     const std::vector<Vec3> & rigOffsets,
     const std::vector<Vec3> & camIndex,
-    const Mat3 & K,
     const double ThresholdUpperBound)
     : x1_(x1), x2_(x2), x3_(x3), vec_KR_(vec_KRi),
       vec_rigRotation_(rigRotation),
@@ -367,12 +366,21 @@ public:
   }
 
   double Error(size_t sample, const Model &model) const {
-    return ErrorArg::Error(model, x1n_.col(sample), x2n_.col(sample), x3n_.col(sample));
+    return ErrorArg::Error(model, x1n_.col(sample), x2n_.col(sample), x3n_.col(sample),
+       vec_camIndex_[sample], vec_rigRotation_, vec_rigOffset_);
   }
 
   size_t NumSamples() const {
     return x1n_.cols();
   }
+
+  void Unnormalize(Model * model) const {
+    // Unnormalize model from the computed conditioning.
+  }
+
+  Mat3 normalizer1() const {return Mat3::Identity();}
+  Mat3 normalizer2() const {return Mat3::Identity();}
+  double unormalizeError(double val) const { return sqrt(val);}
 
   double logalpha0() const {return logalpha0_;}
 
