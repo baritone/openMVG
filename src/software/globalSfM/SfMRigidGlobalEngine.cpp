@@ -23,6 +23,7 @@
 #include "openMVG/multiview/rotation_averaging.hpp"
 // Translation averaging
 #include "openMVG/linearProgramming/lInfinityCV/global_translations_fromTij.hpp"
+#include "openMVG/linearProgramming/lInfinityCV/global_translations_fromTriplets.hpp"
 #include "openMVG/multiview/translation_averaging_solver.hpp"
 
 // Linear programming solver(s)
@@ -674,7 +675,7 @@ bool GlobalRigidReconstructionEngine::Process()
 
     openMVG::Timer timerLP_triplet;
 
-    bool  bComputeTrifocal=false;
+    bool  bComputeTrifocal=true;
     if(bComputeTrifocal){
        computePutativeTranslation_EdgesCoverage(map_globalR, vec_triplets, vec_initialRijTijEstimates, newpairMatches);
     }
@@ -796,7 +797,7 @@ bool GlobalRigidReconstructionEngine::Process()
         double gamma = -1.0;
         std::vector<double> vec_solution;
         {
-          vec_solution.resize(iNRigs*3 + vec_initialRijTijEstimates.size() + 1);
+          vec_solution.resize(iNview*3 + vec_initialRijTijEstimates.size()/3 + 1);
           using namespace openMVG::linearProgramming;
           #ifdef OPENMVG_HAVE_MOSEK
             MOSEK_SolveWrapper solverLP(vec_solution.size());
@@ -804,7 +805,7 @@ bool GlobalRigidReconstructionEngine::Process()
             OSI_CLP_SolverWrapper solverLP(vec_solution.size());
           #endif
 
-          lInfinityCV::Tifromtij_ConstraintBuilder cstBuilder(vec_initialRijTijEstimates);
+          lInfinityCV::Tifromtij_ConstraintBuilder_OneLambdaPerTrif cstBuilder(vec_initialRijTijEstimates);
 
           LP_Constraints_Sparse constraint;
           //-- Setup constraint and solver

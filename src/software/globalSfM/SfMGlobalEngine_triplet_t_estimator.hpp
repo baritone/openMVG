@@ -270,7 +270,7 @@ struct rigTisXisTrifocalSolver {
     const int n_obs = pt0.cols();
     assert(n_obs == camIndex.size() );
 
-    Mat4X megaMat(5, n_obs*3);
+    Mat megaMat(5, n_obs*3);
     {
       size_t cpt = 0;
       for (size_t i = 0; i  < n_obs; ++i) {
@@ -303,7 +303,7 @@ struct rigTisXisTrifocalSolver {
           cstBuilder,
           &vec_solution,
           ThresholdUpperBound,//admissibleResidual,
-          0.0, 1e-8, 2, &gamma, false))
+          0.0, 1e-8, 2, &gamma, true))
     {
       std::vector<Vec3> vec_tis(3);
       vec_tis[0] = Vec3(vec_solution[0], vec_solution[1], vec_solution[2]);
@@ -316,6 +316,7 @@ struct rigTisXisTrifocalSolver {
       PTemp.R3 = vec_KR[2]; PTemp.t3 = vec_tis[2];
 
       P->push_back(PTemp);
+      std::cout << "estimation passed " << std::endl;
     }
   }
 
@@ -349,19 +350,31 @@ public:
       vec_camIndex_(camIndex),
       ThresholdUpperBound_(ThresholdUpperBound),
       logalpha0_(log10(M_PI))
-  { }
+  {
+     //initialize normalized coordinates
+     // Normalize points by inverse(K)
+     const Mat3 Kinv_ = Mat3::Identity();
+     ApplyTransformationToPoints(x1_, Kinv_, &x1n_);
+     ApplyTransformationToPoints(x2_, Kinv_, &x2n_);
+     ApplyTransformationToPoints(x3_, Kinv_, &x3n_);
+  }
 
   enum { MINIMUM_SAMPLES = Solver::MINIMUM_SAMPLES };
   enum { MAX_MODELS = Solver::MAX_MODELS };
 
   void Fit(const std::vector<size_t> &samples, std::vector<Model> *models) const {
 
+    //extract camindexes related to samples
+    std::vector<Vec3>  sampleCamIndexes;
+    for(size_t i=0; i < samples.size(); ++i)
+       sampleCamIndexes.push_back( vec_camIndex_[samples[i]]) ;
+
     // Create a model from the points
     Solver::Solve(
                   ExtractColumns(x1n_, samples),
                   ExtractColumns(x2n_, samples),
                   ExtractColumns(x3n_, samples),
-                  vec_rigRotation_, vec_rigOffset_, vec_camIndex_,
+                  vec_rigRotation_, vec_rigOffset_, sampleCamIndexes,
                   vec_KR_, models, ThresholdUpperBound_);
   }
 

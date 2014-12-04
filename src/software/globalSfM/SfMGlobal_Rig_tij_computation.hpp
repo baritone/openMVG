@@ -93,7 +93,7 @@ bool estimate_T_rig_triplet(
   std::vector<Vec3> vec_Xis(vec_inliers.size());
   for (size_t i = 0; i < vec_inliers.size(); ++i)  {
 
-    // extract sucamera rotations and translation
+    // extract subcamera rotations and translation
     size_t I = (size_t) vec_camIndex[vec_inliers[i]][0];
     size_t J = (size_t) vec_camIndex[vec_inliers[i]][1];
     size_t K = (size_t) vec_camIndex[vec_inliers[i]][2];
@@ -120,6 +120,13 @@ bool estimate_T_rig_triplet(
     min, max, mean, median);
 
   bool bTest(vec_inliers.size() > 30);
+
+  // export point cloud (for debug purpose only)
+  std::ostringstream pairIJK;
+  pairIJK << nI << "_" << nJ << "_" << nK << ".ply";
+
+  plyHelper::exportToPly(vec_Xis, stlplus::create_filespec(sOutDirectory,
+                   "pointCloud_beforeBA_triplet_t_"+pairIJK.str()) );
 
   if (!bTest)
   {

@@ -242,10 +242,10 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
     A.coeffRef(rowPos, XVAR(indexPt3D, 0)) = RcRi(2,0);
     A.coeffRef(rowPos, XVAR(indexPt3D, 1)) = RcRi(2,1);
     A.coeffRef(rowPos, XVAR(indexPt3D, 2)) = RcRi(2,2);
-    A.coeffRef(rowPos, TVAR(indexCam, 0)) = Rc(2,0);
-    A.coeffRef(rowPos, TVAR(indexCam, 1)) = Rc(2,1);
-    A.coeffRef(rowPos, TVAR(indexCam, 2)) = Rc(2,2);
-    C(rowPos) = 1.0 - tc[2];
+    A.coeffRef(rowPos, TVAR(indexRig, 0)) = Rc(2,0);
+    A.coeffRef(rowPos, TVAR(indexRig, 1)) = Rc(2,1);
+    A.coeffRef(rowPos, TVAR(indexRig, 2)) = Rc(2,2);
+    C(rowPos) = 1.0 - tc(2);
     vec_sign[rowPos] = LP_Constraints::LP_GREATER_OR_EQUAL;
     ++rowPos;
 
@@ -262,46 +262,46 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
     A.coeffRef(rowPos, XVAR(indexPt3D, 0)) = RcRi(0,0) + (sigma-u) * RcRi(2,0);
     A.coeffRef(rowPos, XVAR(indexPt3D, 1)) = RcRi(0,1) + (sigma-u) * RcRi(2,1);
     A.coeffRef(rowPos, XVAR(indexPt3D, 2)) = RcRi(0,2) + (sigma-u) * RcRi(2,2);
-    A.coeffRef(rowPos, TVAR(indexCam, 0)) = Rc(0,0) + (sigma-u) * Rc(2,0);
-    A.coeffRef(rowPos, TVAR(indexCam, 1)) = Rc(0,1) + (sigma-u) * Rc(2,1);
-    A.coeffRef(rowPos, TVAR(indexCam, 2)) = Rc(0,2) + (sigma-u) * Rc(2,2);
-    C(rowPos) = -tc[0] - (sigma-u) * tc[2];
+    A.coeffRef(rowPos, TVAR(indexRig, 0)) = Rc(0,0) + (sigma-u) * Rc(2,0);
+    A.coeffRef(rowPos, TVAR(indexRig, 1)) = Rc(0,1) + (sigma-u) * Rc(2,1);
+    A.coeffRef(rowPos, TVAR(indexRig, 2)) = Rc(0,2) + (sigma-u) * Rc(2,2);
+    C(rowPos) = -tc(0) - (sigma-u) * tc(2);
     vec_sign[rowPos] = LP_Constraints::LP_GREATER_OR_EQUAL;
     ++rowPos;
 
     A.coeffRef(rowPos, XVAR(indexPt3D, 0)) = RcRi(0,0) - (sigma+u) * RcRi(2,0);
     A.coeffRef(rowPos, XVAR(indexPt3D, 1)) = RcRi(0,1) - (sigma+u) * RcRi(2,1);
     A.coeffRef(rowPos, XVAR(indexPt3D, 2)) = RcRi(0,2) - (sigma+u) * RcRi(2,2);
-    A.coeffRef(rowPos, TVAR(indexCam, 0)) = Rc(0,0) - (sigma+u) * Rc(2,0);
-    A.coeffRef(rowPos, TVAR(indexCam, 1)) = Rc(0,1) - (sigma+u) * Rc(2,1);
-    A.coeffRef(rowPos, TVAR(indexCam, 2)) = Rc(0,2) - (sigma+u) * Rc(2,2);
-    C(rowPos) = -tc[0] + (sigma+u) * tc[2];
+    A.coeffRef(rowPos, TVAR(indexRig, 0)) = Rc(0,0) - (sigma+u) * Rc(2,0);
+    A.coeffRef(rowPos, TVAR(indexRig, 1)) = Rc(0,1) - (sigma+u) * Rc(2,1);
+    A.coeffRef(rowPos, TVAR(indexRig, 2)) = Rc(0,2) - (sigma+u) * Rc(2,2);
+    C(rowPos) = -tc(0) + (sigma+u) * tc(2);
     vec_sign[rowPos] = LP_Constraints::LP_LESS_OR_EQUAL;
     ++rowPos;
 
     // y-residual =>
-    // (R_c*R_i*X_j + R_c*T_i + T_c)_2 / (R_c*R_i*X_j + R_c*T_i + T_c)_3 - u >= -sigma
-    // (R_c*R_i*X_j + R_c*T_i + T_c)_2 - u * (R_c*R_i*X_j + R_c*T_i + T_c)_3  + sigma (R_c*R_i*X_j + R_c*T_i + T_c)_3  >= 0.0
-    // ((R_c*R_i)_3 * (sigma-u) + (R_c*R_i)_2) * X_j +
-    //     + (R_c_3 * (sigma-u) + R_c_2)*t_i + (t_c_2 + t_c_3 * (sigma-u) ) >= 0
+    // (R_c*R_i*X_j + R_c*T_i + T_c)_2 / (R_c*R_i*X_j + R_c*T_i + T_c)_3 - v >= -sigma
+    // (R_c*R_i*X_j + R_c*T_i + T_c)_2 - v * (R_c*R_i*X_j + R_c*T_i + T_c)_3  + sigma (R_c*R_i*X_j + R_c*T_i + T_c)_3  >= 0.0
+    // ((R_c*R_i)_3 * (sigma-v) + (R_c*R_i)_2) * X_j +
+    //     + (R_c_3 * (sigma-v) + R_c_2)*t_i + (t_c_2 + t_c_3 * (sigma-u) ) >= 0
 
     A.coeffRef(rowPos, XVAR(indexPt3D, 0)) = RcRi(1,0) + (sigma-v) * RcRi(2,0);
     A.coeffRef(rowPos, XVAR(indexPt3D, 1)) = RcRi(1,1) + (sigma-v) * RcRi(2,1);
     A.coeffRef(rowPos, XVAR(indexPt3D, 2)) = RcRi(1,2) + (sigma-v) * RcRi(2,2);
-    A.coeffRef(rowPos, TVAR(indexCam, 0)) = Rc(1,0) + (sigma-v) * Rc(2,0);
-    A.coeffRef(rowPos, TVAR(indexCam, 1)) = Rc(1,1) + (sigma-v) * Rc(2,1);
-    A.coeffRef(rowPos, TVAR(indexCam, 2)) = Rc(1,2) + (sigma-v) * Rc(2,2);
-    C(rowPos) = -tc[0] - (sigma-v) * tc[2];
+    A.coeffRef(rowPos, TVAR(indexRig, 0)) = Rc(1,0) + (sigma-v) * Rc(2,0);
+    A.coeffRef(rowPos, TVAR(indexRig, 1)) = Rc(1,1) + (sigma-v) * Rc(2,1);
+    A.coeffRef(rowPos, TVAR(indexRig, 2)) = Rc(1,2) + (sigma-v) * Rc(2,2);
+    C(rowPos) = -tc(1) - (sigma-v) * tc(2);
     vec_sign[rowPos] = LP_Constraints::LP_GREATER_OR_EQUAL;
     ++rowPos;
 
     A.coeffRef(rowPos, XVAR(indexPt3D, 0)) = RcRi(1,0) - (sigma+v) * RcRi(2,0);
     A.coeffRef(rowPos, XVAR(indexPt3D, 1)) = RcRi(1,1) - (sigma+v) * RcRi(2,1);
     A.coeffRef(rowPos, XVAR(indexPt3D, 2)) = RcRi(1,2) - (sigma+v) * RcRi(2,2);
-    A.coeffRef(rowPos, TVAR(indexCam, 0)) = Rc(1,0) - (sigma+v) * Rc(2,0);
-    A.coeffRef(rowPos, TVAR(indexCam, 1)) = Rc(1,1) - (sigma+v) * Rc(2,1);
-    A.coeffRef(rowPos, TVAR(indexCam, 2)) = Rc(1,2) - (sigma+v) * Rc(2,2);
-    C(rowPos) = -tc[0] + (sigma+v) * tc[2];
+    A.coeffRef(rowPos, TVAR(indexRig, 0)) = Rc(1,0) - (sigma+v) * Rc(2,0);
+    A.coeffRef(rowPos, TVAR(indexRig, 1)) = Rc(1,1) - (sigma+v) * Rc(2,1);
+    A.coeffRef(rowPos, TVAR(indexRig, 2)) = Rc(1,2) - (sigma+v) * Rc(2,2);
+    C(rowPos) = -tc(1) + (sigma+v) * tc(2);
     vec_sign[rowPos] = LP_Constraints::LP_LESS_OR_EQUAL;
     ++rowPos;
   }
