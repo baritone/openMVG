@@ -309,6 +309,53 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
 # undef XVAR
 }
 
+/// Kernel that set Linear constraints for the
+///   - Translation Registration and Structure Problem.
+///  Designed to be used with bisectionLP and LP_Solver interface.
+///
+/// Implementation of problem of [1] -> 6.1 Cameras with known rotation
+///  under a Linear Program form. (With SPARSE constraint matrix).
+
+struct Rig_Translation_Structure_L1_ConstraintBuilder
+{
+  Rig_Translation_Structure_L1_ConstraintBuilder(
+    const std::vector<Mat3> & vec_Ri,
+    const Mat & M)
+  {
+    _M = M;
+    _vec_Ri = vec_Ri;
+  }
+
+  /// Setup constraints for the translation and structure problem,
+  ///  in the LP_Constraints object.
+  bool Build(double gamma, LP_Constraints_Sparse & constraint,
+         std::vector<Mat3>& rigRotation,
+         std::vector<Vec3>& rigOffsets )
+  {
+    EncodeRigTiXi(_M, _vec_Ri,
+      rigRotation,
+      rigOffsets,
+      gamma,
+      constraint._constraintMat,
+      constraint._Cst_objective,
+      constraint._vec_sign,
+      constraint._vec_cost,
+      constraint._vec_bounds);
+
+    //-- Setup additional information about the Linear Program constraint
+    // We look for nb translations and nb 3D points.
+    const size_t N3D  = (size_t) _M.row(2).maxCoeff() + 1;
+    const size_t Nrig = (size_t) _M.row(4).maxCoeff() + 1;
+
+    constraint._nbParams = (Nrig + N3D) * 3;
+
+    return true;
+  }
+
+  std::vector<Mat3> _vec_Ri;  // Rotation matrix
+  Mat _M; // M contains (X,Y,index3dPoint, indexCam)^T
+};
+
 } // namespace lInfinityCV
 } // namespace openMVG
 
