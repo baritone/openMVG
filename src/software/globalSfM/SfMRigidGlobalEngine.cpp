@@ -797,7 +797,7 @@ bool GlobalRigidReconstructionEngine::Process()
         double gamma = -1.0;
         std::vector<double> vec_solution;
         {
-          vec_solution.resize(iNview*3 + vec_initialRijTijEstimates.size()/3 + 1);
+          vec_solution.resize(iNRigs*3 + vec_initialRijTijEstimates.size()/3 + 1);
           using namespace openMVG::linearProgramming;
           #ifdef OPENMVG_HAVE_MOSEK
             MOSEK_SolveWrapper solverLP(vec_solution.size());

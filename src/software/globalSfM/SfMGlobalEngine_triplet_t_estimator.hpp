@@ -102,7 +102,7 @@ struct tisXisTrifocalSolver {
           cstBuilder,
           &vec_solution,
           ThresholdUpperBound,//admissibleResidual,
-          0.0, 1e-8, 2, &gamma, false))
+          0.0, 1e-8, 100, &gamma, false))
     {
       std::vector<Vec3> vec_tis(3);
       vec_tis[0] = Vec3(vec_solution[0], vec_solution[1], vec_solution[2]);
@@ -303,7 +303,7 @@ struct rigTisXisTrifocalSolver {
           cstBuilder,
           &vec_solution,
           ThresholdUpperBound,//admissibleResidual,
-          0.0, 1e-8, 2, &gamma, true))
+          0.0, 1e-8, 2, &gamma, false))
     {
       std::vector<Vec3> vec_tis(3);
       vec_tis[0] = Vec3(vec_solution[0], vec_solution[1], vec_solution[2]);
@@ -316,7 +316,6 @@ struct rigTisXisTrifocalSolver {
       PTemp.R3 = vec_KR[2]; PTemp.t3 = vec_tis[2];
 
       P->push_back(PTemp);
-      std::cout << "estimation passed " << std::endl;
     }
   }
 
@@ -389,6 +388,14 @@ public:
 
   void Unnormalize(Model * model) const {
     // Unnormalize model from the computed conditioning.
+    // Unnormalize model from the computed conditioning.
+    const Mat3 K_ = Mat3::Identity();
+    model->R1 = K_ * model->R1;
+    model->R2 = K_ * model->R2;
+    model->R3 = K_ * model->R3;
+    model->t1 = K_ * model->t1;
+    model->t2 = K_ * model->t2;
+    model->t3 = K_ * model->t3;
   }
 
   Mat3 normalizer1() const {return Mat3::Identity();}

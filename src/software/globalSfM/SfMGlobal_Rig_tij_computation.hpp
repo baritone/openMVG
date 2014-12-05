@@ -18,6 +18,7 @@
 
 #undef DYNAMIC
 #include "openMVG/bundle_adjustment/problem_data_container.hpp"
+#include "openMVG/bundle_adjustment/rig_pinhole_ceres_functor.hpp"
 #include "software/globalSfM/SfMBundleAdjustmentHelper_tonly.hpp"
 
 #include "openMVG/matching/indexed_sort.hpp"
@@ -75,7 +76,7 @@ bool estimate_T_rig_triplet(
   KernelType kernel(x1, x2, x3, vec_global_KR_Triplet, vec_rigRotation,
                     vec_rigOffset, vec_camIndex, ThresholdUpperBound);
 
-  const size_t ORSA_ITER = 320;
+  const size_t ORSA_ITER = 512;
 
   rigTrifocalTensorModel T;
   dPrecision = dPrecision ;//std::numeric_limits<double>::infinity();
@@ -119,7 +120,7 @@ bool estimate_T_rig_triplet(
   minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
     min, max, mean, median);
 
-  bool bTest(vec_inliers.size() > 30);
+  bool bTest(vec_inliers.size() > 10);
 
   // export point cloud (for debug purpose only)
   std::ostringstream pairIJK;
@@ -136,11 +137,11 @@ bool estimate_T_rig_triplet(
       << " total putative " << map_tracksCommon.size() << std::endl;
   }
 
-  bool bRefine = false;
+  bool bRefine = true;
   if (bRefine && bTest)
   {
     // BA on tis, Xis
-
+    const size_t nbRigs = 3;
     const size_t nbCams = 3;
     const size_t nbPoints3D = vec_Xis.size();
 
@@ -149,20 +150,26 @@ bool estimate_T_rig_triplet(
 
     // Setup a BA problem
     using namespace openMVG::bundle_adjustment;
-    BA_Problem_data<3> ba_problem; // Will refine translation and 3D points
+    BA_Problem_data_rigMotionAndIntrinsic<6,6,3> ba_problem; // Will refine [Rotations|Translations] and 3D points
 
     // Configure the size of the problem
+    ba_problem.num_rigs_ = nbRigs;
     ba_problem.num_cameras_ = nbCams;
+    ba_problem.num_intrinsics_ = nbCams;
     ba_problem.num_points_ = nbPoints3D;
     ba_problem.num_observations_ = nbmeasurements;
 
+    ba_problem.rig_index_extrinsic.reserve(ba_problem.num_observations_);
     ba_problem.point_index_.reserve(ba_problem.num_observations_);
-    ba_problem.camera_index_.reserve(ba_problem.num_observations_);
+    ba_problem.camera_index_extrinsic.reserve(ba_problem.num_observations_);
+    ba_problem.camera_index_intrinsic.reserve(ba_problem.num_observations_);
     ba_problem.observations_.reserve(2 * ba_problem.num_observations_);
 
     ba_problem.num_parameters_ =
-      3 * ba_problem.num_cameras_ // camera translations [3x1]
-      + 3 * ba_problem.num_points_; // 3D points [3x1]
+      6 * ba_problem.num_rigs_         // rigs rotations / translations
+      + 6 * ba_problem.num_cameras_    // #[Rotation|translation] = [3x1]|[3x1]
+      + 3 * ba_problem.num_intrinsics_ // cameras intrinsics (focal and principal point)
+      + 3 * ba_problem.num_points_;    // 3DPoints = [3x1]
     ba_problem.parameters_.reserve(ba_problem.num_parameters_);
 
     // Fill camera
@@ -176,6 +183,9 @@ bool estimate_T_rig_triplet(
       vec_Rot[2] = angleAxis[2];
 
       // translation
+      ba_problem.parameters_.push_back(angleAxis[0]);
+      ba_problem.parameters_.push_back(angleAxis[1]);
+      ba_problem.parameters_.push_back(angleAxis[2]);
       ba_problem.parameters_.push_back(vec_tis[0](0));
       ba_problem.parameters_.push_back(vec_tis[0](1));
       ba_problem.parameters_.push_back(vec_tis[0](2));
@@ -189,6 +199,9 @@ bool estimate_T_rig_triplet(
       vec_Rot[5] = angleAxis[2];
 
       // translation
+      ba_problem.parameters_.push_back(angleAxis[0]);
+      ba_problem.parameters_.push_back(angleAxis[1]);
+      ba_problem.parameters_.push_back(angleAxis[2]);
       ba_problem.parameters_.push_back(vec_tis[1](0));
       ba_problem.parameters_.push_back(vec_tis[1](1));
       ba_problem.parameters_.push_back(vec_tis[1](2));
@@ -202,9 +215,20 @@ bool estimate_T_rig_triplet(
       vec_Rot[8] = angleAxis[2];
 
       // translation
+      ba_problem.parameters_.push_back(angleAxis[0]);
+      ba_problem.parameters_.push_back(angleAxis[1]);
+      ba_problem.parameters_.push_back(angleAxis[2]);
       ba_problem.parameters_.push_back(vec_tis[2](0));
       ba_problem.parameters_.push_back(vec_tis[2](1));
       ba_problem.parameters_.push_back(vec_tis[2](2));
+    }
+
+    // Setup rig camera intrinsics parameters
+    for (size_t iterCam=0; iterCam < ba_problem.num_cameras_ ; ++iterCam )
+    {
+      ba_problem.parameters_.push_back( 1.0 );   // FOCAL LENGTH
+      ba_problem.parameters_.push_back( 0.0 );   // PRINCIPAL POINT
+      ba_problem.parameters_.push_back( 0.0 );   // PRINCIPAL POINT
     }
 
     // Fill 3D points
@@ -227,44 +251,77 @@ bool estimate_T_rig_triplet(
       ba_problem.observations_.push_back( ptFeat.y() - ppy );
 
       ba_problem.point_index_.push_back(i);
-      ba_problem.camera_index_.push_back(0);
+      ba_problem.camera_index_extrinsic.push_back(vec_camIndex[vec_inliers[i]][0]);
+      ba_problem.camera_index_intrinsic.push_back(vec_camIndex[vec_inliers[i]][0]);
+      ba_problem.rig_index_extrinsic.push_back(0);
 
       ptFeat = x2.col(vec_inliers[i]);
       ba_problem.observations_.push_back( ptFeat.x() - ppx );
       ba_problem.observations_.push_back( ptFeat.y() - ppy );
 
       ba_problem.point_index_.push_back(i);
-      ba_problem.camera_index_.push_back(1);
+      ba_problem.camera_index_extrinsic.push_back(vec_camIndex[vec_inliers[i]][1]);
+      ba_problem.camera_index_intrinsic.push_back(vec_camIndex[vec_inliers[i]][1]);
+      ba_problem.rig_index_extrinsic.push_back(1);
 
       ptFeat = x3.col(vec_inliers[i]);
       ba_problem.observations_.push_back( ptFeat.x() - ppx );
       ba_problem.observations_.push_back( ptFeat.y() - ppy );
 
       ba_problem.point_index_.push_back(i);
-      ba_problem.camera_index_.push_back(2);
+      ba_problem.camera_index_extrinsic.push_back(vec_camIndex[vec_inliers[i]][2]);
+      ba_problem.camera_index_intrinsic.push_back(vec_camIndex[vec_inliers[i]][2]);
+      ba_problem.rig_index_extrinsic.push_back(2);
     }
 
     // Create residuals for each observation in the bundle adjustment problem. The
     // parameters for cameras and points are added automatically.
     ceres::Problem problem;
+    ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
     for (size_t i = 0; i < ba_problem.num_observations(); ++i) {
       // Each Residual block takes a point and a camera as input and outputs a 2
       // dimensional residual. Internally, the cost function stores the observed
       // image location and compares the reprojection against the observation.
 
       ceres::CostFunction* cost_function =
-          new ceres::AutoDiffCostFunction<PinholeReprojectionError_t, 2, 3, 3>(
-              new PinholeReprojectionError_t(
-                  &ba_problem.observations()[2 * i + 0],
-                  1.0,
-                  &vec_Rot[ba_problem.camera_index_[i]*3]));
+         new ceres::AutoDiffCostFunction<rig_pinhole_reprojectionError::ErrorFunc_Refine_Rig_Motion_3DPoints, 2, 3, 6, 6, 3>(
+           new rig_pinhole_reprojectionError::ErrorFunc_Refine_Rig_Motion_3DPoints(
+               &ba_problem.observations()[2 * i]));
 
       problem.AddResidualBlock(cost_function,
-                               NULL, // squared loss
-                               //new ceres::HuberLoss(Square(4.0)),
-                               ba_problem.mutable_camera_for_observation(i),
-                               ba_problem.mutable_point_for_observation(i));
+        p_LossFunction,
+        ba_problem.mutable_camera_intrinsic_for_observation(i),
+        ba_problem.mutable_camera_extrinsic_for_observation(i),
+        ba_problem.mutable_rig_extrinsic_for_observation(i),
+        ba_problem.mutable_point_for_observation(i));
+
+      // fix intrinsic rig parameters
+      problem.SetParameterBlockConstant(
+          ba_problem.mutable_camera_extrinsic_for_observation(i) );
+      problem.SetParameterBlockConstant(
+          ba_problem.mutable_camera_intrinsic_for_observation(i) );
     }
+
+    // Configure constant parameters (if any)
+    {
+      std::vector<int> vec_constant_extrinsic; // [R|t]
+
+      vec_constant_extrinsic.push_back(0);
+      vec_constant_extrinsic.push_back(1);
+      vec_constant_extrinsic.push_back(2);
+
+      for (size_t iExtrinsicId = 0; iExtrinsicId < ba_problem.num_rigs_; ++iExtrinsicId)
+      {
+        if (!vec_constant_extrinsic.empty())
+        {
+          ceres::SubsetParameterization *subset_parameterization =
+            new ceres::SubsetParameterization(6, vec_constant_extrinsic);
+          problem.SetParameterization(ba_problem.mutable_rig_extrinsic(iExtrinsicId),
+            subset_parameterization);
+        }
+      }
+    }
+
     // Configure a BA engine and run it
     //  Make Ceres automatically detect the bundle structure.
     ceres::Solver::Options options;
@@ -300,9 +357,9 @@ bool estimate_T_rig_triplet(
       Vec3 * tt[3] = {&vec_tis[0], &vec_tis[1], &vec_tis[2]};
       for (i=0; i < 3; ++i)
       {
-        const double * cam = ba_problem.mutable_cameras() + i*3;
+        const double * cam = ba_problem.mutable_rig_extrinsic(i);
 
-        (*tt[i]) = Vec3(cam[0], cam[1], cam[2]);
+        (*tt[i]) = Vec3(cam[4], cam[5], cam[6]);
       }
 
       // Get back 3D points
@@ -540,7 +597,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
         // update precision to have good value for normalized coordinates
         double dPrecision = 4.0 / averageFocal / averageFocal;
-        const double ThresholdUpperBound = 0.5 / averageFocal;
+        const double ThresholdUpperBound = 5.0 / averageFocal;
 
         std::vector<Vec3> vec_tis(3);
         std::vector<size_t> vec_inliers;
