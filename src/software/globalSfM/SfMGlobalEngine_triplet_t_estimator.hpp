@@ -102,7 +102,7 @@ struct tisXisTrifocalSolver {
           cstBuilder,
           &vec_solution,
           ThresholdUpperBound,//admissibleResidual,
-          0.0, 1e-8, 100, &gamma, false))
+          0.0, 1e-8, 2, &gamma, false))
     {
       std::vector<Vec3> vec_tis(3);
       vec_tis[0] = Vec3(vec_solution[0], vec_solution[1], vec_solution[2]);
@@ -303,7 +303,7 @@ struct rigTisXisTrifocalSolver {
           cstBuilder,
           &vec_solution,
           ThresholdUpperBound,//admissibleResidual,
-          0.0, 1e-8, 2, &gamma, false))
+          0.0, 1e-8, 20, &gamma, false))
     {
       std::vector<Vec3> vec_tis(3);
       vec_tis[0] = Vec3(vec_solution[0], vec_solution[1], vec_solution[2]);
