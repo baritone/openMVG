@@ -132,13 +132,6 @@ bool estimate_T_rig_triplet(
 
   bool bTest(vec_inliers.size() > 30);
 
-  // export point cloud (for debug purpose only)
-  std::ostringstream pairIJK;
-  pairIJK << nI << "_" << nJ << "_" << nK << ".ply";
-
-  plyHelper::exportToPly(vec_Xis, stlplus::create_filespec(sOutDirectory,
-                   "pointCloud_beforeBA_triplet_t_"+pairIJK.str()) );
-
   if (!bTest)
   {
     std::cout << "Triplet rejected : AC: " << dPrecision
@@ -147,12 +140,12 @@ bool estimate_T_rig_triplet(
       << " total putative " << map_tracksCommon.size() << std::endl;
   }
 
-  bool bRefine = true;
+  bool bRefine = false;
   if (bRefine && bTest)
   {
     // BA on tis, Xis
     const size_t nbRigs = 3;
-    const size_t nbCams = 3;
+    const size_t nbCams = vec_rigRotation.size();
     const size_t nbPoints3D = vec_Xis.size();
 
     // Count the number of measurement (sum of the reconstructed track length)
@@ -231,6 +224,22 @@ bool estimate_T_rig_triplet(
       ba_problem.parameters_.push_back(vec_tis[2](0));
       ba_problem.parameters_.push_back(vec_tis[2](1));
       ba_problem.parameters_.push_back(vec_tis[2](2));
+    }
+
+    // Setup rig camera position parameters
+    for (size_t iter=0; iter < ba_problem.num_cameras_ ; ++iter )
+    {
+      const Mat3 R = vec_rigRotation[iter];
+      double angleAxis[3];
+      ceres::RotationMatrixToAngleAxis((const double*)R.data(), angleAxis);
+      // translation
+      const Vec3 t = -R * vec_rigOffset[iter];
+      ba_problem.parameters_.push_back(angleAxis[0]);
+      ba_problem.parameters_.push_back(angleAxis[1]);
+      ba_problem.parameters_.push_back(angleAxis[2]);
+      ba_problem.parameters_.push_back(t[0]);
+      ba_problem.parameters_.push_back(t[1]);
+      ba_problem.parameters_.push_back(t[2]);
     }
 
     // Setup rig camera intrinsics parameters
