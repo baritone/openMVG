@@ -35,6 +35,7 @@ bool estimate_T_rig_triplet(
   const std::vector<Mat3> & vec_rigRotation,
   const std::vector<Vec3> & vec_rigOffset,
   const std::vector<Vec3> & vec_camIndex,
+  const std::vector<Vec3> & subTrackIndex,
   std::vector<Vec3> & vec_tis,
   double & dPrecision, // UpperBound of the precision found by the AContrario estimator
   std::vector<size_t> & vec_inliers,
@@ -56,8 +57,9 @@ bool estimate_T_rig_triplet(
   for (STLMAPTracks::const_iterator iterTracks = map_tracksCommon.begin();
     iterTracks != map_tracksCommon.end(); ++iterTracks, ++cpt) {
     const submapTrack & subTrack = iterTracks->second;
-    size_t index = 0;
-    for (submapTrack::const_iterator iter = subTrack.begin(); iter != subTrack.end(); ++iter, ++index) {
+    for (size_t index = 0; index < 3 ; ++index)
+    { submapTrack::const_iterator iter = subTrack.begin();
+      std::advance(iter, subTrackIndex[cpt][index]);
       const size_t imaIndex = iter->first;
       const size_t featIndex = iter->second;
       const SIOPointFeature & pt = map_feats.find(imaIndex)->second[featIndex];
@@ -120,7 +122,7 @@ bool estimate_T_rig_triplet(
   minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
     min, max, mean, median);
 
-  bool bTest(vec_inliers.size() > 10);
+  bool bTest(vec_inliers.size() > 30);
 
   // export point cloud (for debug purpose only)
   std::ostringstream pairIJK;
@@ -457,7 +459,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
     TracksBuilder tracksBuilder;
     {
       tracksBuilder.Build(map_matchesIJK);
-      tracksBuilder.Filter(3);
+      tracksBuilder.Filter(_map_RigIdPerImageId,3);
       tracksBuilder.ExportToSTL(map_tracks);
     }
 #ifdef USE_OPENMP
@@ -571,19 +573,44 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
         // extract associated subcamera id for each tracks
         std::vector<Vec3> camIndex;
+        std::vector<Vec3> subTrackIndex;
 
         size_t cpt = 0;
         for (STLMAPTracks::const_iterator iterTracks = map_tracksCommon.begin();
           iterTracks != map_tracksCommon.end(); ++iterTracks, ++cpt) {
           const submapTrack & subTrack = iterTracks->second;
           size_t index = 0;
+          size_t subTrackCpt = 0;
           Vec3  cameraIndex;
-          for (submapTrack::const_iterator iter = subTrack.begin(); iter != subTrack.end(); ++iter, ++index) {
+          Vec3  rigIndex = -1.0*Vec3::Ones();
+          Vec3  subTrackId;
+          for (submapTrack::const_iterator iter = subTrack.begin(); iter != subTrack.end(); ++iter, ++subTrackCpt) {
             const size_t imaIndex = iter->first;
-            const size_t subcamIndex = _map_IntrinsicIdPerImageId.at(imaIndex);
-            cameraIndex[index] = subcamIndex;
+            const size_t rigidId = _map_RigIdPerImageId.at(imaIndex);
+            if( rigIndex[0] == -1 && index == 0 )
+            {
+              cameraIndex[index] = _map_IntrinsicIdPerImageId.at(imaIndex);
+              rigIndex[index]    = rigidId;
+              subTrackId[index]  = subTrackCpt;
+              ++index;
+            }
+            if( rigIndex[1] == -1 && rigIndex[0] != rigidId && index == 1 )
+            {
+              cameraIndex[index] = _map_IntrinsicIdPerImageId.at(imaIndex);
+              rigIndex[index]    = rigidId;
+              subTrackId[index]  = subTrackCpt;
+              ++index;
+            }
+            if( rigIndex[2] == -1 && rigIndex[1] != rigidId && rigIndex[0] != rigidId && index == 2 )
+            {
+              cameraIndex[index] = _map_IntrinsicIdPerImageId.at(imaIndex);
+              rigIndex[index]    = rigidId;
+              subTrackId[index]  = subTrackCpt;
+              ++index;
+            }
           }
           camIndex.push_back(cameraIndex);
+          subTrackIndex.push_back(subTrackId);
         }
 
         //--
@@ -597,7 +624,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
         // update precision to have good value for normalized coordinates
         double dPrecision = 4.0 / averageFocal / averageFocal;
-        const double ThresholdUpperBound = 5.0 / averageFocal;
+        const double ThresholdUpperBound = 0.5 / averageFocal;
 
         std::vector<Vec3> vec_tis(3);
         std::vector<size_t> vec_inliers;
@@ -605,7 +632,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
         if (map_tracksCommon.size() > 50 &&
             estimate_T_rig_triplet(
                   map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
-                  rigRotations, rigOffsets, camIndex,
+                  rigRotations, rigOffsets, camIndex, subTrackIndex,
                   vec_tis, dPrecision, vec_inliers, ThresholdUpperBound, _sOutDirectory, I, J, K) )
         {
           std::cout << dPrecision * averageFocal << "\t" << vec_inliers.size() << std::endl;
