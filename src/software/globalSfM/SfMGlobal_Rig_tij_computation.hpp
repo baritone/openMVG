@@ -140,7 +140,7 @@ bool estimate_T_rig_triplet(
       << " total putative " << map_tracksCommon.size() << std::endl;
   }
 
-  bool bRefine = false;
+  bool bRefine = true;
   if (bRefine && bTest)
   {
     // BA on tis, Xis
@@ -378,7 +378,7 @@ bool estimate_T_rig_triplet(
       {
         const double * cam = ba_problem.mutable_rig_extrinsic(i);
 
-        (*tt[i]) = Vec3(cam[4], cam[5], cam[6]);
+        (*tt[i]) = Vec3(cam[3], cam[4], cam[5]);
       }
 
       // Get back 3D points
@@ -395,11 +395,11 @@ bool estimate_T_rig_triplet(
       }
 
       // export point cloud (for debug purpose only)
-      std::ostringstream pairIJK;
-      pairIJK << nI << "_" << nJ << "_" << nK << ".ply";
+      // std::ostringstream pairIJK;
+      // pairIJK << nI << "_" << nJ << "_" << nK << ".ply";
 
-      plyHelper::exportToPly(finalPoint, stlplus::create_filespec(sOutDirectory,
-                       "pointCloud_triplet_t_"+pairIJK.str()) );
+      // plyHelper::exportToPly(finalPoint, stlplus::create_filespec(sOutDirectory,
+      //                 "pointCloud_triplet_t_"+pairIJK.str()) );
 
     }
   }
@@ -635,7 +635,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
         // update precision to have good value for normalized coordinates
         double dPrecision = 4.0 / averageFocal / averageFocal;
-        const double ThresholdUpperBound = 0.5 / averageFocal;
+        const double ThresholdUpperBound = 1.0 / averageFocal;
 
         std::vector<Vec3> vec_tis(3);
         std::vector<size_t> vec_inliers;
