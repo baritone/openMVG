@@ -424,7 +424,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
   for(int k=0; k < _vec_intrinsicGroups.size(); ++k)
   {
       const Vec3 t = _vec_intrinsicGroups[k].m_rigC;
-      const Mat3 R = _vec_intrinsicGroups[k].m_R.transpose();
+      const Mat3 R = _vec_intrinsicGroups[k].m_R;
 
       rigOffsets.push_back(t);
       rigRotations.push_back(R);
