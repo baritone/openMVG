@@ -262,26 +262,26 @@ struct rigTisXisTrifocalSolver {
     const Mat &pt0, const Mat & pt1, const Mat & pt2,
     const std::vector<Mat3> & rigRotation, // rotation of subcameras
     const std::vector<Vec3> & rigOffsets, // optical center of rig subcameras in rig referential frame
-    const std::vector<Vec3> & camIndex, // subcamera index for each rotation
+    const Mat &camIndex, // subcamera index for each rotation
     const std::vector<Mat3> & vec_KR, std::vector<rigTrifocalTensorModel> *P,
     const double ThresholdUpperBound)
   {
     //Build the megaMatMatrix
     const int n_obs = pt0.cols();
-    assert(n_obs == camIndex.size() );
+    assert(n_obs == camIndex.cols() );
 
     Mat megaMat(5, n_obs*3);
     {
       size_t cpt = 0;
       for (size_t i = 0; i  < n_obs; ++i) {
 
-        megaMat.col(cpt) << pt0.col(i)(0), pt0.col(i)(1), (double)i, (double)camIndex[i][0], 0.0;
+        megaMat.col(cpt) << pt0.col(i)(0), pt0.col(i)(1), (double)i, camIndex.col(i)(0), 0.0;
         ++cpt;
 
-        megaMat.col(cpt) << pt1.col(i)(0), pt1.col(i)(1), (double)i, (double)camIndex[i][1], 1.0;
+        megaMat.col(cpt) << pt1.col(i)(0), pt1.col(i)(1), (double)i, camIndex.col(i)(1), 1.0;
         ++cpt;
 
-        megaMat.col(cpt) << pt2.col(i)(0), pt2.col(i)(1), (double)i, (double)camIndex[i][2], 2.0;
+        megaMat.col(cpt) << pt2.col(i)(0), pt2.col(i)(1), (double)i, camIndex.col(i)(2), 2.0;
         ++cpt;
         }
     }
@@ -341,12 +341,12 @@ public:
     const std::vector<Mat3> & vec_KRi,
     const std::vector<Mat3> & rigRotation,
     const std::vector<Vec3> & rigOffsets,
-    const std::vector<Vec3> & camIndex,
+    const Mat & camIndex,
     const double ThresholdUpperBound)
     : x1_(x1), x2_(x2), x3_(x3), vec_KR_(vec_KRi),
       vec_rigRotation_(rigRotation),
       vec_rigOffset_(rigOffsets),
-      vec_camIndex_(camIndex),
+      camIndex_(camIndex),
       ThresholdUpperBound_(ThresholdUpperBound),
       logalpha0_(log10(M_PI))
   {
@@ -363,23 +363,19 @@ public:
 
   void Fit(const std::vector<size_t> &samples, std::vector<Model> *models) const {
 
-    //extract camindexes related to samples
-    std::vector<Vec3>  sampleCamIndexes;
-    for(size_t i=0; i < samples.size(); ++i)
-       sampleCamIndexes.push_back( vec_camIndex_[samples[i]]) ;
-
     // Create a model from the points
     Solver::Solve(
                   ExtractColumns(x1n_, samples),
                   ExtractColumns(x2n_, samples),
                   ExtractColumns(x3n_, samples),
-                  vec_rigRotation_, vec_rigOffset_, sampleCamIndexes,
+                  vec_rigRotation_, vec_rigOffset_,
+                  ExtractColumns(camIndex_, samples),
                   vec_KR_, models, ThresholdUpperBound_);
   }
 
   double Error(size_t sample, const Model &model) const {
     return ErrorArg::Error(model, x1n_.col(sample), x2n_.col(sample), x3n_.col(sample),
-       vec_camIndex_[sample], vec_rigRotation_, vec_rigOffset_);
+       camIndex_.col(sample), vec_rigRotation_, vec_rigOffset_);
   }
 
   size_t NumSamples() const {
@@ -409,12 +405,12 @@ public:
 private:
   const Mat & x1_, & x2_, & x3_;
   Mat x1n_, x2n_, x3n_;
+  const Mat & camIndex_;
   const double logalpha0_;
   const double ThresholdUpperBound_;
   std::vector<Mat3> vec_KR_;
   std::vector<Mat3> vec_rigRotation_;
   std::vector<Vec3> vec_rigOffset_;
-  std::vector<Vec3> vec_camIndex_;
 
 };
 

@@ -34,7 +34,7 @@ bool estimate_T_rig_triplet(
   const std::vector<Mat3> & vec_global_KR_Triplet,
   const std::vector<Mat3> & vec_rigRotation,
   const std::vector<Vec3> & vec_rigOffset,
-  const std::vector<Vec3> & vec_camIndex,
+  const std::map<size_t, size_t > & map_intrinsicIdPerImageId,
   const std::vector<Vec3> & subTrackIndex,
   std::vector<Vec3> & vec_tis,
   double & dPrecision, // UpperBound of the precision found by the AContrario estimator
@@ -50,6 +50,7 @@ bool estimate_T_rig_triplet(
   Mat x1(2, map_tracksCommon.size());
   Mat x2(2, map_tracksCommon.size());
   Mat x3(2, map_tracksCommon.size());
+  Mat camIndex(3, map_tracksCommon.size());
 
   Mat* xxx[3] = {&x1, &x2, &x3};
 
@@ -57,14 +58,21 @@ bool estimate_T_rig_triplet(
   for (STLMAPTracks::const_iterator iterTracks = map_tracksCommon.begin();
     iterTracks != map_tracksCommon.end(); ++iterTracks, ++cpt) {
     const submapTrack & subTrack = iterTracks->second;
+
+    // loop on subtracks
     for (size_t index = 0; index < 3 ; ++index)
     { submapTrack::const_iterator iter = subTrack.begin();
       std::advance(iter, subTrackIndex[cpt][index]);
       const size_t imaIndex = iter->first;
       const size_t featIndex = iter->second;
+
+      // extract features
       const SIOPointFeature & pt = map_feats.find(imaIndex)->second[featIndex];
       xxx[index]->col(cpt)(0) = pt.x();
       xxx[index]->col(cpt)(1)  = pt.y();
+
+      // extract camera indexes
+      camIndex.col(cpt)(index) = map_intrinsicIdPerImageId.at(imaIndex);
     }
   }
 
@@ -76,7 +84,7 @@ bool estimate_T_rig_triplet(
     rigTisXisTrifocalSolver,
     rigTrifocalTensorModel> KernelType;
   KernelType kernel(x1, x2, x3, vec_global_KR_Triplet, vec_rigRotation,
-                    vec_rigOffset, vec_camIndex, ThresholdUpperBound);
+                    vec_rigOffset, camIndex, ThresholdUpperBound);
 
   const size_t ORSA_ITER = 320;
 
@@ -97,9 +105,9 @@ bool estimate_T_rig_triplet(
   for (size_t i = 0; i < vec_inliers.size(); ++i)  {
 
     // extract subcamera rotations and translation
-    size_t I = (size_t) vec_camIndex[vec_inliers[i]][0];
-    size_t J = (size_t) vec_camIndex[vec_inliers[i]][1];
-    size_t K = (size_t) vec_camIndex[vec_inliers[i]][2];
+    size_t I = (size_t) camIndex.col(vec_inliers[i])(0);
+    size_t J = (size_t) camIndex.col(vec_inliers[i])(1);
+    size_t K = (size_t) camIndex.col(vec_inliers[i])(2);
 
     const Mat3 RI = vec_rigRotation[I];  const Vec3 tI = -RI * vec_rigOffset[I];
     const Mat3 RJ = vec_rigRotation[J];  const Vec3 tJ = -RJ * vec_rigOffset[J];
@@ -253,8 +261,8 @@ bool estimate_T_rig_triplet(
       ba_problem.observations_.push_back( ptFeat.y() - ppy );
 
       ba_problem.point_index_.push_back(i);
-      ba_problem.camera_index_extrinsic.push_back(vec_camIndex[vec_inliers[i]][0]);
-      ba_problem.camera_index_intrinsic.push_back(vec_camIndex[vec_inliers[i]][0]);
+      ba_problem.camera_index_extrinsic.push_back(camIndex.col(vec_inliers[i])(0));
+      ba_problem.camera_index_intrinsic.push_back(camIndex.col(vec_inliers[i])(0));
       ba_problem.rig_index_extrinsic.push_back(0);
 
       ptFeat = x2.col(vec_inliers[i]);
@@ -262,8 +270,8 @@ bool estimate_T_rig_triplet(
       ba_problem.observations_.push_back( ptFeat.y() - ppy );
 
       ba_problem.point_index_.push_back(i);
-      ba_problem.camera_index_extrinsic.push_back(vec_camIndex[vec_inliers[i]][1]);
-      ba_problem.camera_index_intrinsic.push_back(vec_camIndex[vec_inliers[i]][1]);
+      ba_problem.camera_index_extrinsic.push_back(camIndex.col(vec_inliers[i])(1));
+      ba_problem.camera_index_intrinsic.push_back(camIndex.col(vec_inliers[i])(1));
       ba_problem.rig_index_extrinsic.push_back(1);
 
       ptFeat = x3.col(vec_inliers[i]);
@@ -271,8 +279,8 @@ bool estimate_T_rig_triplet(
       ba_problem.observations_.push_back( ptFeat.y() - ppy );
 
       ba_problem.point_index_.push_back(i);
-      ba_problem.camera_index_extrinsic.push_back(vec_camIndex[vec_inliers[i]][2]);
-      ba_problem.camera_index_intrinsic.push_back(vec_camIndex[vec_inliers[i]][2]);
+      ba_problem.camera_index_extrinsic.push_back(camIndex.col(vec_inliers[i])(2));
+      ba_problem.camera_index_intrinsic.push_back(camIndex.col(vec_inliers[i])(2));
       ba_problem.rig_index_extrinsic.push_back(2);
     }
 
@@ -572,7 +580,6 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
         }
 
         // extract associated subcamera id for each tracks
-        std::vector<Vec3> camIndex;
         std::vector<Vec3> subTrackIndex;
 
         size_t cpt = 0;
@@ -581,7 +588,6 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           const submapTrack & subTrack = iterTracks->second;
           size_t index = 0;
           size_t subTrackCpt = 0;
-          Vec3  cameraIndex;
           Vec3  rigIndex = -1.0*Vec3::Ones();
           Vec3  subTrackId;
           for (submapTrack::const_iterator iter = subTrack.begin(); iter != subTrack.end(); ++iter, ++subTrackCpt) {
@@ -589,27 +595,23 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
             const size_t rigidId = _map_RigIdPerImageId.at(imaIndex);
             if( rigIndex[0] == -1 && index == 0 )
             {
-              cameraIndex[index] = _map_IntrinsicIdPerImageId.at(imaIndex);
               rigIndex[index]    = rigidId;
               subTrackId[index]  = subTrackCpt;
               ++index;
             }
             if( rigIndex[1] == -1 && rigIndex[0] != rigidId && index == 1 )
             {
-              cameraIndex[index] = _map_IntrinsicIdPerImageId.at(imaIndex);
               rigIndex[index]    = rigidId;
               subTrackId[index]  = subTrackCpt;
               ++index;
             }
             if( rigIndex[2] == -1 && rigIndex[1] != rigidId && rigIndex[0] != rigidId && index == 2 )
             {
-              cameraIndex[index] = _map_IntrinsicIdPerImageId.at(imaIndex);
               rigIndex[index]    = rigidId;
               subTrackId[index]  = subTrackCpt;
               ++index;
             }
           }
-          camIndex.push_back(cameraIndex);
           subTrackIndex.push_back(subTrackId);
         }
 
@@ -632,7 +634,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
         if (map_tracksCommon.size() > 50 &&
             estimate_T_rig_triplet(
                   map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
-                  rigRotations, rigOffsets, camIndex, subTrackIndex,
+                  rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, subTrackIndex,
                   vec_tis, dPrecision, vec_inliers, ThresholdUpperBound, _sOutDirectory, I, J, K) )
         {
           std::cout << dPrecision * averageFocal << "\t" << vec_inliers.size() << std::endl;
