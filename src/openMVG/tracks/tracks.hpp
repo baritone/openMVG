@@ -287,7 +287,7 @@ struct TracksBuilder
         rigset.insert(map_RigIdPerImageId[reverse_my_Map[ iit ].first]);
         ++cpt;
       }
-      if (myset.size() != cpt || rigset.size() < nLengthSupTo )
+      if (myset.size() != cpt || rigset.size() < nLengthSupTo || myset.size() > nLengthSupTo)
       {
         set_classToErase.insert(cit.operator int());
       }
