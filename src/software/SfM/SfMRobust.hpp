@@ -217,7 +217,17 @@ bool robustRigPose(
       setSubCam_rigTwo.insert(scIdTwo[i]);
   }
 
-  return (pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * rigOffsets.size());
+  // decide if we keep the model or not
+  bool bUseModel=false;
+
+  if( (pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * rigOffsets.size()) && // there is enough correspondences
+      (setSubCam_rigOne.size() > 0.3 * rigOffsets.size()) && // there is at least 30% of subcameras that are matched
+      (setSubCam_rigTwo.size() > 0.3 * rigOffsets.size()) )  // there is at least 30% of subcameras that are matched
+  {
+    bUseModel = true ;
+  }
+
+  return bUseModel;
 }
 
 /// Triangulate a set of points between two view

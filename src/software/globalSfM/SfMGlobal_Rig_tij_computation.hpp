@@ -130,7 +130,7 @@ bool estimate_T_rig_triplet(
   minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
     min, max, mean, median);
 
-  bool bTest(vec_inliers.size() > 30);
+  bool bTest(vec_inliers.size() > 30 * vec_rigOffset.size() );
 
   if (!bTest)
   {
@@ -635,12 +635,12 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
         // update precision to have good value for normalized coordinates
         double dPrecision = 4.0 / averageFocal / averageFocal;
-        const double ThresholdUpperBound = 1.0 / averageFocal;
+        const double ThresholdUpperBound = 0.5 / averageFocal;
 
         std::vector<Vec3> vec_tis(3);
         std::vector<size_t> vec_inliers;
 
-        if (map_tracksCommon.size() > 50 &&
+        if (map_tracksCommon.size() > 50 * rigOffsets.size() &&
             estimate_T_rig_triplet(
                   map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                   rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, subTrackIndex,
