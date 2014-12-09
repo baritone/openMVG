@@ -2231,6 +2231,10 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
     }
   }
 
+  // fix rig one position
+  problem.SetParameterBlockConstant(
+    ba_problem.mutable_rig_extrinsic(0) );
+
   // Solve BA
   ceres::Solver::Summary summary;
   ceres::Solve(options, &problem, &summary);

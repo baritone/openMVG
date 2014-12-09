@@ -130,7 +130,7 @@ bool estimate_T_rig_triplet(
   minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
     min, max, mean, median);
 
-  bool bTest(vec_inliers.size() > 30 * vec_rigOffset.size() );
+  bool bTest(vec_inliers.size() > 0.15 * map_tracksCommon.size() );
 
   if (!bTest)
   {
@@ -341,6 +341,10 @@ bool estimate_T_rig_triplet(
       }
     }
 
+    // fix rig one position
+    problem.SetParameterBlockConstant(
+      ba_problem.mutable_rig_extrinsic(0) );
+
     // Configure a BA engine and run it
     //  Make Ceres automatically detect the bundle structure.
     ceres::Solver::Options options;
@@ -509,9 +513,9 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
   std::cout << std::endl
     << "Computation of the relative translations over the graph with an edge coverage algorithm" << std::endl;
-  #ifdef USE_OPENMP
+#ifdef USE_OPENMP
   #pragma omp parallel for schedule(dynamic)
-  #endif
+#endif
   for (int k = 0; k < vec_edges.size(); ++k)
   {
     const myEdge & edge = vec_edges[k];
@@ -661,7 +665,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
           //--- ATOMIC
           #ifdef USE_OPENMP
-          #pragma omp critical
+             #pragma omp critical
           #endif
           {
             Mat3 RijGt;
