@@ -23,6 +23,7 @@
 #include "openMVG/multiview/rotation_averaging.hpp"
 // Translation averaging
 #include "openMVG/linearProgramming/lInfinityCV/global_translations_fromTij.hpp"
+#include "openMVG/linearProgramming/lInfinityCV/global_translations_fromTriplets.hpp"
 #include "openMVG/multiview/translation_averaging_solver.hpp"
 
 // Linear programming solver(s)
@@ -674,7 +675,7 @@ bool GlobalRigidReconstructionEngine::Process()
 
     openMVG::Timer timerLP_triplet;
 
-    bool  bComputeTrifocal=false;
+    bool  bComputeTrifocal=true;
     if(bComputeTrifocal){
        computePutativeTranslation_EdgesCoverage(map_globalR, vec_triplets, vec_initialRijTijEstimates, newpairMatches);
     }
@@ -796,7 +797,7 @@ bool GlobalRigidReconstructionEngine::Process()
         double gamma = -1.0;
         std::vector<double> vec_solution;
         {
-          vec_solution.resize(iNRigs*3 + vec_initialRijTijEstimates.size() + 1);
+          vec_solution.resize(iNRigs*3 + vec_initialRijTijEstimates.size()/3 + 1);
           using namespace openMVG::linearProgramming;
           #ifdef OPENMVG_HAVE_MOSEK
             MOSEK_SolveWrapper solverLP(vec_solution.size());
@@ -804,7 +805,7 @@ bool GlobalRigidReconstructionEngine::Process()
             OSI_CLP_SolverWrapper solverLP(vec_solution.size());
           #endif
 
-          lInfinityCV::Tifromtij_ConstraintBuilder cstBuilder(vec_initialRijTijEstimates);
+          lInfinityCV::Tifromtij_ConstraintBuilder_OneLambdaPerTrif cstBuilder(vec_initialRijTijEstimates);
 
           LP_Constraints_Sparse constraint;
           //-- Setup constraint and solver
@@ -923,7 +924,7 @@ bool GlobalRigidReconstructionEngine::Process()
     TracksBuilder tracksBuilder;
     {
       tracksBuilder.Build(newpairMatches);
-      tracksBuilder.Filter(3);
+      tracksBuilder.Filter(_map_RigIdPerImageId, 3);
       tracksBuilder.ExportToSTL(_map_selectedTracks);
     }
 
@@ -934,6 +935,7 @@ bool GlobalRigidReconstructionEngine::Process()
     {
       std::vector<double> vec_residuals;
       vec_residuals.reserve(_map_selectedTracks.size());
+      std::set<size_t> set_idx_to_remove;
 
       C_Progress_display my_progress_bar_triangulation( _map_selectedTracks.size(),
       std::cout, "\n\n Initial triangulation:\n");
@@ -941,7 +943,6 @@ bool GlobalRigidReconstructionEngine::Process()
 #ifdef USE_OPENMP
       #pragma omp parallel for schedule(dynamic)
 #endif
-
       for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
       {
           STLMAPTracks::const_iterator iterTracks = _map_selectedTracks.begin();
@@ -968,8 +969,13 @@ bool GlobalRigidReconstructionEngine::Process()
 #ifdef USE_OPENMP
 #pragma omp critical
 #endif
-        //-- Compute residual over all the projections
         {
+          if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
+               || !is_finite(Xs[2]) )  {
+            set_idx_to_remove.insert(idx);
+          }
+
+          //-- Compute residual over all the projections
           for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
             const size_t imaIndex = iterSubTrack->first;
             const size_t featIndex = iterSubTrack->second;
@@ -980,6 +986,28 @@ bool GlobalRigidReconstructionEngine::Process()
           ++my_progress_bar_triangulation;
         }
       }
+
+      //-- Remove useless tracks and 3D points
+      {
+      std::vector<Vec3> vec_allScenes_cleaned;
+      for(size_t i = 0; i < _vec_allScenes.size(); ++i)
+      {
+        if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
+        {
+          vec_allScenes_cleaned.push_back(_vec_allScenes[i]);
+        }
+      }
+      _vec_allScenes.swap(vec_allScenes_cleaned);
+
+      for( std::set<size_t>::const_iterator iter = set_idx_to_remove.begin();
+        iter != set_idx_to_remove.end(); ++iter)
+      {
+        _map_selectedTracks.erase(*iter);
+      }
+      std::cout << "\n #Tracks removed: " << set_idx_to_remove.size() << std::endl;
+      }
+
+      plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
 
       {
         // Display some statistics of reprojection errors
@@ -1019,8 +1047,6 @@ bool GlobalRigidReconstructionEngine::Process()
         }
       }
     }
-
-    plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
   }
 
   //-------------------
@@ -1224,7 +1250,7 @@ bool GlobalRigidReconstructionEngine::InputDataIsCorrect()
       Mat3  D   = Mat3::Identity() - RRt;
 
       // R is a rotation matrix if |R| = + 1.0 and R.R^t = I_3
-      if( fabs(R.determinant()-1.0) > 1.0e-5 || D.squaredNorm() > 1.0e-8 )
+      if( fabs(R.determinant()-1.0) > 1.0e-5 || D.norm() > 1.0e-5 )
       {
         std::cerr << "Error : Input Rotation Matrix is not a rotation matrix \n";
         return false;
@@ -1341,10 +1367,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     std::vector<int>  camCorrespondencesRigOne;
     std::vector<int>  camCorrespondencesRigTwo;
 
-    // set of subcam that are matched
-    std::set<size_t>  setSubCam_rigOne;
-    std::set<size_t>  setSubCam_rigTwo;
-
     // loop on inter-rig correspondences
     std::pair<size_t, size_t> imageSize;
 
@@ -1357,9 +1379,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
       const size_t SubI = _map_IntrinsicIdPerImageId[I];
       const size_t SubJ = _map_IntrinsicIdPerImageId[J];
-
-      setSubCam_rigOne.insert(SubI);
-      setSubCam_rigTwo.insert(SubJ);
 
       imageSize.first  = _vec_intrinsicGroups[SubI].m_w ;
       imageSize.second = _vec_intrinsicGroups[SubI].m_h ;
@@ -1433,7 +1452,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         TracksBuilder tracksBuilder;
         {
           tracksBuilder.Build(map_matchesR0R1);
-          tracksBuilder.Filter(2);
+          tracksBuilder.Filter(_map_RigIdPerImageId);
           tracksBuilder.ExportToSTL(map_tracks);
         }
 
@@ -1443,6 +1462,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
           std::vector<double> vec_residuals;
           vec_residuals.reserve(map_tracks.size());
           vec_allScenes.resize(map_tracks.size());
+          std::set<size_t> set_idx_to_remove;
 
            for (int idx = 0; idx < map_tracks.size(); ++idx)
           {
@@ -1491,6 +1511,30 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             // Compute the 3D point and keep point index with negative depth
             const Vec3 Xs = trianObj.compute();
             vec_allScenes[idx] = Xs;
+
+            if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
+                 || !is_finite(Xs[2]) )  {
+              set_idx_to_remove.insert(idx);
+            }
+          }
+
+          //-- Remove useless tracks and 3D points
+          {
+            std::vector<Vec3> vec_allScenes_cleaned;
+            for(size_t ic = 0; ic < vec_allScenes.size(); ++ic)
+            {
+              if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), ic) == set_idx_to_remove.end())
+              {
+                vec_allScenes_cleaned.push_back(vec_allScenes[ic]);
+              }
+            }
+            vec_allScenes.swap(vec_allScenes_cleaned);
+
+            for( std::set<size_t>::const_iterator iterSet = set_idx_to_remove.begin();
+              iterSet != set_idx_to_remove.end(); ++iterSet)
+            {
+              map_tracks.erase(*iterSet);
+            }
           }
         }
 
@@ -1732,6 +1776,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         }
         // export rotation for rotation avereging
+        #ifdef USE_OPENMP
+          #pragma omp critical
+        #endif
         vec_relatives[std::make_pair(R0,R1)] = std::make_pair(R,t);
       }
       #ifdef USE_OPENMP
@@ -2116,6 +2163,12 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
       ba_problem.mutable_point_for_observation(k));
   }
 
+  // add parameter block for each camera. (To be sure no camera is missing)
+  for (size_t k = 0; k < ba_problem.num_intrinsics(); ++k) {
+    problem.AddParameterBlock(ba_problem.mutable_cameras_extrinsic(k), 6);
+    problem.AddParameterBlock(ba_problem.mutable_cameras_intrinsic(k), 3);
+  }
+
   // Configure a BA engine and run it
   //  Make Ceres automatically detect the bundle structure.
   ceres::Solver::Options options;
@@ -2177,6 +2230,10 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
       }
     }
   }
+
+  // fix rig one position
+  problem.SetParameterBlockConstant(
+    ba_problem.mutable_rig_extrinsic(0) );
 
   // Solve BA
   ceres::Solver::Summary summary;

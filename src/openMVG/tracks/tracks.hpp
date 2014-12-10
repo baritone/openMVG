@@ -271,6 +271,32 @@ struct TracksBuilder
     return false;
   }
 
+  /// Remove bad tracks, conflict tracks (many times the same rig index in a track)
+  bool Filter(std::map<size_t, size_t> map_RigIdPerImageId, size_t nLengthSupTo = 2)
+  {
+    // Remove bad tracks (shorter, conflicts (Many times the same rig index)...)
+
+    // Remove tracks that have a conflict (many times the same image index)
+    std::set<int> set_classToErase;
+    for ( lemon::UnionFindEnum< IndexMap >::ClassIt cit(*myTracksUF); cit != INVALID; ++cit) {
+      size_t cpt = 0;
+      std::set<size_t> rigset;
+      std::set<size_t> myset;
+      for (lemon::UnionFindEnum< IndexMap >::ItemIt iit(*myTracksUF, cit); iit != INVALID; ++iit) {
+        myset.insert(reverse_my_Map[ iit ].first);
+        rigset.insert(map_RigIdPerImageId[reverse_my_Map[ iit ].first]);
+        ++cpt;
+      }
+      if (myset.size() != cpt || rigset.size() < nLengthSupTo )
+      {
+        set_classToErase.insert(cit.operator int());
+      }
+    }
+    for_each (set_classToErase.begin(), set_classToErase.end(),
+      std::bind1st( std::mem_fun( &UnionFindObject::eraseClass ), myTracksUF.get() ));
+    return false;
+  }
+
   /// Remove the pair that have too few correspondences.
   bool FilterPairWiseMinimumMatches(size_t minMatchesOccurences, bool bVerbose = false)
   {
