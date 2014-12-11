@@ -1360,6 +1360,50 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     const size_t R0 = iter->first.first;
     const size_t R1 = iter->first.second;
 
+    // compute tracks between rigs
+    RigWiseMatches map_matchesR0R1;
+    map_matchesR0R1.insert(*_map_Matches_Rig.find(std::make_pair(R0,R1)));
+
+    // Compute tracks:
+    openMVG::tracks::STLMAPTracks map_tracks;
+    TracksBuilder tracksBuilder;
+    {
+      tracksBuilder.Build(map_matchesR0R1);
+      tracksBuilder.Filter(_map_RigIdPerImageId);
+      tracksBuilder.ExportToSTL(map_tracks);
+    }
+
+    // extract associated subcamera id for each tracks
+    std::vector<Vec2> subTrackIndex;
+
+    size_t cpt = 0;
+    for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
+      iterTracks != map_tracks.end(); ++iterTracks, ++cpt)
+    {
+      const submapTrack & subTrack = iterTracks->second;
+      size_t index = 0;
+      size_t subTrackCpt = 0;
+      Vec2  rigIndex = -1.0*Vec2::Ones();
+      Vec2  subTrackId;
+      for (submapTrack::const_iterator iter = subTrack.begin(); iter != subTrack.end(); ++iter, ++subTrackCpt) {
+        const size_t imaIndex = iter->first;
+        const size_t rigidId = _map_RigIdPerImageId.at(imaIndex);
+        if( rigIndex[0] == -1 && index == 0 )
+        {
+          rigIndex[index]    = rigidId;
+          subTrackId[index]  = subTrackCpt;
+          ++index;
+        }
+        if( rigIndex[1] == -1 && rigIndex[0] != rigidId && index == 1 )
+        {
+          rigIndex[index]    = rigidId;
+          subTrackId[index]  = subTrackCpt;
+          ++index;
+        }
+      }
+      subTrackIndex.push_back(subTrackId);
+    }
+
     // initialize structure used for matching between rigs
     bearingVectors_t bearingVectorsRigOne;
     bearingVectors_t bearingVectorsRigTwo;
@@ -1370,46 +1414,49 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     // loop on inter-rig correspondences
     std::pair<size_t, size_t> imageSize;
 
-    for( PairWiseMatches::const_iterator iterMatch =  iter->second.begin() ;
-              iterMatch != iter->second.end() ; ++iterMatch ){
-
-      // extract camera id and subchannel number
-      const size_t I = iterMatch->first.first;
-      const size_t J = iterMatch->first.second;
-
-      const size_t SubI = _map_IntrinsicIdPerImageId[I];
-      const size_t SubJ = _map_IntrinsicIdPerImageId[J];
-
-      imageSize.first  = _vec_intrinsicGroups[SubI].m_w ;
-      imageSize.second = _vec_intrinsicGroups[SubI].m_h ;
-
-      // extracts features for each pair in order to construct bearing vectors.
-      for (size_t l = 0; l < iterMatch->second.size(); ++l)
+    cpt = 0;
+    for( STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
+                iterTracks != map_tracks.end(); ++iterTracks, ++cpt)
+    {
+      const submapTrack & subTrack = iterTracks->second;
+      // iter on subtracks
+      for (size_t index = 0; index < 2 ; ++index)
       {
-        bearingVector_t  bearing1;
-        bearingVector_t  bearing2;
+        submapTrack::const_iterator iter = subTrack.begin();
+        std::advance(iter, subTrackIndex[cpt][index]);
+
+        // extract camId and feature index
+        const size_t imaIndex = iter->first;
+        const size_t featIndex = iter->second;
+
+        // extract features
+        bearingVector_t  bearing;
 
         // extract normalized keypoints coordinates
-        bearing1(0) = _map_feats_normalized[I][iterMatch->second[l]._i].x();
-        bearing1(1) = _map_feats_normalized[I][iterMatch->second[l]._i].y();
-        bearing1(2) = 1.0;
-
-        bearing2(0) = _map_feats_normalized[J][iterMatch->second[l]._j].x();
-        bearing2(1) = _map_feats_normalized[J][iterMatch->second[l]._j].y();
-        bearing2(2) = 1.0;
+        const SIOPointFeature & pt = _map_feats_normalized.at(imaIndex)[featIndex];
+        bearing(0) = pt.x();
+        bearing(1) = pt.y();
+        bearing(2) = 1.0;
 
         // normalize bearing vectors
-        bearing1 = bearing1 / bearing1.norm();
-        bearing2 = bearing2 / bearing2.norm();
+        bearing = bearing / bearing.norm();
 
-        // add bearing vectors to list and update correspondences list
-        bearingVectorsRigOne.push_back( bearing1 );
-        bearingVectorsRigTwo.push_back( bearing2 );
+        // extract camera indexes
+        size_t subCamId = _map_IntrinsicIdPerImageId.at(imaIndex);
 
-        camCorrespondencesRigOne.push_back(SubI);
-        camCorrespondencesRigTwo.push_back(SubJ);
+        if( _map_RigIdPerImageId.at(imaIndex) == R0 ){
+          // add bearing vectors to list and update correspondences list
+          bearingVectorsRigOne.push_back( bearing );
+          camCorrespondencesRigOne.push_back(subCamId);
+        }
+        else
+        {
+          // add bearing vectors to list and update correspondences list
+          bearingVectorsRigTwo.push_back( bearing );
+          camCorrespondencesRigTwo.push_back(subCamId);
+        }
       }
-    }// end loop on inter-rig matches
+    }// end loop on tracks
 
     //--> Estimate the best possible Rotation/Translation from correspondances
     double errorMax = std::numeric_limits<double>::max();
@@ -1443,19 +1490,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         // count the number of observations
         size_t nbmeas = 0;
-
-        // compute tracks between rigs
-        RigWiseMatches map_matchesR0R1;
-        map_matchesR0R1.insert(*_map_Matches_Rig.find(std::make_pair(R0,R1)));
-
-        // Compute tracks:
-        openMVG::tracks::STLMAPTracks map_tracks;
-        TracksBuilder tracksBuilder;
-        {
-          tracksBuilder.Build(map_matchesR0R1);
-          tracksBuilder.Filter(_map_RigIdPerImageId);
-          tracksBuilder.ExportToSTL(map_tracks);
-        }
 
         // Triangulation of all the tracks
         {
