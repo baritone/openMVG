@@ -1419,7 +1419,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     std::vector<size_t> vec_inliers;
 
 
-    if (!SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
+    if ( bearingVectorsRigOne.size () < 50 * rigOffsets.size() ||
+        !SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
         camCorrespondencesRigOne, camCorrespondencesRigTwo,
         rigOffsets, rigRotations, &pose, &vec_inliers, imageSize,
         &errorMax, maxExpectedError) )
