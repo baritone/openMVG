@@ -1488,20 +1488,24 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         Mat3  K = Mat3::Identity();
         std::vector<Vec3> vec_allScenes;
 
-        // count the number of observations
-        size_t nbmeas = 0;
+        // keep only tracks related to inliers
+        openMVG::tracks::STLMAPTracks map_tracksInliers;
+        for(int l=0; l < vec_inliers.size(); ++l)
+        {
+          map_tracksInliers[i] = map_tracks[vec_inliers[i]];
+        }
 
         // Triangulation of all the tracks
         {
           Map_Camera map_camera;
           std::vector<double> vec_residuals;
-          vec_residuals.reserve(map_tracks.size());
-          vec_allScenes.resize(map_tracks.size());
+          vec_residuals.reserve(map_tracksInliers.size());
+          vec_allScenes.resize(map_tracksInliers.size());
           std::set<size_t> set_idx_to_remove;
 
-           for (int idx = 0; idx < map_tracks.size(); ++idx)
+           for (int idx = 0; idx < map_tracksInliers.size(); ++idx)
           {
-            STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
+            STLMAPTracks::const_iterator iterTracks = map_tracksInliers.begin();
             std::advance(iterTracks, idx);
 
             const submapTrack & subTrack = iterTracks->second;
@@ -1568,7 +1572,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             for( std::set<size_t>::const_iterator iterSet = set_idx_to_remove.begin();
               iterSet != set_idx_to_remove.end(); ++iterSet)
             {
-              map_tracks.erase(*iterSet);
+              map_tracksInliers.erase(*iterSet);
             }
           }
         }
@@ -1582,8 +1586,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         // Count the number of measurement (sum of the reconstructed track length)
         size_t nbmeasurements = 0;
-        for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
-          iterTracks != map_tracks.end(); ++iterTracks)
+        for (STLMAPTracks::const_iterator iterTracks = map_tracksInliers.begin();
+          iterTracks != map_tracksInliers.end(); ++iterTracks)
         {
           const submapTrack & subTrack = iterTracks->second;
           nbmeasurements += subTrack.size();
@@ -1681,8 +1685,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         // Fill the measurements
         size_t k = 0;
-        for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
-          iterTracks != map_tracks.end(); ++iterTracks, ++k)
+        for (STLMAPTracks::const_iterator iterTracks = map_tracksInliers.begin();
+          iterTracks != map_tracksInliers.end(); ++iterTracks, ++k)
         {
           // Look through the track and add point position
           const tracks::submapTrack & track = iterTracks->second;

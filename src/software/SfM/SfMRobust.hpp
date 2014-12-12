@@ -204,7 +204,7 @@ bool robustRigPose(
 
   // Robustly estimation of the Essential matrix and it's precision
   std::pair<double,double> acRansacOut = ACRANSAC(kernel, *pvec_inliers,
-    1024, relativePose, precision, false);
+    4096, relativePose, precision, false);
   *errorMax = acRansacOut.first;
 
   // set of subcam that are matched
@@ -220,7 +220,7 @@ bool robustRigPose(
   // decide if we keep the model or not
   bool bUseModel=false;
 
-  if( (pvec_inliers->size() > 0.4 * b1.size() ) && // there is enough correspondences
+  if( (pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * rigOffsets.size() ) && // there is enough correspondences
       (setSubCam_rigOne.size() > 0.3 * rigOffsets.size()) && // there is at least 30% of subcameras that are matched
       (setSubCam_rigTwo.size() > 0.3 * rigOffsets.size()) )  // there is at least 30% of subcameras that are matched
   {
