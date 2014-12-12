@@ -1492,7 +1492,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         openMVG::tracks::STLMAPTracks map_tracksInliers;
         for(int l=0; l < vec_inliers.size(); ++l)
         {
-          map_tracksInliers[i] = map_tracks[vec_inliers[i]];
+          map_tracksInliers[l] = map_tracks[vec_inliers[l]];
         }
 
         // Triangulation of all the tracks
