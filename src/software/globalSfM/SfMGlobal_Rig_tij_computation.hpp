@@ -86,7 +86,7 @@ bool estimate_T_rig_triplet(
   KernelType kernel(x1, x2, x3, vec_global_KR_Triplet, vec_rigRotation,
                     vec_rigOffset, camIndex, ThresholdUpperBound);
 
-  const size_t ORSA_ITER = 320;
+  const size_t ORSA_ITER = 1024;
 
   rigTrifocalTensorModel T;
   dPrecision = dPrecision ;//std::numeric_limits<double>::infinity();
