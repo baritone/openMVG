@@ -969,7 +969,7 @@ bool GlobalRigidReconstructionEngine::Process()
 #pragma omp critical
 #endif
         {
-          if (trianObj.minDepth() < 0 || !(Xs[0]) || !is_finite(Xs[1])
+          if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
                || !is_finite(Xs[2]) )  {
             set_idx_to_remove.insert(idx);
           }
