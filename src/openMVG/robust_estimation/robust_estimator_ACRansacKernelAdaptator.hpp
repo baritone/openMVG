@@ -37,10 +37,10 @@ using namespace opengv;
 namespace openMVG {
 namespace robust{
 
-/// Two view Kernel adaptator for the A contrario model estimator
+/// Two view Kernel adapter for the A contrario model estimator
 /// Handle data normalization and compute the corresponding logalpha 0
 ///  that depends of the error model (point to line, or point to point)
-/// This kernel adaptor is working for affine, homography, fundamental matrix
+/// This kernel adapter is working for affine, homography, fundamental matrix
 ///  estimation.
 template <typename SolverArg,
           typename ErrorArg,
@@ -83,13 +83,20 @@ public:
   enum { MAX_MODELS = Solver::MAX_MODELS };
 
   void Fit(const std::vector<size_t> &samples, std::vector<Model> *models) const {
-    Mat x1 = ExtractColumns(x1_, samples);
-    Mat x2 = ExtractColumns(x2_, samples);
+    const Mat x1 = ExtractColumns(x1_, samples);
+    const Mat x2 = ExtractColumns(x2_, samples);
     Solver::Solve(x1, x2, models);
   }
 
   double Error(size_t sample, const Model &model) const {
     return ErrorT::Error(model, x1_.col(sample), x2_.col(sample));
+  }
+
+  void Errors(const Model & model, std::vector<double> & vec_errors) const
+  {
+    vec_errors.resize(x1_.cols());
+    for (size_t sample = 0; sample < x1_.cols(); ++sample)
+      vec_errors[sample] = ErrorT::Error(model, x1_.col(sample), x2_.col(sample));
   }
 
   size_t NumSamples() const {
@@ -122,7 +129,7 @@ struct UnnormalizerResection {
   }
 };
 
-/// Pose/Resection Kernel adaptator for the A contrario model estimator
+/// Pose/Resection Kernel adapter for the A contrario model estimator
 template <typename SolverArg,
   typename ErrorArg,
   typename UnnormalizerArg,
@@ -149,13 +156,20 @@ public:
   enum { MAX_MODELS = Solver::MAX_MODELS };
 
   void Fit(const std::vector<size_t> &samples, std::vector<Model> *models) const {
-    Mat x1 = ExtractColumns(x2d_, samples);
-    Mat x2 = ExtractColumns(x3D_, samples);
+    const Mat x1 = ExtractColumns(x2d_, samples);
+    const Mat x2 = ExtractColumns(x3D_, samples);
     Solver::Solve(x1, x2, models);
   }
 
   double Error(int sample, const Model &model) const {
     return ErrorT::Error(model, x2d_.col(sample), x3D_.col(sample));
+  }
+
+  void Errors(const Model & model, std::vector<double> & vec_errors) const
+  {
+    vec_errors.resize(x2d_.cols());
+    for (size_t sample = 0; sample < x2d_.cols(); ++sample)
+      vec_errors[sample] = ErrorT::Error(model, x2d_.col(sample), x3D_.col(sample));
   }
 
   size_t NumSamples() const { return x2d_.cols(); }
@@ -177,7 +191,7 @@ private:
   double logalpha0_; // Alpha0 is used to make the error adaptive to the image size
 };
 
-/// Pose/Resection Kernel adaptator for the A contrario model estimator with
+/// Pose/Resection Kernel adapter for the A contrario model estimator with
 ///  known Intrinsic
 template <typename SolverArg,
   typename ErrorArg,
@@ -207,13 +221,20 @@ public:
   enum { MAX_MODELS = Solver::MAX_MODELS };
 
   void Fit(const std::vector<size_t> &samples, std::vector<Model> *models) const {
-    Mat x1 = ExtractColumns(x2d_, samples);
-    Mat x2 = ExtractColumns(x3D_, samples);
+    const Mat x1 = ExtractColumns(x2d_, samples);
+    const Mat x2 = ExtractColumns(x3D_, samples);
     Solver::Solve(x1, x2, models);
   }
 
   double Error(size_t sample, const Model &model) const {
     return ErrorT::Error(model, x2d_.col(sample), x3D_.col(sample));
+  }
+
+  void Errors(const Model & model, std::vector<double> & vec_errors) const
+  {
+    vec_errors.resize(x2d_.cols());
+    for (size_t sample = 0; sample < x2d_.cols(); ++sample)
+      vec_errors[sample] = ErrorT::Error(model, x2d_.col(sample), x3D_.col(sample));
   }
 
   size_t NumSamples() const { return x2d_.cols(); }
@@ -236,7 +257,7 @@ private:
   Mat3 K_;            // Intrinsic camera parameter
 };
 
-/// Essential matrix Kernel adaptator for the A contrario model estimator
+/// Essential matrix Kernel adaptor for the A contrario model estimator
 template <typename SolverArg,
   typename ErrorArg,
   typename UnnormalizerArg,
@@ -273,8 +294,8 @@ public:
   enum { MAX_MODELS = Solver::MAX_MODELS };
 
   void Fit(const std::vector<size_t> &samples, std::vector<Model> *models) const {
-    Mat x1 = ExtractColumns(x1k_, samples);
-    Mat x2 = ExtractColumns(x2k_, samples);
+    const Mat x1 = ExtractColumns(x1k_, samples);
+    const Mat x2 = ExtractColumns(x2k_, samples);
     Solver::Solve(x1, x2, models);
   }
 
@@ -282,6 +303,15 @@ public:
     Mat3 F;
     FundamentalFromEssential(model, K1_, K2_, &F);
     return ErrorT::Error(F, this->x1_.col(sample), this->x3D_.col(sample));
+  }
+
+  void Errors(const Model & model, std::vector<double> & vec_errors) const
+  {
+    Mat3 F;
+    FundamentalFromEssential(model, K1_, K2_, &F);
+    vec_errors.resize(x1_.cols());
+    for (size_t sample = 0; sample < x1_.cols(); ++sample)
+      vec_errors[sample] = ErrorT::Error(F, this->x1_.col(sample), this->x3D_.col(sample));
   }
 
   size_t NumSamples() const { return x1_.cols(); }
@@ -406,6 +436,13 @@ public:
 
   double Error(size_t sample, const Model &model) const {
     return Square(ErrorT::Error(model, x1_.col(sample), x2_.col(sample)));
+  }
+
+  void Errors(const Model & model, std::vector<double> & vec_errors) const
+  {
+    vec_errors.resize(x1_.cols());
+    for (size_t sample = 0; sample < x1_.cols(); ++sample)
+      vec_errors[sample] = Square(ErrorT::Error(model, x1_.col(sample), x2_.col(sample)));
   }
 
   size_t NumSamples() const {
