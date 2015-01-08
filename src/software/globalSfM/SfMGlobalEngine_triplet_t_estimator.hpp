@@ -378,6 +378,12 @@ public:
                   vec_KR_, models, ThresholdUpperBound_);
   }
 
+  void Errors(const Model &model, std::vector<double> & vec_errors) const {
+    for (size_t sample = 0; sample < x1n_.cols(); ++sample)
+      vec_errors[sample] = ErrorArg::Error(model, x1n_.col(sample), x2n_.col(sample), x3n_.col(sample),
+                               camIndex_.col(sample), vec_rigRotation_, vec_rigOffset_);
+  }
+
   double Error(size_t sample, const Model &model) const {
     return ErrorArg::Error(model, x1n_.col(sample), x2n_.col(sample), x3n_.col(sample),
        camIndex_.col(sample), vec_rigRotation_, vec_rigOffset_);
