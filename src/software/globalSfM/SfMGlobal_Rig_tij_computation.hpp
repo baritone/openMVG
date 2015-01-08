@@ -86,7 +86,7 @@ bool estimate_T_rig_triplet(
   KernelType kernel(x1, x2, x3, vec_global_KR_Triplet, vec_rigRotation,
                     vec_rigOffset, camIndex, ThresholdUpperBound);
 
-  const size_t ORSA_ITER = 320;
+  const size_t ORSA_ITER = 4096;
 
   rigTrifocalTensorModel T;
   dPrecision = dPrecision ;//std::numeric_limits<double>::infinity();
@@ -639,7 +639,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
         // update precision to have good value for normalized coordinates
         double dPrecision = 4.0 / averageFocal / averageFocal;
-        const double ThresholdUpperBound = 0.5 / averageFocal;
+        const double ThresholdUpperBound = 1.0 / averageFocal;
 
         std::vector<Vec3> vec_tis(3);
         std::vector<size_t> vec_inliers;

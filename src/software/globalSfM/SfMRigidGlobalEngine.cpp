@@ -934,7 +934,6 @@ bool GlobalRigidReconstructionEngine::Process()
     _vec_allScenes.resize(_map_selectedTracks.size());
     {
       std::vector<double> vec_residuals;
-      vec_residuals.reserve(_map_selectedTracks.size());
       std::set<size_t> set_idx_to_remove;
 
       C_Progress_display my_progress_bar_triangulation( _map_selectedTracks.size(),
@@ -974,14 +973,16 @@ bool GlobalRigidReconstructionEngine::Process()
                || !is_finite(Xs[2]) )  {
             set_idx_to_remove.insert(idx);
           }
-
-          //-- Compute residual over all the projections
-          for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
-            const size_t imaIndex = iterSubTrack->first;
-            const size_t featIndex = iterSubTrack->second;
-            const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
-            vec_residuals.push_back(_map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>()));
-            // no ordering in vec_residuals since there is parallelism
+          else
+          {
+            //-- Compute residual over all the projections
+            for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
+              const size_t imaIndex = iterSubTrack->first;
+              const size_t featIndex = iterSubTrack->second;
+              const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
+              vec_residuals.push_back(_map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>()));
+              // no ordering in vec_residuals since there is parallelism
+            }
           }
           ++my_progress_bar_triangulation;
         }
@@ -2206,6 +2207,11 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
   for (size_t k = 0; k < ba_problem.num_intrinsics(); ++k) {
     problem.AddParameterBlock(ba_problem.mutable_cameras_extrinsic(k), 6);
     problem.AddParameterBlock(ba_problem.mutable_cameras_intrinsic(k), 3);
+  }
+
+  // add parameter block for each rig. (To be sure no rig is missing)
+  for (size_t k = 0; k < ba_problem.num_rigs_; ++k) {
+    problem.AddParameterBlock(ba_problem.mutable_rig_extrinsic(k), 6);
   }
 
   // Configure a BA engine and run it
