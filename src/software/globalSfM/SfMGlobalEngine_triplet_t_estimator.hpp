@@ -260,7 +260,7 @@ namespace openMVG{
 using namespace openMVG::trifocal::kernel;
 
 struct rigTisXisTrifocalSolver {
-  enum { MINIMUM_SAMPLES = 3 };
+  enum { MINIMUM_SAMPLES = 4 };
   enum { MAX_MODELS = 1 };
   // Solve the computation of the tensor.
   static void Solve(

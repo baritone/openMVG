@@ -100,8 +100,10 @@ bool estimate_T_rig_triplet(
   vec_tis[2] = T.t3;
 
   // Fill Xis
-  std::vector<double> vec_residuals(vec_inliers.size());
-  std::vector<Vec3> vec_Xis(vec_inliers.size());
+  std::vector<double> vec_residuals;
+  std::vector<Vec3>   vec_Xis;
+  std::vector<size_t> vec_inliers_cleaned;
+
   for (size_t i = 0; i < vec_inliers.size(); ++i)  {
 
     // extract subcamera rotations and translation
@@ -122,15 +124,26 @@ bool estimate_T_rig_triplet(
     triangulation.add(P1, x1.col(vec_inliers[i]));
     triangulation.add(P2, x2.col(vec_inliers[i]));
     triangulation.add(P3, x3.col(vec_inliers[i]));
-    vec_residuals[i] = triangulation.error();
-    vec_Xis[i] = triangulation.compute();
+    const double residuals = triangulation.error();
+    const Vec3 Xs = triangulation.compute();
+
+    // keep only good 3D points for BA
+    if (triangulation.minDepth() > 0 && is_finite(Xs[0]) && is_finite(Xs[1])
+        || is_finite(Xs[2]) && residuals < ThresholdUpperBound )
+    {
+        vec_Xis.push_back(Xs);
+        vec_residuals.push_back(residuals);
+        vec_inliers_cleaned.push_back( vec_inliers[i] );
+    }
   }
+
+  vec_inliers.swap(vec_inliers_cleaned);
 
   double min, max, mean, median;
   minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
     min, max, mean, median);
 
-  bool bTest(vec_inliers.size() > 0.15 * map_tracksCommon.size() );
+  bool bTest(vec_inliers.size() > 0.25 * map_tracksCommon.size() );
 
   if (!bTest)
   {
@@ -633,9 +646,9 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
         //--
         // Get rotations:
         std::vector<Mat3> vec_global_KR_Triplet;
-        vec_global_KR_Triplet.push_back(map_global_KR[I]);
-        vec_global_KR_Triplet.push_back(map_global_KR[J]);
-        vec_global_KR_Triplet.push_back(map_global_KR[K]);
+        vec_global_KR_Triplet.push_back(map_global_KR.at(I));
+        vec_global_KR_Triplet.push_back(map_global_KR.at(J));
+        vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
         // update precision to have good value for normalized coordinates
         double dPrecision = 4.0 / averageFocal / averageFocal;

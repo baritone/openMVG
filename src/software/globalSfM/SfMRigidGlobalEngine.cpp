@@ -868,6 +868,8 @@ bool GlobalRigidReconstructionEngine::Process()
           const Mat3 & Ri = map_globalR[rigNum];
           const Vec3 Rigt(vec_RigTranslation[rigNum*3], vec_RigTranslation[rigNum*3+1], vec_RigTranslation[rigNum*3+2]);
 
+          cout << rigNum << "  " << Rigt << endl;
+
           for(size_t j= 0 ; j < ImageList.size(); ++j)
           {
             const size_t I = ImageList[j];
@@ -969,21 +971,25 @@ bool GlobalRigidReconstructionEngine::Process()
 #pragma omp critical
 #endif
         {
+          //-- Compute residual over all the projections
+          double  dAverageResidual = 0.0;
+
+          for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
+            const size_t imaIndex = iterSubTrack->first;
+            const size_t featIndex = iterSubTrack->second;
+            const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
+            dAverageResidual += _map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>());
+            // no ordering in vec_residuals since there is parallelism
+          }
+
+          dAverageResidual /= (double) subTrack.size() ;
+          vec_residuals.push_back(dAverageResidual);
+
           if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
-               || !is_finite(Xs[2]) )  {
+               || !is_finite(Xs[2]) || dAverageResidual > 10.0 )  {
             set_idx_to_remove.insert(idx);
           }
-          else
-          {
-            //-- Compute residual over all the projections
-            for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
-              const size_t imaIndex = iterSubTrack->first;
-              const size_t featIndex = iterSubTrack->second;
-              const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
-              vec_residuals.push_back(_map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>()));
-              // no ordering in vec_residuals since there is parallelism
-            }
-          }
+
           ++my_progress_bar_triangulation;
         }
       }
@@ -1347,7 +1353,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
   averageFocal /= (double) _vec_intrinsicGroups.size();
 
-  C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n" );
+  C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n " );
 #ifdef USE_OPENMP
     #pragma omp parallel for schedule(dynamic)
 #endif
@@ -1552,8 +1558,20 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             const Vec3 Xs = trianObj.compute();
             vec_allScenes[idx] = Xs;
 
+            //-- Compute residual over all the projections
+            double  dAverageResidual = 0.0;
+
+            for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
+              const size_t imaIndex = iterSubTrack->first;
+              const size_t featIndex = iterSubTrack->second;
+              const SIOPointFeature & pt = _map_feats_normalized[imaIndex][featIndex];
+              dAverageResidual += map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>());
+            }
+
+            dAverageResidual /= (double) subTrack.size() ;
+
             if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
-                 || !is_finite(Xs[2]) )  {
+                 || !is_finite(Xs[2]) || dAverageResidual > 2.5 / averageFocal )  {
               set_idx_to_remove.insert(idx);
             }
           }
