@@ -726,6 +726,9 @@ bool GlobalRigidReconstructionEngine::Process()
   //--> Consider only the connected component compound by the translation graph
   //-- Robust translation estimation can perform inference and remove some bad conditioned triplets
 
+  // create map original rig id to remaining rig id
+  std::map < size_t,  size_t >   mapRigIdToRepresented;
+
   {
     // Build the list of Pairs used by the translations
     std::vector<std::pair<size_t, size_t> > map_pairs_tij;
@@ -735,7 +738,7 @@ bool GlobalRigidReconstructionEngine::Process()
       map_pairs_tij.push_back(std::make_pair(rel.first.first,rel.first.second));
     }
 
-    const std::set<size_t> set_representedImageIndex = CleanGraph_Node(map_pairs_tij, _vec_fileNames, _sOutDirectory, 1.0);
+    const std::set<size_t> set_representedImageIndex = CleanGraph_Node(map_pairs_tij, _vec_fileNames, _sOutDirectory, _map_ImagesIdPerRigId[0].size());
 
     std::cout << "\n\n"
       << "We targeting to estimates: " << map_globalR.size()
@@ -747,9 +750,18 @@ bool GlobalRigidReconstructionEngine::Process()
     KeepOnlyReferencedElement(set_representedImageIndex, newpairMatches);
     // clean _map_matches_E?
 
+    // create map initial rig id to remaining rig id
+    size_t   cpt = 0;
+    for( std::set<size_t>::const_iterator iter = set_representedImageIndex.begin() ;
+         iter != set_representedImageIndex.end() ; ++iter, ++cpt )
+    {
+        mapRigIdToRepresented[ *iter ] = cpt;
+    }
+
     std::cout << "\nRemaining rigs after inference filter: \n"
-      << map_globalR.size() << " from a total of " << _vec_fileNames.size() / _vec_intrinsicGroups.size() << std::endl;
+      << map_globalR.size() << " from a total of " << set_representedImageIndex.size() << std::endl;
   }
+
 
   //-------------------
   //-- GLOBAL TRANSLATIONS ESTIMATION from initial triplets t_ij guess
@@ -861,14 +873,13 @@ bool GlobalRigidReconstructionEngine::Process()
         std::vector<Vec3>  vec_C;
         for (size_t i = 0; i < iNRigs; ++i)
         {
-          const size_t rigNum    = _reindexBackward[i];
+          const size_t rigNumT    = mapRigIdToRepresented.at(_reindexBackward[i]);
+          const size_t rigNum     = _reindexBackward[i];
           const std::vector<size_t> ImageList = _map_ImagesIdPerRigId[rigNum];
 
           // extract rig pose
           const Mat3 & Ri = map_globalR[rigNum];
-          const Vec3 Rigt(vec_RigTranslation[rigNum*3], vec_RigTranslation[rigNum*3+1], vec_RigTranslation[rigNum*3+2]);
-
-          cout << rigNum << "  " << Rigt << endl;
+          const Vec3 Rigt(vec_RigTranslation[rigNumT*3], vec_RigTranslation[rigNumT*3+1], vec_RigTranslation[rigNumT*3+2]);
 
           for(size_t j= 0 ; j < ImageList.size(); ++j)
           {
