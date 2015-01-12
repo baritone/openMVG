@@ -997,7 +997,7 @@ bool GlobalRigidReconstructionEngine::Process()
           vec_residuals.push_back(dAverageResidual);
 
           if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
-               || !is_finite(Xs[2]) || dAverageResidual > 15.0 )  {
+               || !is_finite(Xs[2]) || dAverageResidual > 20.0 )  {
             set_idx_to_remove.insert(idx);
           }
 
@@ -1478,14 +1478,13 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondances
     double errorMax = std::numeric_limits<double>::max();
-    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 2.5 / averageFocal )));
+    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
 
     transformation_t  pose;
     std::vector<size_t> vec_inliers;
 
 
-    if ( bearingVectorsRigOne.size () < 50 * rigOffsets.size() ||
-        !SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
+    if ( !SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
         camCorrespondencesRigOne, camCorrespondencesRigTwo,
         rigOffsets, rigRotations, &pose, &vec_inliers, imageSize,
         &errorMax, maxExpectedError) )
@@ -1582,7 +1581,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             dAverageResidual /= (double) subTrack.size() ;
 
             if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
-                 || !is_finite(Xs[2]) || dAverageResidual > 5.0 / averageFocal )  {
+                 || !is_finite(Xs[2]) || dAverageResidual > 15.0 / averageFocal )  {
               set_idx_to_remove.insert(idx);
             }
           }

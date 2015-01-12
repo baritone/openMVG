@@ -129,7 +129,7 @@ bool estimate_T_rig_triplet(
 
     // keep only good 3D points for BA
     if (triangulation.minDepth() > 0 && is_finite(Xs[0]) && is_finite(Xs[1])
-        && is_finite(Xs[2]) && residuals < 2.0 * ThresholdUpperBound )
+        && is_finite(Xs[2]) && residuals < 5.0 * ThresholdUpperBound )
     {
         vec_Xis.push_back(Xs);
         vec_residuals.push_back(residuals);
@@ -143,7 +143,7 @@ bool estimate_T_rig_triplet(
   minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
     min, max, mean, median);
 
-  bool bTest(vec_inliers.size() > 0.10 * map_tracksCommon.size() );
+  bool bTest(vec_inliers.size() > 0.20 * map_tracksCommon.size() );
 
   if (!bTest)
   {
@@ -657,7 +657,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
         std::vector<Vec3> vec_tis(3);
         std::vector<size_t> vec_inliers;
 
-        if (map_tracksCommon.size() > 50 * rigOffsets.size() &&
+        if (map_tracksCommon.size() > 20 * rigOffsets.size() &&
             estimate_T_rig_triplet(
                   map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                   rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, subTrackIndex,
