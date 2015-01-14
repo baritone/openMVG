@@ -143,7 +143,7 @@ bool estimate_T_rig_triplet(
   minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
     min, max, mean, median);
 
-  bool bTest(vec_inliers.size() > 0.20 * map_tracksCommon.size() );
+  bool bTest(vec_inliers.size() > 60 * vec_rigOffset.size()  );
 
   if (!bTest)
   {
@@ -410,14 +410,6 @@ bool estimate_T_rig_triplet(
         pt3D = Vec3(pt[0], pt[1], pt[2]);
         finalPoint.push_back(pt3D);
       }
-
-      // export point cloud (for debug purpose only)
-      // std::ostringstream pairIJK;
-      // pairIJK << nI << "_" << nJ << "_" << nK << ".ply";
-
-      // plyHelper::exportToPly(finalPoint, stlplus::create_filespec(sOutDirectory,
-      //                 "pointCloud_triplet_t_"+pairIJK.str()) );
-
     }
   }
   return bTest;
@@ -657,7 +649,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
         std::vector<Vec3> vec_tis(3);
         std::vector<size_t> vec_inliers;
 
-        if (map_tracksCommon.size() > 20 * rigOffsets.size() &&
+        if (map_tracksCommon.size() > 100 * rigOffsets.size() &&
             estimate_T_rig_triplet(
                   map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                   rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, subTrackIndex,

@@ -997,7 +997,7 @@ bool GlobalRigidReconstructionEngine::Process()
           vec_residuals.push_back(dAverageResidual);
 
           if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
-               || !is_finite(Xs[2]) || dAverageResidual > 20.0 )  {
+               || !is_finite(Xs[2]) || dAverageResidual > 25.0 )  {
             set_idx_to_remove.insert(idx);
           }
 
@@ -1483,19 +1483,11 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     transformation_t  pose;
     std::vector<size_t> vec_inliers;
 
-
-    if ( !SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
+    if ( SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
         camCorrespondencesRigOne, camCorrespondencesRigTwo,
         rigOffsets, rigRotations, &pose, &vec_inliers, imageSize,
         &errorMax, maxExpectedError) )
-      {
-        #ifdef USE_OPENMP
-          #pragma omp critical
-        #endif
-          ++my_progress_bar;
-          continue;
-      }
-      else {
+    {
         // retrieve relative rig orientation and translation
         const Mat3  Rrig = pose.block<3,3>(0,0).transpose();
         const Vec3  CRig = pose.col(3);
@@ -1515,8 +1507,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         // Triangulation of all the tracks
         {
           Map_Camera map_camera;
-          std::vector<double> vec_residuals;
-          vec_residuals.reserve(map_tracksInliers.size());
           vec_allScenes.resize(map_tracksInliers.size());
           std::set<size_t> set_idx_to_remove;
 
@@ -1581,7 +1571,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             dAverageResidual /= (double) subTrack.size() ;
 
             if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
-                 || !is_finite(Xs[2]) || dAverageResidual > 15.0 / averageFocal )  {
+                 || !is_finite(Xs[2]) || dAverageResidual > 25.0 / averageFocal )  {
               set_idx_to_remove.insert(idx);
             }
           }

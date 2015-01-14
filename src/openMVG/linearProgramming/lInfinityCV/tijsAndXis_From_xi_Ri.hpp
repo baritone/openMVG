@@ -245,7 +245,7 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
     A.coeffRef(rowPos, TVAR(indexRig, 0)) = Rc(2,0);
     A.coeffRef(rowPos, TVAR(indexRig, 1)) = Rc(2,1);
     A.coeffRef(rowPos, TVAR(indexRig, 2)) = Rc(2,2);
-    C(rowPos) = 1.0 - tc(2);
+    C(rowPos) = 0.0 - tc(2);
     vec_sign[rowPos] = LP_Constraints::LP_GREATER_OR_EQUAL;
     ++rowPos;
 
