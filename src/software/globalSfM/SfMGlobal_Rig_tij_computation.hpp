@@ -86,7 +86,7 @@ bool estimate_T_rig_triplet(
   KernelType kernel(x1, x2, x3, vec_global_KR_Triplet, vec_rigRotation,
                     vec_rigOffset, camIndex, ThresholdUpperBound);
 
-  const size_t ORSA_ITER = 4096;
+  const size_t ORSA_ITER = 320;
 
   rigTrifocalTensorModel T;
   dPrecision = dPrecision ;//std::numeric_limits<double>::infinity();
@@ -99,17 +99,20 @@ bool estimate_T_rig_triplet(
   vec_tis[1] = T.t2;
   vec_tis[2] = T.t3;
 
+  const size_t  iInlierSize = vec_inliers.size();
+  bool bTest( iInlierSize > 30 * vec_rigOffset.size()  );
+
   // Fill Xis
   std::vector<double> vec_residuals;
   std::vector<Vec3>   vec_Xis;
   std::vector<size_t> vec_inliers_cleaned;
 
-  for (size_t i = 0; i < vec_inliers.size(); ++i)  {
+  for (size_t i = 0; i < map_tracksCommon.size(); ++i)  {
 
     // extract subcamera rotations and translation
-    size_t I = (size_t) camIndex.col(vec_inliers[i])(0);
-    size_t J = (size_t) camIndex.col(vec_inliers[i])(1);
-    size_t K = (size_t) camIndex.col(vec_inliers[i])(2);
+    size_t I = (size_t) camIndex.col(i)(0);
+    size_t J = (size_t) camIndex.col(i)(1);
+    size_t K = (size_t) camIndex.col(i)(2);
 
     const Mat3 RI = vec_rigRotation[I];  const Vec3 tI = -RI * vec_rigOffset[I];
     const Mat3 RJ = vec_rigRotation[J];  const Vec3 tJ = -RJ * vec_rigOffset[J];
@@ -121,19 +124,19 @@ bool estimate_T_rig_triplet(
     const Mat34 P3 = HStack(RK * T.R3, RK * T.t3 + tK);
 
     Triangulation triangulation;
-    triangulation.add(P1, x1.col(vec_inliers[i]));
-    triangulation.add(P2, x2.col(vec_inliers[i]));
-    triangulation.add(P3, x3.col(vec_inliers[i]));
+    triangulation.add(P1, x1.col(i));
+    triangulation.add(P2, x2.col(i));
+    triangulation.add(P3, x3.col(i));
     const double residuals = triangulation.error();
     const Vec3 Xs = triangulation.compute();
 
     // keep only good 3D points for BA
     if (triangulation.minDepth() > 0 && is_finite(Xs[0]) && is_finite(Xs[1])
-        && is_finite(Xs[2]) && residuals < 5.0 * ThresholdUpperBound )
+        && is_finite(Xs[2]) )
     {
         vec_Xis.push_back(Xs);
         vec_residuals.push_back(residuals);
-        vec_inliers_cleaned.push_back( vec_inliers[i] );
+        vec_inliers_cleaned.push_back( i );
     }
   }
 
@@ -143,13 +146,11 @@ bool estimate_T_rig_triplet(
   minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
     min, max, mean, median);
 
-  bool bTest(vec_inliers.size() > 60 * vec_rigOffset.size()  );
-
   if (!bTest)
   {
     std::cout << "Triplet rejected : AC: " << dPrecision
       << " median: " << median
-      << " inliers count " << vec_inliers.size()
+      << " inliers count " << iInlierSize
       << " total putative " << map_tracksCommon.size() << std::endl;
   }
 
@@ -649,7 +650,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
         std::vector<Vec3> vec_tis(3);
         std::vector<size_t> vec_inliers;
 
-        if (map_tracksCommon.size() > 100 * rigOffsets.size() &&
+        if (map_tracksCommon.size() > 50 * rigOffsets.size() &&
             estimate_T_rig_triplet(
                   map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                   rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, subTrackIndex,

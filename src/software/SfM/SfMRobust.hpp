@@ -204,10 +204,10 @@ bool robustRigPose(
 
   // Robustly estimation of the Essential matrix and it's precision
   std::pair<double,double> acRansacOut = ACRANSAC(kernel, *pvec_inliers,
-    4096, relativePose, precision, false);
+    1024, relativePose, precision, false);
   *errorMax = acRansacOut.first;
 
-  return (pvec_inliers->size() > 50 * rigOffsets.size() && pvec_inliers->size() > 0.60 * b1.size() ) ;
+  return (pvec_inliers->size() > 50 * rigOffsets.size() ) ;
 }
 
 /// Triangulate a set of points between two view

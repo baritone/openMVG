@@ -997,7 +997,7 @@ bool GlobalRigidReconstructionEngine::Process()
           vec_residuals.push_back(dAverageResidual);
 
           if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
-               || !is_finite(Xs[2]) || dAverageResidual > 25.0 )  {
+               || !is_finite(Xs[2]) || dAverageResidual > 15.0 )  {
             set_idx_to_remove.insert(idx);
           }
 
@@ -1478,7 +1478,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondances
     double errorMax = std::numeric_limits<double>::max();
-    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
+    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 2.5 / averageFocal )));
 
     transformation_t  pose;
     std::vector<size_t> vec_inliers;
@@ -1499,9 +1499,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         // keep only tracks related to inliers
         openMVG::tracks::STLMAPTracks map_tracksInliers;
-        for(int l=0; l < vec_inliers.size(); ++l)
+        for(int l=0; l < bearingVectorsRigOne.size(); ++l)
         {
-          map_tracksInliers[l] = map_tracks[vec_inliers[l]];
+          map_tracksInliers[l] = map_tracks[l];
         }
 
         // Triangulation of all the tracks
@@ -1558,20 +1558,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             const Vec3 Xs = trianObj.compute();
             vec_allScenes[idx] = Xs;
 
-            //-- Compute residual over all the projections
-            double  dAverageResidual = 0.0;
-
-            for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
-              const size_t imaIndex = iterSubTrack->first;
-              const size_t featIndex = iterSubTrack->second;
-              const SIOPointFeature & pt = _map_feats_normalized[imaIndex][featIndex];
-              dAverageResidual += map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>());
-            }
-
-            dAverageResidual /= (double) subTrack.size() ;
-
             if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
-                 || !is_finite(Xs[2]) || dAverageResidual > 25.0 / averageFocal )  {
+                 || !is_finite(Xs[2]) )  {
               set_idx_to_remove.insert(idx);
             }
           }
