@@ -997,7 +997,7 @@ bool GlobalRigidReconstructionEngine::Process()
           vec_residuals.push_back(dAverageResidual);
 
           if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
-               || !is_finite(Xs[2]) || dAverageResidual > 25.0 )  {
+               || !is_finite(Xs[2]) )  {
             set_idx_to_remove.insert(idx);
           }
 
@@ -1007,14 +1007,32 @@ bool GlobalRigidReconstructionEngine::Process()
 
       //-- Remove useless tracks and 3D points
       {
-      std::vector<Vec3> vec_allScenes_cleaned;
+      std::map<size_t, Vec3> map_allScenes_cleaned;
+      std::vector < Vec3 >   vec_allScenes_cleaned;
+
+#ifdef USE_OPENMP
+    #pragma omp parallel for schedule(dynamic)
+#endif
       for(size_t i = 0; i < _vec_allScenes.size(); ++i)
       {
         if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
         {
-          vec_allScenes_cleaned.push_back(_vec_allScenes[i]);
+          #ifdef USE_OPENMP
+              #pragma omp critical
+          #endif
+          {
+             map_allScenes_cleaned[i] = _vec_allScenes[i];
+          }
         }
       }
+
+      // export cleaned 3d points
+      for( std::map<size_t, Vec3>::const_iterator iter = map_allScenes_cleaned.begin();
+        iter != map_allScenes_cleaned.end(); ++iter)
+      {
+          vec_allScenes_cleaned.push_back(iter->second);
+      }
+
       _vec_allScenes.swap(vec_allScenes_cleaned);
 
       for( std::set<size_t>::const_iterator iter = set_idx_to_remove.begin();
@@ -1478,7 +1496,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondances
     double errorMax = std::numeric_limits<double>::max();
-    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 2.5 / averageFocal )));
+    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
 
     transformation_t  pose;
     std::vector<size_t> vec_inliers;
