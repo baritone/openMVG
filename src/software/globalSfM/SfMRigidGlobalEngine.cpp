@@ -997,7 +997,7 @@ bool GlobalRigidReconstructionEngine::Process()
           vec_residuals.push_back(dAverageResidual);
 
           if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
-               || !is_finite(Xs[2]) || dAverageResidual > 15.0 )  {
+               || !is_finite(Xs[2]) || dAverageResidual > 25.0 )  {
             set_idx_to_remove.insert(idx);
           }
 
