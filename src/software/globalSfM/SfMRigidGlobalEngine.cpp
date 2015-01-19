@@ -23,6 +23,7 @@
 #include "openMVG/multiview/rotation_averaging.hpp"
 // Translation averaging
 #include "openMVG/linearProgramming/lInfinityCV/global_translations_fromTij.hpp"
+#include "openMVG/linearProgramming/lInfinityCV/global_translations_fromTriplets.hpp"
 #include "openMVG/multiview/translation_averaging_solver.hpp"
 
 // Linear programming solver(s)
@@ -674,7 +675,7 @@ bool GlobalRigidReconstructionEngine::Process()
 
     openMVG::Timer timerLP_triplet;
 
-    bool  bComputeTrifocal=false;
+    bool  bComputeTrifocal=true;
     if(bComputeTrifocal){
        computePutativeTranslation_EdgesCoverage(map_globalR, vec_triplets, vec_initialRijTijEstimates, newpairMatches);
     }
@@ -796,7 +797,7 @@ bool GlobalRigidReconstructionEngine::Process()
         double gamma = -1.0;
         std::vector<double> vec_solution;
         {
-          vec_solution.resize(iNRigs*3 + vec_initialRijTijEstimates.size() + 1);
+          vec_solution.resize(iNRigs*3 + vec_initialRijTijEstimates.size()/3 + 1);
           using namespace openMVG::linearProgramming;
           #ifdef OPENMVG_HAVE_MOSEK
             MOSEK_SolveWrapper solverLP(vec_solution.size());
@@ -804,7 +805,7 @@ bool GlobalRigidReconstructionEngine::Process()
             OSI_CLP_SolverWrapper solverLP(vec_solution.size());
           #endif
 
-          lInfinityCV::Tifromtij_ConstraintBuilder cstBuilder(vec_initialRijTijEstimates);
+          lInfinityCV::Tifromtij_ConstraintBuilder_OneLambdaPerTrif cstBuilder(vec_initialRijTijEstimates);
 
           LP_Constraints_Sparse constraint;
           //-- Setup constraint and solver
@@ -923,7 +924,7 @@ bool GlobalRigidReconstructionEngine::Process()
     TracksBuilder tracksBuilder;
     {
       tracksBuilder.Build(newpairMatches);
-      tracksBuilder.Filter(3);
+      tracksBuilder.Filter(_map_RigIdPerImageId, 3);
       tracksBuilder.ExportToSTL(_map_selectedTracks);
     }
 
@@ -933,7 +934,7 @@ bool GlobalRigidReconstructionEngine::Process()
     _vec_allScenes.resize(_map_selectedTracks.size());
     {
       std::vector<double> vec_residuals;
-      vec_residuals.reserve(_map_selectedTracks.size());
+      std::set<size_t> set_idx_to_remove;
 
       C_Progress_display my_progress_bar_triangulation( _map_selectedTracks.size(),
       std::cout, "\n\n Initial triangulation:\n");
@@ -941,7 +942,6 @@ bool GlobalRigidReconstructionEngine::Process()
 #ifdef USE_OPENMP
       #pragma omp parallel for schedule(dynamic)
 #endif
-
       for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
       {
           STLMAPTracks::const_iterator iterTracks = _map_selectedTracks.begin();
@@ -968,18 +968,47 @@ bool GlobalRigidReconstructionEngine::Process()
 #ifdef USE_OPENMP
 #pragma omp critical
 #endif
-        //-- Compute residual over all the projections
         {
-          for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
-            const size_t imaIndex = iterSubTrack->first;
-            const size_t featIndex = iterSubTrack->second;
-            const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
-            vec_residuals.push_back(_map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>()));
-            // no ordering in vec_residuals since there is parallelism
+          if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
+               || !is_finite(Xs[2]) )  {
+            set_idx_to_remove.insert(idx);
+          }
+          else
+          {
+            //-- Compute residual over all the projections
+            for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
+              const size_t imaIndex = iterSubTrack->first;
+              const size_t featIndex = iterSubTrack->second;
+              const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
+              vec_residuals.push_back(_map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>()));
+              // no ordering in vec_residuals since there is parallelism
+            }
           }
           ++my_progress_bar_triangulation;
         }
       }
+
+      //-- Remove useless tracks and 3D points
+      {
+      std::vector<Vec3> vec_allScenes_cleaned;
+      for(size_t i = 0; i < _vec_allScenes.size(); ++i)
+      {
+        if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
+        {
+          vec_allScenes_cleaned.push_back(_vec_allScenes[i]);
+        }
+      }
+      _vec_allScenes.swap(vec_allScenes_cleaned);
+
+      for( std::set<size_t>::const_iterator iter = set_idx_to_remove.begin();
+        iter != set_idx_to_remove.end(); ++iter)
+      {
+        _map_selectedTracks.erase(*iter);
+      }
+      std::cout << "\n #Tracks removed: " << set_idx_to_remove.size() << std::endl;
+      }
+
+      plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
 
       {
         // Display some statistics of reprojection errors
@@ -1019,8 +1048,6 @@ bool GlobalRigidReconstructionEngine::Process()
         }
       }
     }
-
-    plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
   }
 
   //-------------------
@@ -1224,7 +1251,7 @@ bool GlobalRigidReconstructionEngine::InputDataIsCorrect()
       Mat3  D   = Mat3::Identity() - RRt;
 
       // R is a rotation matrix if |R| = + 1.0 and R.R^t = I_3
-      if( fabs(R.determinant()-1.0) > 1.0e-5 || D.squaredNorm() > 1.0e-8 )
+      if( fabs(R.determinant()-1.0) > 1.0e-5 || D.norm() > 1.0e-5 )
       {
         std::cerr << "Error : Input Rotation Matrix is not a rotation matrix \n";
         return false;
@@ -1334,6 +1361,50 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     const size_t R0 = iter->first.first;
     const size_t R1 = iter->first.second;
 
+    // compute tracks between rigs
+    RigWiseMatches map_matchesR0R1;
+    map_matchesR0R1.insert(*_map_Matches_Rig.find(std::make_pair(R0,R1)));
+
+    // Compute tracks:
+    openMVG::tracks::STLMAPTracks map_tracks;
+    TracksBuilder tracksBuilder;
+    {
+      tracksBuilder.Build(map_matchesR0R1);
+      tracksBuilder.Filter(_map_RigIdPerImageId);
+      tracksBuilder.ExportToSTL(map_tracks);
+    }
+
+    // extract associated subcamera id for each tracks
+    std::vector<Vec2> subTrackIndex;
+
+    size_t cpt = 0;
+    for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
+      iterTracks != map_tracks.end(); ++iterTracks, ++cpt)
+    {
+      const submapTrack & subTrack = iterTracks->second;
+      size_t index = 0;
+      size_t subTrackCpt = 0;
+      Vec2  rigIndex = -1.0*Vec2::Ones();
+      Vec2  subTrackId;
+      for (submapTrack::const_iterator iter = subTrack.begin(); iter != subTrack.end(); ++iter, ++subTrackCpt) {
+        const size_t imaIndex = iter->first;
+        const size_t rigidId = _map_RigIdPerImageId.at(imaIndex);
+        if( rigIndex[0] == -1 && index == 0 )
+        {
+          rigIndex[index]    = rigidId;
+          subTrackId[index]  = subTrackCpt;
+          ++index;
+        }
+        if( rigIndex[1] == -1 && rigIndex[0] != rigidId && index == 1 )
+        {
+          rigIndex[index]    = rigidId;
+          subTrackId[index]  = subTrackCpt;
+          ++index;
+        }
+      }
+      subTrackIndex.push_back(subTrackId);
+    }
+
     // initialize structure used for matching between rigs
     bearingVectors_t bearingVectorsRigOne;
     bearingVectors_t bearingVectorsRigTwo;
@@ -1341,56 +1412,52 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     std::vector<int>  camCorrespondencesRigOne;
     std::vector<int>  camCorrespondencesRigTwo;
 
-    // set of subcam that are matched
-    std::set<size_t>  setSubCam_rigOne;
-    std::set<size_t>  setSubCam_rigTwo;
-
     // loop on inter-rig correspondences
     std::pair<size_t, size_t> imageSize;
 
-    for( PairWiseMatches::const_iterator iterMatch =  iter->second.begin() ;
-              iterMatch != iter->second.end() ; ++iterMatch ){
-
-      // extract camera id and subchannel number
-      const size_t I = iterMatch->first.first;
-      const size_t J = iterMatch->first.second;
-
-      const size_t SubI = _map_IntrinsicIdPerImageId[I];
-      const size_t SubJ = _map_IntrinsicIdPerImageId[J];
-
-      setSubCam_rigOne.insert(SubI);
-      setSubCam_rigTwo.insert(SubJ);
-
-      imageSize.first  = _vec_intrinsicGroups[SubI].m_w ;
-      imageSize.second = _vec_intrinsicGroups[SubI].m_h ;
-
-      // extracts features for each pair in order to construct bearing vectors.
-      for (size_t l = 0; l < iterMatch->second.size(); ++l)
+    cpt = 0;
+    for( STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
+                iterTracks != map_tracks.end(); ++iterTracks, ++cpt)
+    {
+      const submapTrack & subTrack = iterTracks->second;
+      // iter on subtracks
+      for (size_t index = 0; index < 2 ; ++index)
       {
-        bearingVector_t  bearing1;
-        bearingVector_t  bearing2;
+        submapTrack::const_iterator iter = subTrack.begin();
+        std::advance(iter, subTrackIndex[cpt][index]);
+
+        // extract camId and feature index
+        const size_t imaIndex = iter->first;
+        const size_t featIndex = iter->second;
+
+        // extract features
+        bearingVector_t  bearing;
 
         // extract normalized keypoints coordinates
-        bearing1(0) = _map_feats_normalized[I][iterMatch->second[l]._i].x();
-        bearing1(1) = _map_feats_normalized[I][iterMatch->second[l]._i].y();
-        bearing1(2) = 1.0;
-
-        bearing2(0) = _map_feats_normalized[J][iterMatch->second[l]._j].x();
-        bearing2(1) = _map_feats_normalized[J][iterMatch->second[l]._j].y();
-        bearing2(2) = 1.0;
+        const SIOPointFeature & pt = _map_feats_normalized.at(imaIndex)[featIndex];
+        bearing(0) = pt.x();
+        bearing(1) = pt.y();
+        bearing(2) = 1.0;
 
         // normalize bearing vectors
-        bearing1 = bearing1 / bearing1.norm();
-        bearing2 = bearing2 / bearing2.norm();
+        bearing = bearing / bearing.norm();
 
-        // add bearing vectors to list and update correspondences list
-        bearingVectorsRigOne.push_back( bearing1 );
-        bearingVectorsRigTwo.push_back( bearing2 );
+        // extract camera indexes
+        size_t subCamId = _map_IntrinsicIdPerImageId.at(imaIndex);
 
-        camCorrespondencesRigOne.push_back(SubI);
-        camCorrespondencesRigTwo.push_back(SubJ);
+        if( _map_RigIdPerImageId.at(imaIndex) == R0 ){
+          // add bearing vectors to list and update correspondences list
+          bearingVectorsRigOne.push_back( bearing );
+          camCorrespondencesRigOne.push_back(subCamId);
+        }
+        else
+        {
+          // add bearing vectors to list and update correspondences list
+          bearingVectorsRigTwo.push_back( bearing );
+          camCorrespondencesRigTwo.push_back(subCamId);
+        }
       }
-    }// end loop on inter-rig matches
+    }// end loop on tracks
 
     //--> Estimate the best possible Rotation/Translation from correspondances
     double errorMax = std::numeric_limits<double>::max();
@@ -1400,7 +1467,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     std::vector<size_t> vec_inliers;
 
 
-    if (!SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
+    if ( bearingVectorsRigOne.size () < 50 * rigOffsets.size() ||
+        !SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
         camCorrespondencesRigOne, camCorrespondencesRigTwo,
         rigOffsets, rigRotations, &pose, &vec_inliers, imageSize,
         &errorMax, maxExpectedError) )
@@ -1421,32 +1489,24 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         Mat3  K = Mat3::Identity();
         std::vector<Vec3> vec_allScenes;
 
-        // count the number of observations
-        size_t nbmeas = 0;
-
-        // compute tracks between rigs
-        RigWiseMatches map_matchesR0R1;
-        map_matchesR0R1.insert(*_map_Matches_Rig.find(std::make_pair(R0,R1)));
-
-        // Compute tracks:
-        openMVG::tracks::STLMAPTracks map_tracks;
-        TracksBuilder tracksBuilder;
+        // keep only tracks related to inliers
+        openMVG::tracks::STLMAPTracks map_tracksInliers;
+        for(int l=0; l < vec_inliers.size(); ++l)
         {
-          tracksBuilder.Build(map_matchesR0R1);
-          tracksBuilder.Filter(2);
-          tracksBuilder.ExportToSTL(map_tracks);
+          map_tracksInliers[l] = map_tracks[vec_inliers[l]];
         }
 
         // Triangulation of all the tracks
         {
           Map_Camera map_camera;
           std::vector<double> vec_residuals;
-          vec_residuals.reserve(map_tracks.size());
-          vec_allScenes.resize(map_tracks.size());
+          vec_residuals.reserve(map_tracksInliers.size());
+          vec_allScenes.resize(map_tracksInliers.size());
+          std::set<size_t> set_idx_to_remove;
 
-           for (int idx = 0; idx < map_tracks.size(); ++idx)
+           for (int idx = 0; idx < map_tracksInliers.size(); ++idx)
           {
-            STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
+            STLMAPTracks::const_iterator iterTracks = map_tracksInliers.begin();
             std::advance(iterTracks, idx);
 
             const submapTrack & subTrack = iterTracks->second;
@@ -1491,6 +1551,30 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             // Compute the 3D point and keep point index with negative depth
             const Vec3 Xs = trianObj.compute();
             vec_allScenes[idx] = Xs;
+
+            if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
+                 || !is_finite(Xs[2]) )  {
+              set_idx_to_remove.insert(idx);
+            }
+          }
+
+          //-- Remove useless tracks and 3D points
+          {
+            std::vector<Vec3> vec_allScenes_cleaned;
+            for(size_t ic = 0; ic < vec_allScenes.size(); ++ic)
+            {
+              if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), ic) == set_idx_to_remove.end())
+              {
+                vec_allScenes_cleaned.push_back(vec_allScenes[ic]);
+              }
+            }
+            vec_allScenes.swap(vec_allScenes_cleaned);
+
+            for( std::set<size_t>::const_iterator iterSet = set_idx_to_remove.begin();
+              iterSet != set_idx_to_remove.end(); ++iterSet)
+            {
+              map_tracksInliers.erase(*iterSet);
+            }
           }
         }
 
@@ -1503,8 +1587,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         // Count the number of measurement (sum of the reconstructed track length)
         size_t nbmeasurements = 0;
-        for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
-          iterTracks != map_tracks.end(); ++iterTracks)
+        for (STLMAPTracks::const_iterator iterTracks = map_tracksInliers.begin();
+          iterTracks != map_tracksInliers.end(); ++iterTracks)
         {
           const submapTrack & subTrack = iterTracks->second;
           nbmeasurements += subTrack.size();
@@ -1602,8 +1686,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         // Fill the measurements
         size_t k = 0;
-        for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
-          iterTracks != map_tracks.end(); ++iterTracks, ++k)
+        for (STLMAPTracks::const_iterator iterTracks = map_tracksInliers.begin();
+          iterTracks != map_tracksInliers.end(); ++iterTracks, ++k)
         {
           // Look through the track and add point position
           const tracks::submapTrack & track = iterTracks->second;
@@ -1732,6 +1816,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         }
         // export rotation for rotation avereging
+        #ifdef USE_OPENMP
+          #pragma omp critical
+        #endif
         vec_relatives[std::make_pair(R0,R1)] = std::make_pair(R,t);
       }
       #ifdef USE_OPENMP
@@ -2116,6 +2203,17 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
       ba_problem.mutable_point_for_observation(k));
   }
 
+  // add parameter block for each camera. (To be sure no camera is missing)
+  for (size_t k = 0; k < ba_problem.num_intrinsics(); ++k) {
+    problem.AddParameterBlock(ba_problem.mutable_cameras_extrinsic(k), 6);
+    problem.AddParameterBlock(ba_problem.mutable_cameras_intrinsic(k), 3);
+  }
+
+  // add parameter block for each rig. (To be sure no rig is missing)
+  for (size_t k = 0; k < ba_problem.num_rigs_; ++k) {
+    problem.AddParameterBlock(ba_problem.mutable_rig_extrinsic(k), 6);
+  }
+
   // Configure a BA engine and run it
   //  Make Ceres automatically detect the bundle structure.
   ceres::Solver::Options options;
@@ -2177,6 +2275,10 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
       }
     }
   }
+
+  // fix rig one position
+  problem.SetParameterBlockConstant(
+    ba_problem.mutable_rig_extrinsic(0) );
 
   // Solve BA
   ceres::Solver::Summary summary;

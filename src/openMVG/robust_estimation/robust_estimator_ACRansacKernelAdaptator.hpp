@@ -375,6 +375,18 @@ public:
     Solver::Solve(adapter, models, samples);
   }
 
+  void Errors(const Model & model, std::vector<double> & vec_errors) const
+  {
+    //create non-central relative adapter
+    relative_pose::NoncentralRelativeAdapter adapter(
+          b1_, b2_, scIdOne_ , scIdTwo_,
+          offSets, rotations);
+
+    vec_errors.resize(b1_.size());
+    for (size_t sample = 0; sample < b1_.size(); ++sample)
+      vec_errors[sample] = ErrorT::Error(sample, model, adapter);
+  }
+
   double Error(size_t sample, const Model & model) const
   {
     //create non-central relative adapter
