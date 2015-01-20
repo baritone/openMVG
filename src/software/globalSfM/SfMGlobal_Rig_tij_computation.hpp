@@ -35,6 +35,7 @@ bool estimate_T_rig_triplet(
   const std::vector<Mat3> & vec_rigRotation,
   const std::vector<Vec3> & vec_rigOffset,
   const std::map<size_t, size_t > & map_intrinsicIdPerImageId,
+  const std::map<size_t, size_t > & map_rigIdPerImageId,
   const std::vector<Vec3> & subTrackIndex,
   std::vector<Vec3> & vec_tis,
   double & dPrecision, // UpperBound of the precision found by the AContrario estimator
@@ -102,45 +103,103 @@ bool estimate_T_rig_triplet(
   const size_t  iInlierSize = vec_inliers.size();
   bool bTest( iInlierSize > 30 * vec_rigOffset.size()  );
 
-  // Fill Xis
+  // Compute initial triangulation
   std::vector<double> vec_residuals;
   std::vector<Vec3>   vec_Xis;
-  std::vector<size_t> vec_inliers_cleaned;
+  std::set<size_t>    set_idx_to_remove;
+  std::map<size_t, PinholeCamera >  map_camera;
+  openMVG::tracks::STLMAPTracks     map_tracksInlier;
 
-  for (size_t i = 0; i < map_tracksCommon.size(); ++i)  {
-
-    // extract subcamera rotations and translation
-    size_t I = (size_t) camIndex.col(i)(0);
-    size_t J = (size_t) camIndex.col(i)(1);
-    size_t K = (size_t) camIndex.col(i)(2);
-
-    const Mat3 RI = vec_rigRotation[I];  const Vec3 tI = -RI * vec_rigOffset[I];
-    const Mat3 RJ = vec_rigRotation[J];  const Vec3 tJ = -RJ * vec_rigOffset[J];
-    const Mat3 RK = vec_rigRotation[K];  const Vec3 tK = -RK * vec_rigOffset[K];
-
-    //compute projection matrices
-    const Mat34 P1 = HStack(RI * T.R1, RI * T.t1 + tI);
-    const Mat34 P2 = HStack(RJ * T.R2, RJ * T.t2 + tJ);
-    const Mat34 P3 = HStack(RK * T.R3, RK * T.t3 + tK);
-
-    Triangulation triangulation;
-    triangulation.add(P1, x1.col(i));
-    triangulation.add(P2, x2.col(i));
-    triangulation.add(P3, x3.col(i));
-    const double residuals = triangulation.error();
-    const Vec3 Xs = triangulation.compute();
-
-    // keep only good 3D points for BA
-    if (triangulation.minDepth() > 0 && is_finite(Xs[0]) && is_finite(Xs[1])
-        && is_finite(Xs[2]) )
-    {
-        vec_Xis.push_back(Xs);
-        vec_residuals.push_back(residuals);
-        vec_inliers_cleaned.push_back( i );
-    }
+  // keep only tracks related to inliers
+  openMVG::tracks::STLMAPTracks map_tracksInliers;
+  for(int l=0; l < map_tracksCommon.size(); ++l)
+  {
+    map_tracksInliers[l] = map_tracksCommon.at(l);
   }
 
-  vec_inliers.swap(vec_inliers_cleaned);
+  for (size_t i = 0; i < map_tracksInliers.size(); ++i)
+  {
+      STLMAPTracks::const_iterator iterTracks = map_tracksInliers.begin();
+      std::advance(iterTracks, i);
+
+      const submapTrack & subTrack = iterTracks->second;
+
+      Triangulation trianObj;
+      // loop on subtracks
+      for (size_t index = 0; index < subTrack.size() ; ++index)
+      { submapTrack::const_iterator iterSubTrack = subTrack.begin();
+        std::advance(iterSubTrack, index);
+        const size_t imaIndex = iterSubTrack->first;
+        const size_t featIndex = iterSubTrack->second;
+        const SIOPointFeature & pt = map_feats.find(imaIndex)->second[featIndex];
+
+        // extract camera id and subchannel number
+        const size_t SubI  = map_intrinsicIdPerImageId.at(imaIndex);
+        const size_t rigId = map_rigIdPerImageId.at(imaIndex);
+
+        // compute pose of each cameras
+        const Mat3 RcamI = vec_rigRotation[SubI];
+        const Mat3 K     = Mat3::Identity();
+        const Vec3 CI = vec_rigOffset[SubI];
+
+        Vec3 tI; Mat3 RI;
+
+        if( rigId == nI)
+        {
+           RI = RcamI * T.R1 ;
+           tI = RcamI * T.t1 - RcamI * CI ;
+        }
+        else
+        {
+          if( rigId == nJ )
+          {
+              RI = RcamI * T.R2 ;
+              tI = RcamI * T.t2 - RcamI * CI ;
+          }
+          else
+          {
+              RI = RcamI * T.R3 ;
+              tI = RcamI * T.t3 - RcamI * CI ;
+          }
+        }
+
+        // build associated camera
+        PinholeCamera cam(K, RI, tI);
+        map_camera[imaIndex] = cam;
+
+        // Build the P matrix
+        trianObj.add(map_camera[imaIndex]._P, pt.coords().cast<double>());
+      }
+
+      // Compute the 3D point and keep point index with negative depth
+      const Vec3 Xs = trianObj.compute();
+      vec_residuals.push_back( trianObj.error() );
+      vec_Xis.push_back(Xs);
+
+      if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
+           || !is_finite(Xs[2]) )  {
+        set_idx_to_remove.insert(i);
+      }
+    }
+
+    //-- Remove useless tracks and 3D points
+    {
+      std::vector<Vec3> vec_Xis_cleaned;
+      for(size_t ic = 0; ic < vec_Xis.size(); ++ic)
+      {
+        if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), ic) == set_idx_to_remove.end())
+        {
+          vec_Xis_cleaned.push_back(vec_Xis[ic]);
+        }
+      }
+      vec_Xis.swap(vec_Xis_cleaned);
+
+      for( std::set<size_t>::const_iterator iterSet = set_idx_to_remove.begin();
+        iterSet != set_idx_to_remove.end(); ++iterSet)
+      {
+        map_tracksInliers.erase(*iterSet);
+      }
+    }
 
   double min, max, mean, median;
   minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
@@ -150,7 +209,7 @@ bool estimate_T_rig_triplet(
   {
     std::cout << "Triplet rejected : AC: " << dPrecision
       << " median: " << median
-      << " inliers count " << iInlierSize
+      << " inliers count " << vec_inliers.size()
       << " total putative " << map_tracksCommon.size() << std::endl;
   }
 
@@ -163,7 +222,13 @@ bool estimate_T_rig_triplet(
     const size_t nbPoints3D = vec_Xis.size();
 
     // Count the number of measurement (sum of the reconstructed track length)
-    const size_t nbmeasurements = nbPoints3D * 3;
+    size_t nbmeasurements = 0;
+    for (STLMAPTracks::const_iterator iterTracks = map_tracksInliers.begin();
+          iterTracks != map_tracksInliers.end(); ++iterTracks)
+        {
+          const submapTrack & subTrack = iterTracks->second;
+          nbmeasurements += subTrack.size();
+    }
 
     // Setup a BA problem
     using namespace openMVG::bundle_adjustment;
@@ -276,35 +341,45 @@ bool estimate_T_rig_triplet(
     }
 
     // Fill the measurements
-    for (size_t i = 0; i < vec_inliers.size(); ++i)
+    size_t k = 0;
+    for (STLMAPTracks::const_iterator iterTracks = map_tracksInliers.begin();
+      iterTracks != map_tracksInliers.end(); ++iterTracks, ++k)
     {
-      double ppx = 0.0, ppy = 0.0;
-      Vec2 ptFeat = x1.col(vec_inliers[i]);
-      ba_problem.observations_.push_back( ptFeat.x() - ppx );
-      ba_problem.observations_.push_back( ptFeat.y() - ppy );
+      // Look through the track and add point position
+      const tracks::submapTrack & track = iterTracks->second;
 
-      ba_problem.point_index_.push_back(i);
-      ba_problem.camera_index_extrinsic.push_back(camIndex.col(vec_inliers[i])(0));
-      ba_problem.camera_index_intrinsic.push_back(camIndex.col(vec_inliers[i])(0));
-      ba_problem.rig_index_extrinsic.push_back(0);
+      for( tracks::submapTrack::const_iterator iterTrack = track.begin();
+        iterTrack != track.end();
+        ++iterTrack)
+      {
+        const size_t imageId = iterTrack->first;
+        const size_t featId = iterTrack->second;
 
-      ptFeat = x2.col(vec_inliers[i]);
-      ba_problem.observations_.push_back( ptFeat.x() - ppx );
-      ba_problem.observations_.push_back( ptFeat.y() - ppy );
+        // If imageId reconstructed:
+        //  - Add measurements (the feature position)
+        //  - Add camidx (map the image number to the camera index)
+        //  - Add ptidx (the 3D corresponding point index) (must be increasing)
 
-      ba_problem.point_index_.push_back(i);
-      ba_problem.camera_index_extrinsic.push_back(camIndex.col(vec_inliers[i])(1));
-      ba_problem.camera_index_intrinsic.push_back(camIndex.col(vec_inliers[i])(1));
-      ba_problem.rig_index_extrinsic.push_back(1);
+        //if ( set_camIndex.find(imageId) != set_camIndex.end())
+        {
+          const std::vector<SIOPointFeature> & vec_feats = map_feats.at(imageId);
+          const SIOPointFeature & ptFeat = vec_feats[featId];
 
-      ptFeat = x3.col(vec_inliers[i]);
-      ba_problem.observations_.push_back( ptFeat.x() - ppx );
-      ba_problem.observations_.push_back( ptFeat.y() - ppy );
+          ba_problem.observations_.push_back( ptFeat.x() );
+          ba_problem.observations_.push_back( ptFeat.y() );
 
-      ba_problem.point_index_.push_back(i);
-      ba_problem.camera_index_extrinsic.push_back(camIndex.col(vec_inliers[i])(2));
-      ba_problem.camera_index_intrinsic.push_back(camIndex.col(vec_inliers[i])(2));
-      ba_problem.rig_index_extrinsic.push_back(2);
+          ba_problem.point_index_.push_back(k);
+          ba_problem.camera_index_extrinsic.push_back(map_intrinsicIdPerImageId.at(imageId));
+          ba_problem.camera_index_intrinsic.push_back(map_intrinsicIdPerImageId.at(imageId));
+          if ( map_rigIdPerImageId.at(imageId) == nI )
+              ba_problem.rig_index_extrinsic.push_back(0);
+          else
+            if( map_rigIdPerImageId.at(imageId) == nJ )
+                ba_problem.rig_index_extrinsic.push_back(1);
+            else
+                ba_problem.rig_index_extrinsic.push_back(2);
+        }
+      }
     }
 
     // Create residuals for each observation in the bundle adjustment problem. The
@@ -653,8 +728,8 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
         if (map_tracksCommon.size() > 50 * rigOffsets.size() &&
             estimate_T_rig_triplet(
                   map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
-                  rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, subTrackIndex,
-                  vec_tis, dPrecision, vec_inliers, ThresholdUpperBound, _sOutDirectory, I, J, K) )
+                  rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,
+                  subTrackIndex, vec_tis, dPrecision, vec_inliers, ThresholdUpperBound, _sOutDirectory, I, J, K) )
         {
           std::cout << dPrecision * averageFocal << "\t" << vec_inliers.size() << std::endl;
 
