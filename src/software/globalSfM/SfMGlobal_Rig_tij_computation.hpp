@@ -36,7 +36,6 @@ bool estimate_T_rig_triplet(
   const std::vector<Vec3> & vec_rigOffset,
   const std::map<size_t, size_t > & map_intrinsicIdPerImageId,
   const std::map<size_t, size_t > & map_rigIdPerImageId,
-  const std::vector<Vec3> & subTrackIndex,
   std::vector<Vec3> & vec_tis,
   double & dPrecision, // UpperBound of the precision found by the AContrario estimator
   std::vector<size_t> & vec_inliers,
@@ -684,42 +683,6 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           tracksBuilder.ExportToSTL(map_tracksCommon);
         }
 
-        // extract associated subcamera id for each tracks
-        std::vector<Vec3> subTrackIndex;
-
-        size_t cpt = 0;
-        for (STLMAPTracks::const_iterator iterTracks = map_tracksCommon.begin();
-          iterTracks != map_tracksCommon.end(); ++iterTracks, ++cpt) {
-          const submapTrack & subTrack = iterTracks->second;
-          size_t index = 0;
-          size_t subTrackCpt = 0;
-          Vec3  rigIndex = -1.0*Vec3::Ones();
-          Vec3  subTrackId;
-          for (submapTrack::const_iterator iter = subTrack.begin(); iter != subTrack.end(); ++iter, ++subTrackCpt) {
-            const size_t imaIndex = iter->first;
-            const size_t rigidId = _map_RigIdPerImageId.at(imaIndex);
-            if( rigIndex[0] == -1 && index == 0 )
-            {
-              rigIndex[index]    = rigidId;
-              subTrackId[index]  = subTrackCpt;
-              ++index;
-            }
-            if( rigIndex[1] == -1 && rigIndex[0] != rigidId && index == 1 )
-            {
-              rigIndex[index]    = rigidId;
-              subTrackId[index]  = subTrackCpt;
-              ++index;
-            }
-            if( rigIndex[2] == -1 && rigIndex[1] != rigidId && rigIndex[0] != rigidId && index == 2 )
-            {
-              rigIndex[index]    = rigidId;
-              subTrackId[index]  = subTrackCpt;
-              ++index;
-            }
-          }
-          subTrackIndex.push_back(subTrackId);
-        }
-
         //--
         // Try to estimate this triplet.
         //--
@@ -740,7 +703,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
             estimate_T_rig_triplet(
                   map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                   rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,
-                  subTrackIndex, vec_tis, dPrecision, vec_inliers, ThresholdUpperBound, _sOutDirectory, I, J, K) )
+                  vec_tis, dPrecision, vec_inliers, ThresholdUpperBound, _sOutDirectory, I, J, K) )
         {
           std::cout << dPrecision * averageFocal << "\t" << vec_inliers.size() << std::endl;
 
