@@ -47,49 +47,65 @@ bool estimate_T_rig_triplet(
   using namespace linearProgramming;
   using namespace lInfinityCV;
 
+  // initialize rigId map
+  std::map    < size_t, size_t > map_rigIdToTripletId;
+
+  map_rigIdToTripletId[nI] = 0;
+  map_rigIdToTripletId[nJ] = 1;
+  map_rigIdToTripletId[nK] = 2;
+
   // Convert data
-  Mat x1(2, map_tracksCommon.size());
-  Mat x2(2, map_tracksCommon.size());
-  Mat x3(2, map_tracksCommon.size());
-  Mat camIndex(3, map_tracksCommon.size());
+  std::vector < std::vector < std::vector < double > > > featsAndRigIdPerTrack;
 
-  Mat* xxx[3] = {&x1, &x2, &x3};
-
+  // initialize structure pour triplet estimation
   size_t cpt = 0;
   for (STLMAPTracks::const_iterator iterTracks = map_tracksCommon.begin();
     iterTracks != map_tracksCommon.end(); ++iterTracks, ++cpt) {
     const submapTrack & subTrack = iterTracks->second;
 
+    std::vector < std::vector <double> > subTrackInfo;
+
     // loop on subtracks
-    for (size_t index = 0; index < 3 ; ++index)
+    for (size_t index = 0; index < subTrack.size() ; ++index)
     { submapTrack::const_iterator iter = subTrack.begin();
-      std::advance(iter, subTrackIndex[cpt][index]);
-      const size_t imaIndex = iter->first;
+      std::advance(iter, index);
+
+      // extract camera indexes
+      const size_t imaIndex  = iter->first;
+      const size_t cameraId  = map_intrinsicIdPerImageId.at(imaIndex);
       const size_t featIndex = iter->second;
+      const size_t rigId     = map_rigIdPerImageId.at(imaIndex);
 
       // extract features
       const SIOPointFeature & pt = map_feats.find(imaIndex)->second[featIndex];
-      xxx[index]->col(cpt)(0) = pt.x();
-      xxx[index]->col(cpt)(1)  = pt.y();
 
-      // extract camera indexes
-      camIndex.col(cpt)(index) = map_intrinsicIdPerImageId.at(imaIndex);
+      //export informations
+      std::vector <double>  tmp;
+      tmp.push_back(pt.x());  // feature
+      tmp.push_back(pt.y());  // feature
+      tmp.push_back(cameraId); // rig instrinsic ID
+      tmp.push_back(map_rigIdToTripletId.at(rigId)); // rig id in triplet estimation
+
+      subTrackInfo.push_back( tmp );
     }
+
+    featsAndRigIdPerTrack.push_back( subTrackInfo );
   }
 
+  // compute model
   using namespace openMVG::trifocal;
   using namespace openMVG::trifocal::kernel;
 
-  typedef rig_TrifocalKernel_ACRansac_N_tisXis<
-    rigTisXisTrifocalSolver,
-    rigTisXisTrifocalSolver,
-    rigTrifocalTensorModel> KernelType;
-  KernelType kernel(x1, x2, x3, vec_global_KR_Triplet, vec_rigRotation,
-                    vec_rigOffset, camIndex, ThresholdUpperBound);
+  typedef rig_TrackTrifocalKernel_ACRansac_N_tisXis<
+    rigTrackTisXisTrifocalSolver,
+    rigTrackTisXisTrifocalSolver,
+    rigTrackTrifocalTensorModel> KernelType;
+  KernelType kernel(featsAndRigIdPerTrack, vec_global_KR_Triplet, vec_rigRotation,
+                    vec_rigOffset, ThresholdUpperBound);
 
   const size_t ORSA_ITER = 1024;
 
-  rigTrifocalTensorModel T;
+  rigTrackTrifocalTensorModel T;
   dPrecision = dPrecision ;//std::numeric_limits<double>::infinity();
   std::pair<double,double> acStat = robust::ACRANSAC(kernel, vec_inliers, ORSA_ITER, &T, dPrecision, false);
   dPrecision = acStat.first;
@@ -353,7 +369,8 @@ bool estimate_T_rig_triplet(
         ++iterTrack)
       {
         const size_t imageId = iterTrack->first;
-        const size_t featId = iterTrack->second;
+        const size_t featId  = iterTrack->second;
+        const size_t rigId   = map_rigIdPerImageId.at(imageId);
 
         // If imageId reconstructed:
         //  - Add measurements (the feature position)
@@ -371,13 +388,7 @@ bool estimate_T_rig_triplet(
           ba_problem.point_index_.push_back(k);
           ba_problem.camera_index_extrinsic.push_back(map_intrinsicIdPerImageId.at(imageId));
           ba_problem.camera_index_intrinsic.push_back(map_intrinsicIdPerImageId.at(imageId));
-          if ( map_rigIdPerImageId.at(imageId) == nI )
-              ba_problem.rig_index_extrinsic.push_back(0);
-          else
-            if( map_rigIdPerImageId.at(imageId) == nJ )
-                ba_problem.rig_index_extrinsic.push_back(1);
-            else
-                ba_problem.rig_index_extrinsic.push_back(2);
+          ba_problem.rig_index_extrinsic.push_back(map_rigIdToTripletId[rigId]);
         }
       }
     }
@@ -720,7 +731,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
         // update precision to have good value for normalized coordinates
         double dPrecision = 4.0 / averageFocal / averageFocal;
-        const double ThresholdUpperBound = 1.0 / averageFocal;
+        const double ThresholdUpperBound = 2.5 / averageFocal;
 
         std::vector<Vec3> vec_tis(3);
         std::vector<size_t> vec_inliers;
