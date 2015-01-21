@@ -207,7 +207,27 @@ bool robustRigPose(
     1024, relativePose, precision, false);
   *errorMax = acRansacOut.first;
 
-  return (pvec_inliers->size() > 50 * rigOffsets.size() ) ;
+  // set of subcam that are matched
+  std::set<size_t> setSubCam_rigOne;
+  std::set<size_t> setSubCam_rigTwo;
+
+  for(size_t i=0; i < pvec_inliers->size() ; ++i )
+  {
+    setSubCam_rigOne.insert(scIdOne[ (*pvec_inliers)[i] ]);
+    setSubCam_rigTwo.insert(scIdTwo[ (*pvec_inliers)[i] ]);
+  }
+
+  // decide if we keep the model or not
+  bool bUseModel=false;
+
+  if(  (pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * rigOffsets.size() ) && // there is enough correspondences
+       (setSubCam_rigOne.size() > 0.3 * rigOffsets.size()) && // there is at least 30% of subcameras that are matched
+       (setSubCam_rigTwo.size() > 0.3 * rigOffsets.size()) ) // there is at least 30% of subcameras that are matched
+  {
+     bUseModel = true ;
+  }
+
+   return bUseModel;
 }
 
 /// Triangulate a set of points between two view

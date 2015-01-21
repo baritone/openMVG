@@ -1054,12 +1054,8 @@ bool GlobalRigidReconstructionEngine::Process()
       scaleFactor /= nStereoPoint ;
       if( scaleFactor > 0.0 )
       {
-        std::cout << "\n Scale point cloud with scale Factor " << scaleFactor << endl;
-        // scale point cloud
-        for(size_t i = 0; i < _vec_allScenes.size(); ++i)
-        {
-           _vec_allScenes[i] *= scaleFactor ;
-        }
+        vec_residuals.clear();
+        std::cout << "\n Scale camera position with scale Factor " << scaleFactor << endl;
 
         // rebuild camera map with scale factor
         std::vector < Vec3 > vec_C ;
@@ -1074,9 +1070,67 @@ bool GlobalRigidReconstructionEngine::Process()
         }
         // re-export camera path
         plyHelper::exportToPly(vec_C, stlplus::create_filespec(_sOutDirectory, "cameraPath", "ply"));
+
+        C_Progress_display my_progress_bar_triangulation( _map_selectedTracks.size(),
+        std::cout, "\n\n Scaled triangulation:\n");
+
+#ifdef USE_OPENMP
+      #pragma omp parallel for schedule(dynamic)
+#endif
+        for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
+        {
+            STLMAPTracks::const_iterator iterTracks = _map_selectedTracks.begin();
+            std::advance(iterTracks, idx);
+
+            const submapTrack & subTrack = iterTracks->second;
+
+            // Look to the features required for the triangulation task
+            Triangulation trianObj;
+
+            for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack)
+            {
+              const size_t imaIndex = iterSubTrack->first;
+              const size_t featIndex = iterSubTrack->second;
+              const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
+
+              // Build the P matrix
+              trianObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
+            }
+
+            // Compute the 3D point and keep point index with negative depth
+            const Vec3 Xs  = trianObj.compute();
+
+            _vec_allScenes[idx] = Xs;
+
+  #ifdef USE_OPENMP
+  #pragma omp critical
+  #endif
+          {
+            //-- Compute residual over all the projections
+            double  dAverageResidual = 0.0;
+
+            for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
+              const size_t imaIndex = iterSubTrack->first;
+              const size_t featIndex = iterSubTrack->second;
+              const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
+              dAverageResidual += _map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>());
+              // no ordering in vec_residuals since there is parallelism
+            }
+
+            dAverageResidual /= (double) subTrack.size() ;
+            vec_residuals.push_back(dAverageResidual);
+
+            if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
+                 || !is_finite(Xs[2]) )  {
+              set_idx_to_remove.insert(idx);
+            }
+
+            ++my_progress_bar_triangulation;
+          }
+        }
       }
 
-      std::cout << "\n Clean point cloud before BA \n " << scaleFactor << endl;
+      std::cout << "\n Clean point cloud before BA \n " << endl;
 
       //-- Remove useless tracks and 3D points
       {
