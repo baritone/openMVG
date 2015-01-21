@@ -1057,17 +1057,37 @@ bool GlobalRigidReconstructionEngine::Process()
         vec_residuals.clear();
         std::cout << "\n Scale camera position with scale Factor " << scaleFactor << endl;
 
-        // rebuild camera map with scale factor
+        // rebuild rig map with scale factor
+        for (Map_Rig::iterator iter = _map_rig.begin(); iter != _map_rig.end(); ++iter) {
+           const Vec3 tRig = scaleFactor * iter->second.second;
+           iter->second.second = tRig ;
+        }
+
+        // rebuild camera map with correct scale factor
         std::vector < Vec3 > vec_C ;
-        for (Map_Camera::iterator iter = _map_camera.begin(); iter != _map_camera.end(); ++iter) {
-           iter->second._C *= scaleFactor;
+        for (Map_Camera::iterator iter = _map_camera.begin(); iter != _map_camera.end(); ++iter)
+        {
+           // extract rig index and sub camera index
+           const size_t rigId = _map_RigIdPerImageId.at(iter->first);
+           const size_t subCamId = _map_IntrinsicIdPerImageId.find(iter->first)->second;
+
+          // extract  subcamera pose, rig pose
+           const Mat3   Rrig  = _map_rig.at(rigId).first;
+           const Vec3   tRig  = _map_rig.at(rigId).second;
+
+           const Mat3   Rcam  = _vec_intrinsicGroups[subCamId].m_R ;
+           const Vec3   tCam  = -Rcam * _vec_intrinsicGroups[subCamId].m_rigC ;
+
+           // compute subcamera pose
+           const Vec3   t     = Rcam * tRig + tCam;
+           const Mat3   R     = Rcam * Rrig;
+
+           const Mat3 & _K = _vec_intrinsicGroups[subCamId].m_K;   // The same K matrix is used by all the camera
+           _map_camera[iter->first] = PinholeCamera(_K, R, t);
+
            vec_C.push_back( iter->second._C );
         }
 
-        // rebuild rig with scale factor
-        for (Map_Rig::iterator iter = _map_rig.begin(); iter != _map_rig.end(); ++iter) {
-           iter->second.second *= scaleFactor;
-        }
         // re-export camera path
         plyHelper::exportToPly(vec_C, stlplus::create_filespec(_sOutDirectory, "cameraPath", "ply"));
 
@@ -1121,7 +1141,7 @@ bool GlobalRigidReconstructionEngine::Process()
             vec_residuals.push_back(dAverageResidual);
 
             if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
-                 || !is_finite(Xs[2]) )  {
+                 || !is_finite(Xs[2]) || trianObj.minDepth() > 30.0 || dAverageResidual > 25.0 )  {
               set_idx_to_remove.insert(idx);
             }
 
@@ -1644,9 +1664,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         // keep only tracks related to inliers
         openMVG::tracks::STLMAPTracks map_tracksInliers;
-        for(int l=0; l < bearingVectorsRigOne.size(); ++l)
+        for(int l=0; l < vec_inliers.size(); ++l)
         {
-          map_tracksInliers[l] = map_tracks[l];
+          map_tracksInliers[l] = map_tracks[vec_inliers[l]];
         }
 
         // Triangulation of all the tracks
@@ -2427,9 +2447,9 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
     }
   }
 
-  // fix rig one position
-  problem.SetParameterBlockConstant(
-    ba_problem.mutable_rig_extrinsic(0) );
+  // fix position of rig one and two to keep good scale factor
+  problem.SetParameterBlockConstant(  ba_problem.mutable_rig_extrinsic(0) );
+  problem.SetParameterBlockConstant(  ba_problem.mutable_rig_extrinsic(1) );
 
   // Solve BA
   ceres::Solver::Summary summary;
