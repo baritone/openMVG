@@ -2447,9 +2447,8 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
     }
   }
 
-  // fix position of rig one and two to keep good scale factor
+  // fix position of rig one
   problem.SetParameterBlockConstant(  ba_problem.mutable_rig_extrinsic(0) );
-  problem.SetParameterBlockConstant(  ba_problem.mutable_rig_extrinsic(1) );
 
   // Solve BA
   ceres::Solver::Summary summary;
