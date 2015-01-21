@@ -904,7 +904,6 @@ bool GlobalRigidReconstructionEngine::Process()
           //update rig map
           _map_rig[rigNum] = std::make_pair(Ri, Rigt);
         }
-        plyHelper::exportToPly(vec_C, stlplus::create_filespec(_sOutDirectory, "cameraPath", "ply"));
       }
       break;
 
@@ -952,6 +951,10 @@ bool GlobalRigidReconstructionEngine::Process()
       C_Progress_display my_progress_bar_triangulation( _map_selectedTracks.size(),
       std::cout, "\n\n Initial triangulation:\n");
 
+      // compute scale factor to have metric point cloud
+      double  scaleFactor = 0.0;
+      size_t  nStereoPoint = 0;
+
 #ifdef USE_OPENMP
       #pragma omp parallel for schedule(dynamic)
 #endif
@@ -964,18 +967,60 @@ bool GlobalRigidReconstructionEngine::Process()
 
           // Look to the features required for the triangulation task
           Triangulation trianObj;
+          std::map < size_t , std::vector < std::pair <size_t, size_t > > >  map_featIdPerRigId ;
+
           for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack)
           {
             const size_t imaIndex = iterSubTrack->first;
             const size_t featIndex = iterSubTrack->second;
             const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
 
+            // update map
+            const size_t rigId = _map_RigIdPerImageId.at(imaIndex);
+            map_featIdPerRigId [ rigId ].push_back ( std::make_pair (imaIndex, featIndex) );
+
             // Build the P matrix
             trianObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
           }
 
           // Compute the 3D point and keep point index with negative depth
-          const Vec3 Xs = trianObj.compute();
+          const Vec3 Xs  = trianObj.compute();
+
+          // compute scale factor
+          size_t  cpt_scale = 0;
+
+          Triangulation stereoRig;
+
+          for( std::map < size_t , std::vector < std::pair <size_t, size_t > > >::const_iterator iter = map_featIdPerRigId.begin();
+               iter != map_featIdPerRigId.end(); ++iter, ++cpt_scale)
+          {
+            const size_t rigId = iter->first;
+            const size_t numberOfFeature = iter->second.size();
+
+            // Build the P matrix
+            if ( numberOfFeature > 1 )
+            {
+              Triangulation stereoObj;
+
+              for( size_t k = 0 ; k < numberOfFeature ; ++k )
+              {
+                const size_t imaIndex = iter->second[k].first;
+                const size_t featIndex = iter->second[k].second;
+                const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
+                stereoObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
+              }
+
+              // compute 3D point and scale factor
+              const Vec3 X = stereoObj.compute();
+
+              if( stereoObj.minDepth() > 0.0 && trianObj.minDepth() > 0.0)
+              {
+                scaleFactor += stereoObj.minDepth() / trianObj.minDepth() ;
+                ++nStereoPoint ;
+              }
+            }
+          }
+
           _vec_allScenes[idx] = Xs;
 
 #ifdef USE_OPENMP
@@ -997,13 +1042,41 @@ bool GlobalRigidReconstructionEngine::Process()
           vec_residuals.push_back(dAverageResidual);
 
           if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
-               || !is_finite(Xs[2]) || subTrack.size() < 4 )  {
+               || !is_finite(Xs[2]) )  {
             set_idx_to_remove.insert(idx);
           }
 
           ++my_progress_bar_triangulation;
         }
       }
+
+      // scale camera map and point cloud
+      scaleFactor /= nStereoPoint ;
+      if( scaleFactor > 0.0 )
+      {
+        std::cout << "\n Scale point cloud with scale Factor " << scaleFactor << endl;
+        // scale point cloud
+        for(size_t i = 0; i < _vec_allScenes.size(); ++i)
+        {
+           _vec_allScenes[i] *= scaleFactor ;
+        }
+
+        // rebuild camera map with scale factor
+        std::vector < Vec3 > vec_C ;
+        for (Map_Camera::iterator iter = _map_camera.begin(); iter != _map_camera.end(); ++iter) {
+           iter->second._C *= scaleFactor;
+           vec_C.push_back( iter->second._C );
+        }
+
+        // rebuild rig with scale factor
+        for (Map_Rig::iterator iter = _map_rig.begin(); iter != _map_rig.end(); ++iter) {
+           iter->second.second *= scaleFactor;
+        }
+        // re-export camera path
+        plyHelper::exportToPly(vec_C, stlplus::create_filespec(_sOutDirectory, "cameraPath", "ply"));
+      }
+
+      std::cout << "\n Clean point cloud before BA \n " << scaleFactor << endl;
 
       //-- Remove useless tracks and 3D points
       {
