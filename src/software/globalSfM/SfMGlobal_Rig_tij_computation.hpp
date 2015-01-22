@@ -65,6 +65,7 @@ bool estimate_T_rig_triplet(
     std::vector < std::vector <double> > subTrackInfo;
 
     // loop on subtracks
+    size_t nrig = 0;
     for (size_t index = 0; index < subTrack.size() ; ++index)
     { submapTrack::const_iterator iter = subTrack.begin();
       std::advance(iter, index);
@@ -78,14 +79,18 @@ bool estimate_T_rig_triplet(
       // extract features
       const SIOPointFeature & pt = map_feats.find(imaIndex)->second[featIndex];
 
-      //export informations
-      std::vector <double>  tmp;
-      tmp.push_back(pt.x());  // feature
-      tmp.push_back(pt.y());  // feature
-      tmp.push_back(cameraId); // rig instrinsic ID
-      tmp.push_back(map_rigIdToTripletId.at(rigId)); // rig id in triplet estimation
+      if( nrig == map_rigIdToTripletId.at(rigId) )
+      {
+        //export informations
+        std::vector <double>  tmp;
+        tmp.push_back(pt.x());  // feature
+        tmp.push_back(pt.y());  // feature
+        tmp.push_back(cameraId); // rig instrinsic ID
+        tmp.push_back(map_rigIdToTripletId.at(rigId)); // rig id in triplet estimation
 
-      subTrackInfo.push_back( tmp );
+        subTrackInfo.push_back( tmp );
+        ++nrig;
+      }
     }
 
     featsAndRigIdPerTrack.push_back( subTrackInfo );
@@ -694,7 +699,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
         // update precision to have good value for normalized coordinates
         double dPrecision = 4.0 / averageFocal / averageFocal;
-        const double ThresholdUpperBound = 2.5 / averageFocal;
+        const double ThresholdUpperBound = 1.0 / averageFocal;
 
         std::vector<Vec3> vec_tis(3);
         std::vector<size_t> vec_inliers;

@@ -959,7 +959,7 @@ bool GlobalRigidReconstructionEngine::Process()
       size_t  nStereoPoint = 0;
 
 #ifdef USE_OPENMP
-      #pragma omp parallel for schedule(dynamic)
+      #pragma comment omp parallel for schedule(dynamic)
 #endif
       for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
       {
@@ -1733,7 +1733,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         // keep only tracks related to inliers
         openMVG::tracks::STLMAPTracks map_tracksInliers;
-        for(int l=0; l < vec_inliers.size(); ++l)
+        for(int l=0; l < map_tracks.size(); ++l)
         {
           map_tracksInliers[l] = map_tracks[l];
         }
