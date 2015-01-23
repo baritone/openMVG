@@ -93,7 +93,8 @@ bool estimate_T_rig_triplet(
       }
     }
 
-    featsAndRigIdPerTrack.push_back( subTrackInfo );
+    if( nrig == 3)
+       featsAndRigIdPerTrack.push_back( subTrackInfo );
   }
 
   // compute model
@@ -132,9 +133,9 @@ bool estimate_T_rig_triplet(
 
   // keep only tracks related to inliers
   openMVG::tracks::STLMAPTracks map_tracksInliers;
-  for(int l=0; l < map_tracksCommon.size(); ++l)
+  for(int l=0; l < vec_inliers.size(); ++l)
   {
-    map_tracksInliers[l] = map_tracksCommon.at(l);
+    map_tracksInliers[l] = map_tracksCommon.at(vec_inliers[l]);
   }
 
   for (size_t i = 0; i < map_tracksInliers.size(); ++i)
@@ -545,7 +546,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
   //-- Prepare tracks count per triplets:
   std::map<size_t, size_t> map_tracksPerTriplets;
 #ifdef USE_OPENMP
-  #pragma omp parallel for schedule(dynamic)
+  #pragma omp parallel for schedule(dynamic) ordered
 #endif
   for (int i = 0; i < (int)vec_triplets.size(); ++i)
   {
@@ -609,151 +610,153 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
   std::cout << std::endl
     << "Computation of the relative translations over the graph with an edge coverage algorithm" << std::endl;
-#ifdef USE_OPENMP
-  #pragma omp parallel for schedule(dynamic)
-#endif
   for (int k = 0; k < vec_edges.size(); ++k)
   {
     const myEdge & edge = vec_edges[k];
+    bool  bEvaluate     = true;
+
     //-- If current edge already computed continue
     if (m_mutexSet.isDiscarded(edge) || m_mutexSet.size() == vec_edges.size())
     {
-      std::cout << "EDGES WAS PREVIOUSLY COMPUTED" << std::endl;
-      continue;
+        std::cout << "EDGES WAS PREVIOUSLY COMPUTED" << std::endl;
+        bEvaluate = false;
     }
 
-    std::vector<size_t> vec_possibleTriplets;
-    // Find the triplet that contain the given edge
-    for (size_t i = 0; i < vec_triplets.size(); ++i)
+    if( bEvaluate )
     {
-      const graphUtils::Triplet & triplet = vec_triplets[i];
-      if (triplet.contain(edge))
+      std::vector<size_t> vec_possibleTriplets;
+      // Find the triplet that contain the given edge
+      for (size_t i = 0; i < vec_triplets.size(); ++i)
       {
-        vec_possibleTriplets.push_back(i);
-      }
-    }
-
-    //-- Sort the triplet according the number of matches they have on their edges
-    std::vector<size_t> vec_commonTracksPerTriplets;
-    for (size_t i = 0; i < vec_possibleTriplets.size(); ++i)
-    {
-      vec_commonTracksPerTriplets.push_back(map_tracksPerTriplets[vec_possibleTriplets[i]]);
-    }
-    //-- If current edge already computed continue
-    if (m_mutexSet.isDiscarded(edge))
-      continue;
-
-    using namespace indexed_sort;
-    std::vector< sort_index_packet_descend < size_t, size_t> > packet_vec(vec_commonTracksPerTriplets.size());
-    sort_index_helper(packet_vec, &vec_commonTracksPerTriplets[0]);
-
-    std::vector<size_t> vec_possibleTripletsSorted;
-    for (size_t i = 0; i < vec_commonTracksPerTriplets.size(); ++i) {
-      vec_possibleTripletsSorted.push_back( vec_possibleTriplets[packet_vec[i].index] );
-    }
-    vec_possibleTriplets.swap(vec_possibleTripletsSorted);
-
-    // Try to solve the triplets
-    // Search the possible triplet:
-    for (size_t i = 0; i < vec_possibleTriplets.size(); ++i)
-    {
-      const graphUtils::Triplet & triplet = vec_triplets[vec_possibleTriplets[i]];
-      const size_t I = triplet.i, J = triplet.j , K = triplet.k;
-      {
-        RigWiseMatches map_matchesIJK;
-        if(_map_Matches_Rig.find(std::make_pair(I,J)) != _map_Matches_Rig.end())
-          map_matchesIJK.insert(*_map_Matches_Rig.find(std::make_pair(I,J)));
-        else
-        if(_map_Matches_Rig.find(std::make_pair(J,I)) != _map_Matches_Rig.end())
-          map_matchesIJK.insert(*_map_Matches_Rig.find(std::make_pair(J,I)));
-
-        if(_map_Matches_Rig.find(std::make_pair(I,K)) != _map_Matches_Rig.end())
-          map_matchesIJK.insert(*_map_Matches_Rig.find(std::make_pair(I,K)));
-        else
-        if(_map_Matches_Rig.find(std::make_pair(K,I)) != _map_Matches_Rig.end())
-          map_matchesIJK.insert(*_map_Matches_Rig.find(std::make_pair(K,I)));
-
-        if(_map_Matches_Rig.find(std::make_pair(J,K)) != _map_Matches_Rig.end())
-          map_matchesIJK.insert(*_map_Matches_Rig.find(std::make_pair(J,K)));
-        else
-        if(_map_Matches_Rig.find(std::make_pair(K,J)) != _map_Matches_Rig.end())
-          map_matchesIJK.insert(*_map_Matches_Rig.find(std::make_pair(K,J)));
-
-        // Select common point:
-        STLMAPTracks map_tracksCommon;
-        TracksBuilder tracksBuilder;
+        const graphUtils::Triplet & triplet = vec_triplets[i];
+        if (triplet.contain(edge))
         {
-          tracksBuilder.Build(map_matchesIJK);
-          tracksBuilder.Filter(_map_RigIdPerImageId,3);
-          tracksBuilder.ExportToSTL(map_tracksCommon);
+          vec_possibleTriplets.push_back(i);
         }
+      }
 
-        //--
-        // Try to estimate this triplet.
-        //--
-        // Get rotations:
-        std::vector<Mat3> vec_global_KR_Triplet;
-        vec_global_KR_Triplet.push_back(map_global_KR.at(I));
-        vec_global_KR_Triplet.push_back(map_global_KR.at(J));
-        vec_global_KR_Triplet.push_back(map_global_KR.at(K));
+      //-- Sort the triplet according the number of matches they have on their edges
+      std::vector<size_t> vec_commonTracksPerTriplets;
+      for (size_t i = 0; i < vec_possibleTriplets.size(); ++i)
+      {
+        vec_commonTracksPerTriplets.push_back(map_tracksPerTriplets[vec_possibleTriplets[i]]);
+      }
+      //-- If current edge already computed continue
+      if (m_mutexSet.isDiscarded(edge))
+        continue;
 
-        // update precision to have good value for normalized coordinates
-        double dPrecision = 4.0 / averageFocal / averageFocal;
-        const double ThresholdUpperBound = 1.0 / averageFocal;
+      using namespace indexed_sort;
+      std::vector< sort_index_packet_descend < size_t, size_t> > packet_vec(vec_commonTracksPerTriplets.size());
+      sort_index_helper(packet_vec, &vec_commonTracksPerTriplets[0]);
 
-        std::vector<Vec3> vec_tis(3);
-        std::vector<size_t> vec_inliers;
+      std::vector<size_t> vec_possibleTripletsSorted;
+      for (size_t i = 0; i < vec_commonTracksPerTriplets.size(); ++i) {
+        vec_possibleTripletsSorted.push_back( vec_possibleTriplets[packet_vec[i].index] );
+      }
+      vec_possibleTriplets.swap(vec_possibleTripletsSorted);
 
-        if (map_tracksCommon.size() > 50 * rigOffsets.size() &&
-            estimate_T_rig_triplet(
-                  map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
-                  rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,
-                  vec_tis, dPrecision, vec_inliers, ThresholdUpperBound, _sOutDirectory, I, J, K) )
+      // Try to solve the triplets
+      // Search the possible triplet:
+      #ifdef USE_OPENMP
+        #pragma omp parallel for schedule(dynamic)
+      #endif
+      for (size_t i = 0; i < vec_possibleTriplets.size(); ++i)
+      {
+        const graphUtils::Triplet & triplet = vec_triplets[vec_possibleTriplets[i]];
+        const size_t I = triplet.i, J = triplet.j , K = triplet.k;
         {
-          std::cout << dPrecision * averageFocal << "\t" << vec_inliers.size() << std::endl;
+          RigWiseMatches map_matchesIJK;
+          if(_map_Matches_Rig.find(std::make_pair(I,J)) != _map_Matches_Rig.end())
+            map_matchesIJK.insert(*_map_Matches_Rig.find(std::make_pair(I,J)));
+          else
+          if(_map_Matches_Rig.find(std::make_pair(J,I)) != _map_Matches_Rig.end())
+            map_matchesIJK.insert(*_map_Matches_Rig.find(std::make_pair(J,I)));
 
-          //-- Build the three camera:
-          const Mat3 RI = map_globalR.find(I)->second;
-          const Mat3 RJ = map_globalR.find(J)->second;
-          const Mat3 RK = map_globalR.find(K)->second;
-          const Vec3 ti = vec_tis[0];
-          const Vec3 tj = vec_tis[1];
-          const Vec3 tk = vec_tis[2];
+          if(_map_Matches_Rig.find(std::make_pair(I,K)) != _map_Matches_Rig.end())
+            map_matchesIJK.insert(*_map_Matches_Rig.find(std::make_pair(I,K)));
+          else
+          if(_map_Matches_Rig.find(std::make_pair(K,I)) != _map_Matches_Rig.end())
+            map_matchesIJK.insert(*_map_Matches_Rig.find(std::make_pair(K,I)));
 
-          // Build the 3 relative translations estimations.
-          // IJ, JK, IK
+          if(_map_Matches_Rig.find(std::make_pair(J,K)) != _map_Matches_Rig.end())
+            map_matchesIJK.insert(*_map_Matches_Rig.find(std::make_pair(J,K)));
+          else
+          if(_map_Matches_Rig.find(std::make_pair(K,J)) != _map_Matches_Rig.end())
+            map_matchesIJK.insert(*_map_Matches_Rig.find(std::make_pair(K,J)));
 
-          //--- ATOMIC
-          #ifdef USE_OPENMP
-             #pragma omp critical
-          #endif
+          // Select common point:
+          STLMAPTracks map_tracksCommon;
+          TracksBuilder tracksBuilder;
           {
-            Mat3 RijGt;
-            Vec3 tij;
-            RelativeCameraMotion(RI, ti, RJ, tj, &RijGt, &tij);
-            vec_initialEstimates.push_back(
-              std::make_pair(std::make_pair(I, J), std::make_pair(RijGt, tij)));
-
-            Mat3 RjkGt;
-            Vec3 tjk;
-            RelativeCameraMotion(RJ, tj, RK, tk, &RjkGt, &tjk);
-            vec_initialEstimates.push_back(
-              std::make_pair(std::make_pair(J, K), std::make_pair(RjkGt, tjk)));
-
-            Mat3 RikGt;
-            Vec3 tik;
-            RelativeCameraMotion(RI, ti, RK, tk, &RikGt, &tik);
-            vec_initialEstimates.push_back(
-              std::make_pair(std::make_pair(I, K), std::make_pair(RikGt, tik)));
-
-            // Add trifocal inliers as valid 3D points
+            tracksBuilder.Build(map_matchesIJK);
+            tracksBuilder.Filter(_map_RigIdPerImageId,3);
+            tracksBuilder.ExportToSTL(map_tracksCommon);
           }
 
-          //-- Remove the 3 edges validated by the trifocal tensor
-          m_mutexSet.discard(std::make_pair(std::min(I,J), std::max(I,J)));
-          m_mutexSet.discard(std::make_pair(std::min(I,K), std::max(I,K)));
-          m_mutexSet.discard(std::make_pair(std::min(J,K), std::max(J,K)));
-          break;
+          //--
+          // Try to estimate this triplet.
+          //--
+          // Get rotations:
+          std::vector<Mat3> vec_global_KR_Triplet;
+          vec_global_KR_Triplet.push_back(map_global_KR.at(I));
+          vec_global_KR_Triplet.push_back(map_global_KR.at(J));
+          vec_global_KR_Triplet.push_back(map_global_KR.at(K));
+
+          // update precision to have good value for normalized coordinates
+          double dPrecision = 4.0 / averageFocal / averageFocal;
+          const double ThresholdUpperBound = 1.0 / averageFocal;
+
+          std::vector<Vec3> vec_tis(3);
+          std::vector<size_t> vec_inliers;
+
+          if (map_tracksCommon.size() > 50 * rigOffsets.size() &&
+              estimate_T_rig_triplet(
+                    map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
+                    rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,
+                    vec_tis, dPrecision, vec_inliers, ThresholdUpperBound, _sOutDirectory, I, J, K) )
+          {
+            std::cout << dPrecision * averageFocal << "\t" << vec_inliers.size() << std::endl;
+
+            //-- Build the three camera:
+            const Mat3 RI = map_globalR.find(I)->second;
+            const Mat3 RJ = map_globalR.find(J)->second;
+            const Mat3 RK = map_globalR.find(K)->second;
+            const Vec3 ti = vec_tis[0];
+            const Vec3 tj = vec_tis[1];
+            const Vec3 tk = vec_tis[2];
+
+            // Build the 3 relative translations estimations.
+            // IJ, JK, IK
+
+            //--- ATOMIC
+            #ifdef USE_OPENMP
+               #pragma omp critical
+            #endif
+            {
+              Mat3 RijGt;
+              Vec3 tij;
+              RelativeCameraMotion(RI, ti, RJ, tj, &RijGt, &tij);
+              vec_initialEstimates.push_back(
+                std::make_pair(std::make_pair(I, J), std::make_pair(RijGt, tij)));
+
+              Mat3 RjkGt;
+              Vec3 tjk;
+              RelativeCameraMotion(RJ, tj, RK, tk, &RjkGt, &tjk);
+              vec_initialEstimates.push_back(
+                std::make_pair(std::make_pair(J, K), std::make_pair(RjkGt, tjk)));
+
+              Mat3 RikGt;
+              Vec3 tik;
+              RelativeCameraMotion(RI, ti, RK, tk, &RikGt, &tik);
+              vec_initialEstimates.push_back(
+                std::make_pair(std::make_pair(I, K), std::make_pair(RikGt, tik)));
+
+              //-- Remove the 3 edges validated by the trifocal tensor
+              m_mutexSet.discard(std::make_pair(std::min(I,J), std::max(I,J)));
+              m_mutexSet.discard(std::make_pair(std::min(I,K), std::max(I,K)));
+              m_mutexSet.discard(std::make_pair(std::min(J,K), std::max(J,K)));
+            }
+          }
         }
       }
     }

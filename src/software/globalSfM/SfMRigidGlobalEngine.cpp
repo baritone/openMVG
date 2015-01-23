@@ -1712,7 +1712,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondances
     double errorMax = std::numeric_limits<double>::max();
-    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
+    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 2.5 / averageFocal )));
 
     transformation_t  pose;
     std::vector<size_t> vec_inliers;
@@ -2059,12 +2059,16 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         #ifdef USE_OPENMP
           #pragma omp critical
         #endif
-        vec_relatives[std::make_pair(R0,R1)] = std::make_pair(R,t);
-      }
-      #ifdef USE_OPENMP
+        {
+          vec_relatives[std::make_pair(R0,R1)] = std::make_pair(R,t);
+        }
+    }
+    #ifdef USE_OPENMP
         #pragma omp critical
-      #endif
-    ++my_progress_bar;
+    #endif
+    {
+        ++my_progress_bar;
+    }
   }
 }
 
