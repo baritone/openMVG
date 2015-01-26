@@ -907,6 +907,9 @@ bool GlobalRigidReconstructionEngine::Process()
           //update rig map
           _map_rig[rigNum] = std::make_pair(Ri, Rigt);
         }
+
+        // export camera path
+        plyHelper::exportToPly(vec_C, stlplus::create_filespec(_sOutDirectory, "cameraPath", "ply"));
       }
       break;
 
