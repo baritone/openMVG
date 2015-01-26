@@ -122,7 +122,7 @@ bool estimate_T_rig_triplet(
   vec_tis[2] = T.t3;
 
   const size_t  iInlierSize = vec_inliers.size();
-  bool bTest( iInlierSize > 0.15 * map_tracksCommon.size()  );
+  bool bTest( iInlierSize > 30 * vec_rigOffset.size()  );
 
   // Compute initial triangulation
   std::vector<double> vec_residuals;
@@ -133,9 +133,9 @@ bool estimate_T_rig_triplet(
 
   // keep only tracks related to inliers
   openMVG::tracks::STLMAPTracks map_tracksInliers;
-  for(int l=0; l < vec_inliers.size(); ++l)
+  for(int l=0; l < map_tracksCommon.size(); ++l)
   {
-    map_tracksInliers[l] = map_tracksCommon.at(vec_inliers[l]);
+    map_tracksInliers[l] = map_tracksCommon.at(l);
   }
 
   for (size_t i = 0; i < map_tracksInliers.size(); ++i)
