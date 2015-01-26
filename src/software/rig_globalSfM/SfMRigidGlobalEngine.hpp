@@ -183,6 +183,7 @@ private:
 
   // Intrinsic Id per imageId
   std::map<size_t, size_t> _map_IntrinsicIdPerImageId;
+  std::map<size_t, size_t> _map_subCamIdPerImageId;
 
   // rig Id per imageId
   std::map<size_t, std::vector<size_t> >  _map_ImagesIdPerRigId;

@@ -1362,6 +1362,10 @@ bool GlobalRigidReconstructionEngine::Process()
       const PinholeCamera & cam = iter->second;
       _reconstructorData.map_Camera[iter->first] = BrownPinholeCamera(cam._P);
       _reconstructorData.set_imagedId.insert(iter->first);
+
+      _reconstructorData.map_Rig[iter->first] = _map_RigIdPerImageId.at(iter->first);
+      _reconstructorData.set_rigId.insert(_map_RigIdPerImageId.at(iter->first));
+      _reconstructorData.map_subCamIdperImageId[iter->first] = _map_subCamIdPerImageId.at(iter->first);
     }
 
     // Structure
@@ -1432,6 +1436,9 @@ bool GlobalRigidReconstructionEngine::ReadInputData()
 
         // to which rigid rig each image belongs
         _map_RigIdPerImageId[idx]       = camInfo.m_rigId;
+
+        // to which subcamera is related image
+        _map_subCamIdPerImageId[idx]    = camInfo.m_subCameraId;
       }
 
       for (size_t i = 0; i < _vec_camImageNames.size(); ++i)

@@ -408,7 +408,7 @@ static bool loadImageList(
     camInfo.m_sImageName    = vec_str[0];
     camInfo.m_intrinsicId   = id;
     camInfo.m_rigId         = atoi(vec_str[12].c_str());
-    camInfo.m_subCameraId   = id;
+    camInfo.m_subCameraId   = atoi(vec_str[13].c_str());
     vec_camImageName.push_back(camInfo);
 
     vec_str.clear();
