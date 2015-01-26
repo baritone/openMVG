@@ -80,7 +80,7 @@ public:
   // Accessors
   //--
 
-  const reconstructorHelper & refToReconstructorHelper() const
+  const rigReconstructorHelper & refToRigReconstructorHelper() const
   { return _reconstructorData;  }
 
   const openMVG::tracks::STLMAPTracks & getTracks() const
@@ -214,7 +214,7 @@ private:
   // Structure visibility
   STLMAPTracks _map_selectedTracks; // reconstructed track (visibility per 3D point)
   // Scene and structure container (for disk output)
-  reconstructorHelper _reconstructorData;
+  rigReconstructorHelper _reconstructorData;
   //-----
 
   // ---

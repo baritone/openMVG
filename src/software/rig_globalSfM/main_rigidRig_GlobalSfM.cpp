@@ -110,7 +110,7 @@ int main(int argc, char **argv)
     std::cout << std::endl << " Total Ac-Global-Sfm took (s): " << timer.elapsed() << std::endl;
 
     //-- Compute color if requested
-    const reconstructorHelper & reconstructorHelperRef = to3DEngine.refToReconstructorHelper();
+    const rigReconstructorHelper & reconstructorHelperRef = to3DEngine.refToRigReconstructorHelper();
     std::vector<Vec3> vec_tracksColor;
     if (bColoredPointCloud)
     {
