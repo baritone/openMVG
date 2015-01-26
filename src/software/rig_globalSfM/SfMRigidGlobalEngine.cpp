@@ -13,8 +13,8 @@
 
 #include "software/globalSfM/indexedImageGraph.hpp"
 #include "software/globalSfM/indexedImageGraphExport.hpp"
-#include "software/globalSfM/SfMRigidGlobalEngine.hpp"
-#include "software/globalSfM/SfMGlobal_Rig_tij_computation.hpp"
+#include "software/rig_globalSfM/SfMRigidGlobalEngine.hpp"
+#include "software/rig_globalSfM/SfMGlobal_Rig_tij_computation.hpp"
 #include "software/SfM/SfMIOHelper.hpp"
 #include "software/SfM/SfMRobust.hpp"
 #include "software/SfM/SfMPlyHelper.hpp"

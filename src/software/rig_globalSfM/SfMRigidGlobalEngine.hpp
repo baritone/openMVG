@@ -13,7 +13,7 @@
 #include "openMVG/cameras/PinholeCamera.hpp"
 #include "software/SfM/SfMEngine.hpp"
 #include "software/SfM/SfMIOHelper.hpp"
-#include "software/SfM/SfMReconstructionData.hpp"
+#include "software/rig_globalSfM/SfMReconstructionDataRig.hpp"
 #include "software/globalSfM/SfMGlobalEngine.hpp"
 class SIOPointFeature;
 

@@ -7,8 +7,7 @@
 
 #include <cstdlib>
 
-#include "software/globalSfM/SfMGlobalEngine.hpp"
-#include "software/globalSfM/SfMRigidGlobalEngine.hpp"
+#include "software/rig_globalSfM/SfMRigidGlobalEngine.hpp"
 using namespace openMVG;
 
 #include "third_party/cmdLine/cmdLine.h"

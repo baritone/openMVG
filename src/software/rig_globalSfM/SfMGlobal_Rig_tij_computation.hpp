@@ -10,8 +10,7 @@
 
 #include "openMVG/numeric/numeric.h"
 #include "openMVG/tracks/tracks.hpp"
-#include "software/globalSfM/SfMRigidGlobalEngine.hpp"
-#include "software/globalSfM/SfMGlobalEngine_triplet_t_estimator.hpp"
+#include "software/rig_globalSfM/SfMRigidGlobalEngine_triplet_t_estimator.hpp"
 
 #include "openMVG/multiview/essential.hpp"
 #include "openMVG/multiview/translation_averaging_common.hpp"
