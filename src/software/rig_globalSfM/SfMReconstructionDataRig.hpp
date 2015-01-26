@@ -55,6 +55,7 @@ struct rigReconstructorHelper
       std::set<size_t>       set_rigId;
       std::map<size_t, size_t>  map_Rig;
       std::map<size_t, size_t>  map_subCamIdperImageId;
+      std::map<size_t, std::pair<Mat3, Vec3> > map_posePerRigId; 
 
       bool exportToPly(const std::string & sFileName, const std::vector<Vec3> * pvec_color = NULL) const
     {

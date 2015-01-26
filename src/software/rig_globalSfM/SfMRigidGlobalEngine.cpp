@@ -1364,8 +1364,11 @@ bool GlobalRigidReconstructionEngine::Process()
       _reconstructorData.set_imagedId.insert(iter->first);
 
       _reconstructorData.map_Rig[iter->first] = _map_RigIdPerImageId.at(iter->first);
-      _reconstructorData.set_rigId.insert(_map_RigIdPerImageId.at(iter->first));
+      const size_t rigId = _map_RigIdPerImageId.at(iter->first);
+      _reconstructorData.set_rigId.insert(rigId);
       _reconstructorData.map_subCamIdperImageId[iter->first] = _map_subCamIdPerImageId.at(iter->first);
+      _reconstructorData.map_posePerRigId[rigId].first  = _map_rig.at(rigId).first;
+      _reconstructorData.map_posePerRigId[rigId].second = _map_rig.at(rigId).second;
     }
 
     // Structure
