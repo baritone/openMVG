@@ -1371,6 +1371,7 @@ bool GlobalRigidReconstructionEngine::Process()
       _reconstructorData.map_posePerRigId[rigId].first  = R;
       _reconstructorData.map_posePerRigId[rigId].second = -R.transpose() * t;
       _reconstructorData.set_rigId.insert(rigId);
+      _reconstructorData.map_rigNamePerRigId[rigId] = _map_rigNamePerRigId.at(rigId);
     }
 
     // Structure
@@ -1441,6 +1442,9 @@ bool GlobalRigidReconstructionEngine::ReadInputData()
 
         // to which rigid rig each image belongs
         _map_RigIdPerImageId[idx]       = camInfo.m_rigId;
+
+        // keep name of the rigs
+        _map_rigNamePerRigId[camInfo.m_rigId] = camInfo.m_sRigName;
 
         // to which subcamera is related image
         _map_subCamIdPerImageId[idx]    = camInfo.m_subCameraId;

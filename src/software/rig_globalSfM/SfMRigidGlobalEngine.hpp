@@ -188,6 +188,7 @@ private:
   // rig Id per imageId
   std::map<size_t, std::vector<size_t> >  _map_ImagesIdPerRigId;
   std::map<size_t, size_t> _map_RigIdPerImageId;
+  std::map<size_t, std::string > _map_rigNamePerRigId;
 
   // Parameter
   ERotationAveragingMethod _eRotationAveragingMethod;

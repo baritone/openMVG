@@ -55,7 +55,8 @@ struct rigReconstructorHelper
       std::set<size_t>       set_rigId;
       std::map<size_t, size_t>  map_Rig;
       std::map<size_t, size_t>  map_subCamIdperImageId;
-      std::map<size_t, std::pair<Mat3, Vec3> > map_posePerRigId; 
+      std::map<size_t, std::string>  map_rigNamePerRigId;
+      std::map<size_t, std::pair<Mat3, Vec3> > map_posePerRigId;
 
       bool exportToPly(const std::string & sFileName, const std::vector<Vec3> * pvec_color = NULL) const
     {
@@ -98,12 +99,14 @@ struct rigReconstructorHelper
     stlplus::folder_create( stlplus::folder_append_separator(sOutDirectory) + "cameras_disto");
     stlplus::folder_create( stlplus::folder_append_separator(sOutDirectory) + "clouds");
     stlplus::folder_create( stlplus::folder_append_separator(sOutDirectory) + "images");
+    stlplus::folder_create( stlplus::folder_append_separator(sOutDirectory) + "rigs");
 
     if (bOk &&
       stlplus::is_folder(stlplus::folder_append_separator(sOutDirectory) + "cameras") &&
       stlplus::is_folder( stlplus::folder_append_separator(sOutDirectory) + "cameras_disto") &&
       stlplus::is_folder( stlplus::folder_append_separator(sOutDirectory) + "clouds") &&
-      stlplus::is_folder( stlplus::folder_append_separator(sOutDirectory) + "images")
+      stlplus::is_folder( stlplus::folder_append_separator(sOutDirectory) + "images") &&
+      stlplus::is_folder( stlplus::folder_append_separator(sOutDirectory) + "rigs")
       )
     {
       bOk = true;
@@ -146,6 +149,29 @@ struct rigReconstructorHelper
           stlplus::create_filespec(stlplus::folder_append_separator(sOutDirectory) + "cameras_disto",
           stlplus::basename_part(vec_fileNames[iter->first]), "txt");
           bOk &= save(sCamName, cam);
+        }
+
+        // -- Export the rigs positions
+        for( std::map<size_t, std::pair<Mat3, Vec3> >::const_iterator iter = map_posePerRigId.begin() ;
+             iter != map_posePerRigId.end() ; ++iter)
+        {
+            // export name
+            const std::string  rigName = map_rigNamePerRigId.at(iter->first);
+
+             cout << rigName << endl;
+            // export
+            std::ofstream f_rig(
+            stlplus::create_filespec(stlplus::folder_append_separator(sOutDirectory) + "rigs",
+            rigName, "txt").c_str());
+
+            if (!f_rig.is_open()) {
+              std::cerr << "cannot save cloud" << std::endl;
+              return false;
+            }
+
+            f_rig << iter->second.first << endl;
+            f_rig << iter->second.second.transpose() ;
+            f_rig.close();
         }
 
         if (!bOk)
