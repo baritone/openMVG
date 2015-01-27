@@ -121,7 +121,7 @@ bool estimate_T_rig_triplet(
   vec_tis[2] = T.t3;
 
   const size_t  iInlierSize = vec_inliers.size();
-  bool bTest( iInlierSize > 30 * vec_rigOffset.size()  );
+  bool bTest( iInlierSize > 60 * vec_rigOffset.size()  );
 
   // Compute initial triangulation
   std::vector<double> vec_residuals;
@@ -708,7 +708,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;
 
-          if (map_tracksCommon.size() > 50 * rigOffsets.size() &&
+          if (map_tracksCommon.size() > 100 * rigOffsets.size() &&
               estimate_T_rig_triplet(
                     map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                     rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,
