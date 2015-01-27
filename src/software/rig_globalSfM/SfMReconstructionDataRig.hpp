@@ -158,7 +158,6 @@ struct rigReconstructorHelper
             // export name
             const std::string  rigName = map_rigNamePerRigId.at(iter->first);
 
-             cout << rigName << endl;
             // export
             std::ofstream f_rig(
             stlplus::create_filespec(stlplus::folder_append_separator(sOutDirectory) + "rigs",
