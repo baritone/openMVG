@@ -121,7 +121,7 @@ bool estimate_T_rig_triplet(
   vec_tis[2] = T.t3;
 
   const size_t  iInlierSize = vec_inliers.size();
-  bool bTest( iInlierSize > 60 * vec_rigOffset.size()  );
+  bool bTest( iInlierSize > 0.20 * vec_rigOffset.size()  );
 
   // Compute initial triangulation
   std::vector<double> vec_residuals;
