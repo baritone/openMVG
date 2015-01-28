@@ -1039,11 +1039,11 @@ bool GlobalRigidReconstructionEngine::Process()
             const size_t imaIndex = iterSubTrack->first;
             const size_t featIndex = iterSubTrack->second;
             const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
-            dAverageResidual = std::max( dAverageResidual, _map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>()) );
+            dAverageResidual += _map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>());
             // no ordering in vec_residuals since there is parallelism
           }
 
-          vec_residuals.push_back(dAverageResidual);
+          vec_residuals.push_back(dAverageResidual / subTrack.size() );
 
           if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
                || !is_finite(Xs[2]) )  {
@@ -1092,53 +1092,6 @@ bool GlobalRigidReconstructionEngine::Process()
         _map_selectedTracks.erase(*iter);
       }
       std::cout << "\n #Tracks removed: " << set_idx_to_remove.size() << std::endl;
-      }
-
-      // scale camera map and point cloud
-      scaleFactor /= nStereoPoint ;
-      if( scaleFactor > 0.0 )
-      {
-        std::cout << "\n Scale camera position with scale Factor " << scaleFactor << endl;
-
-        // rebuild rig map with scale factor
-        for (Map_Rig::iterator iter = _map_rig.begin(); iter != _map_rig.end(); ++iter) {
-          const Vec3 tRig = scaleFactor * iter->second.second;
-          iter->second.second = tRig ;
-        }
-
-        // rebuild camera map with correct scale factor
-        std::vector < Vec3 > vec_C ;
-        for (Map_Camera::iterator iter = _map_camera.begin(); iter != _map_camera.end(); ++iter)
-        {
-          // extract rig index and sub camera index
-          const size_t rigId = _map_RigIdPerImageId.at(iter->first);
-          const size_t subCamId = _map_IntrinsicIdPerImageId.find(iter->first)->second;
-
-          // extract subcamera pose, rig pose
-          const Mat3 Rrig = _map_rig.at(rigId).first;
-          const Vec3 tRig = _map_rig.at(rigId).second;
-
-          const Mat3 Rcam = _vec_intrinsicGroups[subCamId].m_R ;
-          const Vec3 tCam = -Rcam * _vec_intrinsicGroups[subCamId].m_rigC ;
-
-          // compute subcamera pose
-          const Vec3 t = Rcam * tRig + tCam;
-          const Mat3 R = Rcam * Rrig;
-
-          const Mat3 & _K = _vec_intrinsicGroups[subCamId].m_K; // The same K matrix is used by all the camera
-          _map_camera[iter->first] = PinholeCamera(_K, R, t);
-
-          vec_C.push_back( iter->second._C );
-        }
-
-        // re-export camera path
-        plyHelper::exportToPly(vec_C, stlplus::create_filespec(_sOutDirectory, "cameraPath", "ply"));
-
-        //scale 3D points
-        for (int idx = 0; idx < _vec_allScenes.size(); ++idx)
-        {
-          _vec_allScenes[idx] *= scaleFactor;
-        }
       }
 
       plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
@@ -1736,8 +1689,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     transformation_t  pose;
     std::vector<size_t> vec_inliers;
 
-    if ( bearingVectorsRigOne.size() > 200 * rigOffsets.size() &&
-       SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
+    if ( SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
         camCorrespondencesRigOne, camCorrespondencesRigTwo,
         rigOffsets, rigRotations, &pose, &vec_inliers, imageSize,
         &errorMax, maxExpectedError) )
@@ -1753,9 +1705,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         // keep only tracks related to inliers
         openMVG::tracks::STLMAPTracks map_tracksInliers;
-        for(int l=0; l < map_tracks.size(); ++l)
+        for(int l=0; l < vec_inliers.size(); ++l)
         {
-          map_tracksInliers[l] = map_tracks[l];
+          map_tracksInliers[l] = map_tracks[vec_inliers[l]];
         }
 
         // Triangulation of all the tracks

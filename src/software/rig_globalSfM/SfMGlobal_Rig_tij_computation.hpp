@@ -121,7 +121,7 @@ bool estimate_T_rig_triplet(
   vec_tis[2] = T.t3;
 
   const size_t  iInlierSize = vec_inliers.size();
-  bool bTest( iInlierSize > 0.20 * vec_rigOffset.size()  );
+  bool bTest( iInlierSize > 0.30 * map_tracksCommon.size()  );
 
   // Compute initial triangulation
   std::vector<double> vec_residuals;
@@ -132,9 +132,9 @@ bool estimate_T_rig_triplet(
 
   // keep only tracks related to inliers
   openMVG::tracks::STLMAPTracks map_tracksInliers;
-  for(int l=0; l < map_tracksCommon.size(); ++l)
+  for(int l=0; l < vec_inliers.size(); ++l)
   {
-    map_tracksInliers[l] = map_tracksCommon.at(l);
+    map_tracksInliers[l] = map_tracksCommon.at(vec_inliers[l]);
   }
 
   for (size_t i = 0; i < map_tracksInliers.size(); ++i)
@@ -708,7 +708,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;
 
-          if (map_tracksCommon.size() > 100 * rigOffsets.size() &&
+          if (map_tracksCommon.size() > 50 * rigOffsets.size() &&
               estimate_T_rig_triplet(
                     map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                     rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,

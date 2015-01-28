@@ -54,7 +54,7 @@ using namespace opengv;
  * // Conference: Workshop on omnidirectional vision 2005.
  */
 struct SixPointSolver {
-  enum { MINIMUM_SAMPLES = 6 };
+  enum { MINIMUM_SAMPLES = 9 };
   enum { MAX_MODELS = 1 };
   static void Solve(relative_pose::NoncentralRelativeAdapter & adapter,
                     std::vector<transformation_t> * models,
