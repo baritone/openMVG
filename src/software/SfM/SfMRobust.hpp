@@ -192,7 +192,7 @@ bool robustRigPose(
   assert(pvec_inliers != NULL);
 
   // Use the 6 point solver to the pose
-  typedef openMVG::noncentral::kernel::SixPointSolver SolverType;
+  typedef openMVG::noncentral::kernel::GePointSolver SolverType;
   // Define the AContrario adaptor
   typedef ACKernelAdaptorRigPose<
       SolverType,
@@ -204,7 +204,7 @@ bool robustRigPose(
 
   // Robustly estimation of the Essential matrix and it's precision
   std::pair<double,double> acRansacOut = ACRANSAC(kernel, *pvec_inliers,
-    1024, relativePose, precision, false);
+    1024, relativePose, precision, false, false);
   *errorMax = acRansacOut.first;
 
    return (pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * rigOffsets.size() );

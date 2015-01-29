@@ -61,6 +61,13 @@ struct SixPointSolver {
                     const std::vector<size_t> &indices);
 };
 
+struct GePointSolver {
+  enum { MINIMUM_SAMPLES = 8 };
+  enum { MAX_MODELS = 1 };
+  static void Solve(relative_pose::NoncentralRelativeAdapter & adapter,
+  std::vector<transformation_t> * models,
+  const std::vector<size_t> &indices);
+};
 
 // compute reprojection error
 struct RigProjError {
