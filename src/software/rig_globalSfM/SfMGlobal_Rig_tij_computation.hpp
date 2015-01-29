@@ -111,7 +111,7 @@ bool estimate_T_rig_triplet(
 
   rigTrackTrifocalTensorModel T;
   dPrecision = dPrecision ;//std::numeric_limits<double>::infinity();
-  std::pair<double,double> acStat = robust::ACRANSAC(kernel, vec_inliers, ORSA_ITER, &T, dPrecision, false);
+  std::pair<double,double> acStat = robust::ACRANSAC(kernel, vec_inliers, ORSA_ITER, &T, dPrecision, false, false);
   dPrecision = acStat.first;
 
   //-- Export data in order to have an idea of the precision of the estimates
@@ -121,7 +121,7 @@ bool estimate_T_rig_triplet(
   vec_tis[2] = T.t3;
 
   const size_t  iInlierSize = vec_inliers.size();
-  bool bTest( iInlierSize > 0.50 * map_tracksCommon.size()  );
+  bool bTest( iInlierSize > 0.10 * featsAndRigIdPerTrack.size()  );
 
   // Compute initial triangulation
   std::vector<double> vec_residuals;
@@ -230,7 +230,7 @@ bool estimate_T_rig_triplet(
     std::cout << "Triplet rejected : AC: " << dPrecision
       << " median: " << median
       << " inliers count " << vec_inliers.size()
-      << " total putative " << map_tracksCommon.size() << std::endl;
+      << " total putative " << featsAndRigIdPerTrack.size() << std::endl;
   }
 
   bool bRefine = true;
@@ -702,7 +702,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = 9.0 / averageFocal / averageFocal;
+          double dPrecision = 4.0 / averageFocal / averageFocal;
           const double ThresholdUpperBound = 1.0 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
