@@ -78,7 +78,6 @@ bool estimate_T_rig_triplet(
       // extract features
       const SIOPointFeature & pt = map_feats.find(imaIndex)->second[featIndex];
 
-      if( nrig == map_rigIdToTripletId.at(rigId) )
       {
         //export informations
         std::vector <double>  tmp;
@@ -92,8 +91,7 @@ bool estimate_T_rig_triplet(
       }
     }
 
-    if( nrig == 3)
-       featsAndRigIdPerTrack.push_back( subTrackInfo );
+    featsAndRigIdPerTrack.push_back( subTrackInfo );
   }
 
   // compute model
@@ -700,7 +698,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = 4.0 / averageFocal / averageFocal;
+          double dPrecision = 1.0e10;
           const double ThresholdUpperBound = 1.0 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
