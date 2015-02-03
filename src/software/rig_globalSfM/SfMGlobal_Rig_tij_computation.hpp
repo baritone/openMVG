@@ -400,7 +400,7 @@ bool estimate_T_rig_triplet(
     // Create residuals for each observation in the bundle adjustment problem. The
     // parameters for cameras and points are added automatically.
     ceres::Problem problem;
-    ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
+    ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
     for (size_t i = 0; i < ba_problem.num_observations(); ++i) {
       // Each Residual block takes a point and a camera as input and outputs a 2
       // dimensional residual. Internally, the cost function stores the observed

@@ -1905,7 +1905,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         ceres::Problem problem;
         // Set a LossFunction to be less penalized by false measurements
         //  - set it to NULL if you don't want use a lossFunction.
-        ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
+        ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
         for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
           // Each Residual block takes a point and a camera as input and outputs a 2
           // dimensional residual. Internally, the cost function stores the observed
@@ -2365,7 +2365,7 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
   ceres::Problem problem;
   // Set a LossFunction to be less penalized by false measurements
   //  - set it to NULL if you don't want use a lossFunction.
-  ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
+  ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
   for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
     // Each Residual block takes a point and a camera as input and outputs a 2
     // dimensional residual. Internally, the cost function stores the observed
