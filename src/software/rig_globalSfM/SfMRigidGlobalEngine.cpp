@@ -13,8 +13,8 @@
 
 #include "software/globalSfM/indexedImageGraph.hpp"
 #include "software/globalSfM/indexedImageGraphExport.hpp"
-#include "software/globalSfM/SfMRigidGlobalEngine.hpp"
-#include "software/globalSfM/SfMGlobal_Rig_tij_computation.hpp"
+#include "software/rig_globalSfM/SfMRigidGlobalEngine.hpp"
+#include "software/rig_globalSfM/SfMGlobal_Rig_tij_computation.hpp"
 #include "software/SfM/SfMIOHelper.hpp"
 #include "software/SfM/SfMRobust.hpp"
 #include "software/SfM/SfMPlyHelper.hpp"
@@ -305,9 +305,12 @@ GlobalRigidReconstructionEngine::GlobalRigidReconstructionEngine(
 
 GlobalRigidReconstructionEngine::~GlobalRigidReconstructionEngine()
 {
-  ofstream htmlFileStream( string(stlplus::folder_append_separator(_sOutDirectory) +
-    "Reconstruction_Report.html").c_str());
-  htmlFileStream << _htmlDocStream->getDoc();
+   if (_bHtmlReport)
+   {
+       ofstream htmlFileStream( string(stlplus::folder_append_separator(_sOutDirectory) +
+       "Reconstruction_Report.html").c_str());
+       htmlFileStream << _htmlDocStream->getDoc();
+   }
 }
 
 void GlobalRigidReconstructionEngine::rotationInference(
@@ -726,6 +729,9 @@ bool GlobalRigidReconstructionEngine::Process()
   //--> Consider only the connected component compound by the translation graph
   //-- Robust translation estimation can perform inference and remove some bad conditioned triplets
 
+  // create map original rig id to remaining rig id
+  std::map < size_t,  size_t >   mapRigIdToRepresented;
+
   {
     // Build the list of Pairs used by the translations
     std::vector<std::pair<size_t, size_t> > map_pairs_tij;
@@ -735,7 +741,7 @@ bool GlobalRigidReconstructionEngine::Process()
       map_pairs_tij.push_back(std::make_pair(rel.first.first,rel.first.second));
     }
 
-    const std::set<size_t> set_representedImageIndex = CleanGraph_Node(map_pairs_tij, _vec_fileNames, _sOutDirectory, 1.0);
+    const std::set<size_t> set_representedImageIndex = CleanGraph_Node(map_pairs_tij, _vec_fileNames, _sOutDirectory, _map_ImagesIdPerRigId[0].size());
 
     std::cout << "\n\n"
       << "We targeting to estimates: " << map_globalR.size()
@@ -747,9 +753,18 @@ bool GlobalRigidReconstructionEngine::Process()
     KeepOnlyReferencedElement(set_representedImageIndex, newpairMatches);
     // clean _map_matches_E?
 
+    // create map initial rig id to remaining rig id
+    size_t   cpt = 0;
+    for( std::set<size_t>::const_iterator iter = set_representedImageIndex.begin() ;
+         iter != set_representedImageIndex.end() ; ++iter, ++cpt )
+    {
+        mapRigIdToRepresented[ *iter ] = cpt;
+    }
+
     std::cout << "\nRemaining rigs after inference filter: \n"
-      << map_globalR.size() << " from a total of " << _vec_fileNames.size() / _vec_intrinsicGroups.size() << std::endl;
+      << map_globalR.size() << " from a total of " << set_representedImageIndex.size() << std::endl;
   }
+
 
   //-------------------
   //-- GLOBAL TRANSLATIONS ESTIMATION from initial triplets t_ij guess
@@ -861,12 +876,13 @@ bool GlobalRigidReconstructionEngine::Process()
         std::vector<Vec3>  vec_C;
         for (size_t i = 0; i < iNRigs; ++i)
         {
-          const size_t rigNum    = _reindexBackward[i];
+          const size_t rigNumT    = mapRigIdToRepresented.at(_reindexBackward[i]);
+          const size_t rigNum     = _reindexBackward[i];
           const std::vector<size_t> ImageList = _map_ImagesIdPerRigId[rigNum];
 
           // extract rig pose
           const Mat3 & Ri = map_globalR[rigNum];
-          const Vec3 Rigt(vec_RigTranslation[rigNum*3], vec_RigTranslation[rigNum*3+1], vec_RigTranslation[rigNum*3+2]);
+          const Vec3 Rigt(vec_RigTranslation[rigNumT*3], vec_RigTranslation[rigNumT*3+1], vec_RigTranslation[rigNumT*3+2]);
 
           for(size_t j= 0 ; j < ImageList.size(); ++j)
           {
@@ -891,6 +907,8 @@ bool GlobalRigidReconstructionEngine::Process()
           //update rig map
           _map_rig[rigNum] = std::make_pair(Ri, Rigt);
         }
+
+        // export camera path
         plyHelper::exportToPly(vec_C, stlplus::create_filespec(_sOutDirectory, "cameraPath", "ply"));
       }
       break;
@@ -939,6 +957,10 @@ bool GlobalRigidReconstructionEngine::Process()
       C_Progress_display my_progress_bar_triangulation( _map_selectedTracks.size(),
       std::cout, "\n\n Initial triangulation:\n");
 
+      // compute scale factor to have metric point cloud
+      double  scaleFactor = 0.0;
+      size_t  nStereoPoint = 0;
+
 #ifdef USE_OPENMP
       #pragma omp parallel for schedule(dynamic)
 #endif
@@ -951,70 +973,59 @@ bool GlobalRigidReconstructionEngine::Process()
 
           // Look to the features required for the triangulation task
           Triangulation trianObj;
+          std::map < size_t , std::vector < std::pair <size_t, size_t > > >  map_featIdPerRigId ;
+
           for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack)
           {
             const size_t imaIndex = iterSubTrack->first;
             const size_t featIndex = iterSubTrack->second;
             const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
 
+            // update map
+            const size_t rigId = _map_RigIdPerImageId.at(imaIndex);
+            map_featIdPerRigId [ rigId ].push_back ( std::make_pair (imaIndex, featIndex) );
+
             // Build the P matrix
             trianObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
           }
 
           // Compute the 3D point and keep point index with negative depth
-          const Vec3 Xs = trianObj.compute();
+          const Vec3 Xs  = trianObj.compute();
           _vec_allScenes[idx] = Xs;
 
 #ifdef USE_OPENMP
 #pragma omp critical
 #endif
         {
+          //-- Compute residual over all the projections
+          double  dAverageResidual = 0.0;
+
+          for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
+            const size_t imaIndex = iterSubTrack->first;
+            const size_t featIndex = iterSubTrack->second;
+            const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
+            dAverageResidual += _map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>()) ;
+            // no ordering in vec_residuals since there is parallelism
+          }
+
+          vec_residuals.push_back(dAverageResidual /subTrack.size() );
+
           if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
                || !is_finite(Xs[2]) )  {
             set_idx_to_remove.insert(idx);
           }
-          else
-          {
-            //-- Compute residual over all the projections
-            for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack) {
-              const size_t imaIndex = iterSubTrack->first;
-              const size_t featIndex = iterSubTrack->second;
-              const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
-              vec_residuals.push_back(_map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>()));
-              // no ordering in vec_residuals since there is parallelism
-            }
-          }
+
           ++my_progress_bar_triangulation;
         }
       }
 
-      //-- Remove useless tracks and 3D points
-      {
-      std::vector<Vec3> vec_allScenes_cleaned;
-      for(size_t i = 0; i < _vec_allScenes.size(); ++i)
-      {
-        if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
-        {
-          vec_allScenes_cleaned.push_back(_vec_allScenes[i]);
-        }
-      }
-      _vec_allScenes.swap(vec_allScenes_cleaned);
-
-      for( std::set<size_t>::const_iterator iter = set_idx_to_remove.begin();
-        iter != set_idx_to_remove.end(); ++iter)
-      {
-        _map_selectedTracks.erase(*iter);
-      }
-      std::cout << "\n #Tracks removed: " << set_idx_to_remove.size() << std::endl;
-      }
-
-      plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
+      std::cout << "\n Clean point cloud before BA \n " << endl;
 
       {
         // Display some statistics of reprojection errors
         std::cout << "\n\nResidual statistics:\n" << std::endl;
         minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end());
-        double min, max, mean, median;
+        double min, max, mean, median ;
         minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(), min, max, mean, median);
 
         Histogram<float> histo(0.f, *max_element(vec_residuals.begin(),vec_residuals.end())*1.1f);
@@ -1040,13 +1051,53 @@ bool GlobalRigidReconstructionEngine::Process()
 
           os.str("");
           os << "-------------------------------" << "<br>"
-            << "-- #tracks: " << _map_selectedTracks.size() << ".<br>"
-            << "-- #observation: " << vec_residuals.size() << ".<br>"
-            << "-- residual mean (RMSE): " << std::sqrt(mean) << ".<br>"
-            << "-------------------------------" << "<br>";
+          << "-- #tracks: " << _map_selectedTracks.size() << ".<br>"
+          << "-- #observation: " << vec_residuals.size() << ".<br>"
+          << "-- residual mean (RMSE): " << std::sqrt(mean) << ".<br>"
+          << "-------------------------------" << "<br>";
           _htmlDocStream->pushInfo(os.str());
         }
       }
+
+      //-- Remove useless tracks and 3D points
+      {
+      std::map<size_t, Vec3> map_allScenes_cleaned;
+      std::vector < Vec3 >   vec_allScenes_cleaned;
+
+#ifdef USE_OPENMP
+    #pragma omp parallel for schedule(dynamic)
+#endif
+      for(size_t i = 0; i < _vec_allScenes.size(); ++i)
+      {
+        if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
+        {
+          #ifdef USE_OPENMP
+              #pragma omp critical
+          #endif
+          {
+             map_allScenes_cleaned[i] = _vec_allScenes[i];
+          }
+        }
+      }
+
+      // export cleaned 3d points
+      for( std::map<size_t, Vec3>::const_iterator iter = map_allScenes_cleaned.begin();
+        iter != map_allScenes_cleaned.end(); ++iter)
+      {
+          vec_allScenes_cleaned.push_back(iter->second);
+      }
+
+      _vec_allScenes.swap(vec_allScenes_cleaned);
+
+      for( std::set<size_t>::const_iterator iter = set_idx_to_remove.begin();
+        iter != set_idx_to_remove.end(); ++iter)
+      {
+        _map_selectedTracks.erase(*iter);
+      }
+      std::cout << "\n #Tracks removed: " << set_idx_to_remove.size() << std::endl;
+      }
+
+      plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
     }
   }
 
@@ -1067,6 +1118,127 @@ bool GlobalRigidReconstructionEngine::Process()
     // Refine Structure, rotations, translations and intrinsics
     bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, true);
     plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_KRT_Xi", "ply"));
+  }
+
+  // Triangulation of all the tracks
+  {
+    std::vector<double> vec_residuals;
+    std::set<size_t> set_idx_to_remove;
+
+    // compute scale factor to have metric point cloud
+    double  scaleFactor = 0.0;
+    size_t  nStereoPoint = 0;
+
+#ifdef USE_OPENMP
+    #pragma omp parallel for schedule(dynamic)
+#endif
+    for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
+    {
+        STLMAPTracks::const_iterator iterTracks = _map_selectedTracks.begin();
+        std::advance(iterTracks, idx);
+
+        const submapTrack & subTrack = iterTracks->second;
+
+        // Look to the features required for the triangulation task
+        Triangulation trianObj;
+        std::map < size_t , std::vector < std::pair <size_t, size_t > > >  map_featIdPerRigId ;
+
+        for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack)
+        {
+          const size_t imaIndex = iterSubTrack->first;
+          const size_t featIndex = iterSubTrack->second;
+          const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
+
+          // update map
+          const size_t rigId = _map_RigIdPerImageId.at(imaIndex);
+          map_featIdPerRigId [ rigId ].push_back ( std::make_pair (imaIndex, featIndex) );
+
+          // Build the P matrix
+          trianObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
+        }
+
+        // Compute the 3D point and keep point index with negative depth
+        const Vec3 Xs  = trianObj.compute();
+
+        // compute scale factor
+        size_t  cpt_scale = 0;
+
+        Triangulation stereoRig;
+
+        for( std::map < size_t , std::vector < std::pair <size_t, size_t > > >::const_iterator iter = map_featIdPerRigId.begin();
+             iter != map_featIdPerRigId.end(); ++iter, ++cpt_scale)
+        {
+          const size_t rigId = iter->first;
+          const size_t numberOfFeature = iter->second.size();
+
+          // Build the P matrix
+          if ( numberOfFeature > 1 )
+          {
+            Triangulation stereoObj;
+
+            for( size_t k = 0 ; k < numberOfFeature ; ++k )
+            {
+              const size_t imaIndex = iter->second[k].first;
+              const size_t featIndex = iter->second[k].second;
+              const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
+              stereoObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
+            }
+
+            // compute 3D point and scale factor
+            const Vec3 X = stereoObj.compute();
+
+            if( stereoObj.minDepth() > 0.0 && trianObj.minDepth() > 0.0)
+            {
+              scaleFactor += stereoObj.minDepth() / trianObj.minDepth() ;
+              ++nStereoPoint ;
+            }
+          }
+        }
+    }
+
+    // scale camera map and point cloud
+    scaleFactor /= nStereoPoint ;
+    if( scaleFactor > 0.0 )
+    {
+      std::cout << "\n Scale camera position with scale Factor " << scaleFactor << endl;
+
+      // rebuild rig map with scale factor
+      for (Map_Rig::iterator iter = _map_rig.begin(); iter != _map_rig.end(); ++iter) {
+         const Vec3 tRig = scaleFactor * iter->second.second;
+         iter->second.second = tRig ;
+      }
+
+      // rebuild camera map with correct scale factor
+      std::vector < Vec3 > vec_C ;
+      for (Map_Camera::iterator iter = _map_camera.begin(); iter != _map_camera.end(); ++iter)
+      {
+         // extract rig index and sub camera index
+         const size_t rigId = _map_RigIdPerImageId.at(iter->first);
+         const size_t subCamId = _map_IntrinsicIdPerImageId.find(iter->first)->second;
+
+        // extract  subcamera pose, rig pose
+         const Mat3   Rrig  = _map_rig.at(rigId).first;
+         const Vec3   tRig  = _map_rig.at(rigId).second;
+
+         const Mat3   Rcam  = _vec_intrinsicGroups[subCamId].m_R ;
+         const Vec3   tCam  = -Rcam * _vec_intrinsicGroups[subCamId].m_rigC ;
+
+         // compute subcamera pose
+         const Vec3   t     = Rcam * tRig + tCam;
+         const Mat3   R     = Rcam * Rrig;
+
+         const Mat3 & _K = _vec_intrinsicGroups[subCamId].m_K;   // The same K matrix is used by all the camera
+         _map_camera[iter->first] = PinholeCamera(_K, R, t);
+
+         vec_C.push_back( iter->second._C );
+      }
+
+      // update computed 3d point
+      for (int idx = 0; idx < _vec_allScenes.size(); ++idx)
+      {
+          _vec_allScenes[idx] *= scaleFactor;
+      }
+    }
   }
 
   //-- Export statistics about the global process
@@ -1108,6 +1280,16 @@ bool GlobalRigidReconstructionEngine::Process()
       const PinholeCamera & cam = iter->second;
       _reconstructorData.map_Camera[iter->first] = BrownPinholeCamera(cam._P);
       _reconstructorData.set_imagedId.insert(iter->first);
+      _reconstructorData.map_Rig[iter->first] = _map_RigIdPerImageId.at(iter->first);
+      _reconstructorData.map_subCamIdperImageId[iter->first] = _map_subCamIdPerImageId.at(iter->first);
+
+      const size_t rigId = _map_RigIdPerImageId.at(iter->first);
+      const Mat3 R       = _map_rig.at(rigId).first;
+      const Vec3 t       = _map_rig.at(rigId).second;
+      _reconstructorData.map_posePerRigId[rigId].first  = R;
+      _reconstructorData.map_posePerRigId[rigId].second = -R.transpose() * t;
+      _reconstructorData.set_rigId.insert(rigId);
+      _reconstructorData.map_rigNamePerRigId[rigId] = _map_rigNamePerRigId.at(rigId);
     }
 
     // Structure
@@ -1178,6 +1360,12 @@ bool GlobalRigidReconstructionEngine::ReadInputData()
 
         // to which rigid rig each image belongs
         _map_RigIdPerImageId[idx]       = camInfo.m_rigId;
+
+        // keep name of the rigs
+        _map_rigNamePerRigId[camInfo.m_rigId] = camInfo.m_sRigName;
+
+        // to which subcamera is related image
+        _map_subCamIdPerImageId[idx]    = camInfo.m_subCameraId;
       }
 
       for (size_t i = 0; i < _vec_camImageNames.size(); ++i)
@@ -1347,7 +1535,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
   averageFocal /= (double) _vec_intrinsicGroups.size();
 
-  C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n" );
+  C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n " );
 #ifdef USE_OPENMP
     #pragma omp parallel for schedule(dynamic)
 #endif
@@ -1461,25 +1649,16 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondances
     double errorMax = std::numeric_limits<double>::max();
-    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 2.5 / averageFocal )));
+    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
 
     transformation_t  pose;
     std::vector<size_t> vec_inliers;
 
-
-    if ( bearingVectorsRigOne.size () < 50 * rigOffsets.size() ||
-        !SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
+    if ( SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
         camCorrespondencesRigOne, camCorrespondencesRigTwo,
         rigOffsets, rigRotations, &pose, &vec_inliers, imageSize,
         &errorMax, maxExpectedError) )
-      {
-        #ifdef USE_OPENMP
-          #pragma omp critical
-        #endif
-          ++my_progress_bar;
-          continue;
-      }
-      else {
+    {
         // retrieve relative rig orientation and translation
         const Mat3  Rrig = pose.block<3,3>(0,0).transpose();
         const Vec3  CRig = pose.col(3);
@@ -1499,8 +1678,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         // Triangulation of all the tracks
         {
           Map_Camera map_camera;
-          std::vector<double> vec_residuals;
-          vec_residuals.reserve(map_tracksInliers.size());
           vec_allScenes.resize(map_tracksInliers.size());
           std::set<size_t> set_idx_to_remove;
 
@@ -1819,12 +1996,16 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         #ifdef USE_OPENMP
           #pragma omp critical
         #endif
-        vec_relatives[std::make_pair(R0,R1)] = std::make_pair(R,t);
-      }
-      #ifdef USE_OPENMP
+        {
+          vec_relatives[std::make_pair(R0,R1)] = std::make_pair(R,t);
+        }
+    }
+    #ifdef USE_OPENMP
         #pragma omp critical
-      #endif
-    ++my_progress_bar;
+    #endif
+    {
+        ++my_progress_bar;
+    }
   }
 }
 
@@ -2276,9 +2457,8 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
     }
   }
 
-  // fix rig one position
-  problem.SetParameterBlockConstant(
-    ba_problem.mutable_rig_extrinsic(0) );
+  // fix position of rig one
+  problem.SetParameterBlockConstant(  ba_problem.mutable_rig_extrinsic(0) );
 
   // Solve BA
   ceres::Solver::Summary summary;

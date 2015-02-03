@@ -13,7 +13,7 @@
 #include "openMVG/cameras/PinholeCamera.hpp"
 #include "software/SfM/SfMEngine.hpp"
 #include "software/SfM/SfMIOHelper.hpp"
-#include "software/SfM/SfMReconstructionData.hpp"
+#include "software/rig_globalSfM/SfMReconstructionDataRig.hpp"
 #include "software/globalSfM/SfMGlobalEngine.hpp"
 class SIOPointFeature;
 
@@ -80,7 +80,7 @@ public:
   // Accessors
   //--
 
-  const reconstructorHelper & refToReconstructorHelper() const
+  const rigReconstructorHelper & refToRigReconstructorHelper() const
   { return _reconstructorData;  }
 
   const openMVG::tracks::STLMAPTracks & getTracks() const
@@ -183,10 +183,12 @@ private:
 
   // Intrinsic Id per imageId
   std::map<size_t, size_t> _map_IntrinsicIdPerImageId;
+  std::map<size_t, size_t> _map_subCamIdPerImageId;
 
   // rig Id per imageId
   std::map<size_t, std::vector<size_t> >  _map_ImagesIdPerRigId;
   std::map<size_t, size_t> _map_RigIdPerImageId;
+  std::map<size_t, std::string > _map_rigNamePerRigId;
 
   // Parameter
   ERotationAveragingMethod _eRotationAveragingMethod;
@@ -214,7 +216,7 @@ private:
   // Structure visibility
   STLMAPTracks _map_selectedTracks; // reconstructed track (visibility per 3D point)
   // Scene and structure container (for disk output)
-  reconstructorHelper _reconstructorData;
+  rigReconstructorHelper _reconstructorData;
   //-----
 
   // ---

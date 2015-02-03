@@ -139,7 +139,8 @@ std::pair<double, double> ACRANSAC(const Kernel &kernel,
   size_t nIter = 1024,
   typename Kernel::Model * model = NULL,
   double precision = std::numeric_limits<double>::infinity(),
-  bool bVerbose = false)
+  bool bVerbose = false,
+  bool bOptimize = true)
 {
   vec_inliers.clear();
 
@@ -228,17 +229,20 @@ std::pair<double, double> ACRANSAC(const Kernel &kernel,
       }
     }
 
-    // ACRANSAC optimization: draw samples among best set of inliers so far
-    if((better && minNFA<0) || (iter+1==nIter && nIterReserve)) {
-      if(vec_inliers.empty()) { // No model found at all so far
-        nIter++; // Continue to look for any model, even not meaningful
-        nIterReserve--;
-      } else {
-        // ACRANSAC optimization: draw samples among best set of inliers so far
-        vec_index = vec_inliers;
-        if(nIterReserve) {
-            nIter = iter+1+nIterReserve;
-            nIterReserve=0;
+    if(bOptimize)
+    {
+      // ACRANSAC optimization: draw samples among best set of inliers so far
+      if((better && minNFA<0) || (iter+1==nIter && nIterReserve)) {
+        if(vec_inliers.empty()) { // No model found at all so far
+          nIter++; // Continue to look for any model, even not meaningful
+          nIterReserve--;
+        } else {
+          // ACRANSAC optimization: draw samples among best set of inliers so far
+          vec_index = vec_inliers;
+          if(nIterReserve) {
+              nIter = iter+1+nIterReserve;
+              nIterReserve=0;
+          }
         }
       }
     }

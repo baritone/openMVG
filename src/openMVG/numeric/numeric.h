@@ -360,6 +360,22 @@ namespace openMVG {
       << "\t max: " << max << std::endl;
   }
 
+  /// Get back the min, mean, median and the max
+  ///  values of an iterable sequence.
+  template <typename Type, typename DataInputIterator>
+  void quantile(DataInputIterator begin, DataInputIterator end, Type & quant, const Type & val )
+  {
+    if(std::distance(begin,end)<1)
+      return;
+
+    if( val < 0.0 || val > 1.0)
+      return;
+
+    std::vector<Type> vec_val(begin, end);
+    std::sort(vec_val.begin(), vec_val.end());
+    quant = vec_val[ val * vec_val.size() ];
+  }
+
 } // namespace openMVG
 
 

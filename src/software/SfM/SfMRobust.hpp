@@ -192,7 +192,7 @@ bool robustRigPose(
   assert(pvec_inliers != NULL);
 
   // Use the 6 point solver to the pose
-  typedef openMVG::noncentral::kernel::SixPointSolver SolverType;
+  typedef openMVG::noncentral::kernel::GePointSolver SolverType;
   // Define the AContrario adaptor
   typedef ACKernelAdaptorRigPose<
       SolverType,
@@ -204,30 +204,10 @@ bool robustRigPose(
 
   // Robustly estimation of the Essential matrix and it's precision
   std::pair<double,double> acRansacOut = ACRANSAC(kernel, *pvec_inliers,
-    4096, relativePose, precision, false);
+    1024, relativePose, precision, false, false);
   *errorMax = acRansacOut.first;
 
-  // set of subcam that are matched
-  std::set<size_t>  setSubCam_rigOne;
-  std::set<size_t>  setSubCam_rigTwo;
-
-  for(size_t i=0; i < pvec_inliers->size() ; ++i )
-  {
-      setSubCam_rigOne.insert(scIdOne[ (*pvec_inliers)[i] ]);
-      setSubCam_rigTwo.insert(scIdTwo[ (*pvec_inliers)[i] ]);
-  }
-
-  // decide if we keep the model or not
-  bool bUseModel=false;
-
-  if( (pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * rigOffsets.size() ) && // there is enough correspondences
-      (setSubCam_rigOne.size() > 0.3 * rigOffsets.size()) && // there is at least 30% of subcameras that are matched
-      (setSubCam_rigTwo.size() > 0.3 * rigOffsets.size()) )  // there is at least 30% of subcameras that are matched
-  {
-    bUseModel = true ;
-  }
-
-  return bUseModel;
+   return (pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * rigOffsets.size() );
 }
 
 /// Triangulate a set of points between two view

@@ -77,9 +77,10 @@ static void EncodeTi_from_tij_OneLambdaPerTrif(
   vec_bounds[TVAR(0,0)].first = vec_bounds[TVAR(0,0)].second = 0;
   vec_bounds[TVAR(0,1)].first = vec_bounds[TVAR(0,1)].second = 0;
   vec_bounds[TVAR(0,2)].first = vec_bounds[TVAR(0,2)].second = 0;
+
   // Make lambda variables between 1 and large number => constraint that lambda_ij > 1
   for (size_t k = 0; k < Nrelative/3; ++k)
-    vec_bounds[lambdaStart + k].first = 1;
+    vec_bounds[lambdaStart + k].first = 1.0;
 
   // Setup gamma >= 0
   vec_bounds[vec_bounds.size()-1].first = 0.0;
@@ -209,4 +210,3 @@ struct Tifromtij_ConstraintBuilder_OneLambdaPerTrif
 } // namespace openMVG
 
 #endif // OPENMVG_LINFINITY_COMPUTER_VISION_GLOBAL_TRANSLATIONS_FROMTRIPLETS_H_
-

@@ -61,6 +61,15 @@ namespace openMVG {
 			views.push_back( std::pair<const Mat34*, Vec2>(&camera,p) );
 		}
 
+    void show() {
+      for(int i=0; i < views.size() ; ++i )
+      {
+         std::cout << "view " << i << std::endl;
+         std::cout << " P = " << std::endl << *(views[i].first)  << std::endl;
+         std::cout << " p = " << std::endl << views[i].second    << std::endl;
+      }
+    }
+
     // Return squared L2 sum of error
 		double error(const Vec3 &X) const;
 

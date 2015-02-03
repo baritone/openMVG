@@ -54,6 +54,7 @@ struct IntrinsicCameraInfo
 struct CameraRigInfo
 {
   std::string m_sImageName;
+  std::string m_sRigName;
   size_t m_intrinsicId;
   size_t m_rigId;
   size_t m_subCameraId;
@@ -293,6 +294,7 @@ static bool loadImageList(
   }
   std::string sValue;
   std::vector<std::string> vec_str;
+  std::vector<std::string> vec_rigSet;
   while(getline( in, sValue ) )
   {
     vec_str.clear();
@@ -403,12 +405,27 @@ static bool loadImageList(
       id = std::distance( std::vector<IntrinsicCameraRigInfo>::const_iterator(vec_focalGroup.begin()), iterIntrinsicGroup);
     }
 
+    // rig Id
+    const std::string rigName = vec_str[12];
+    std::vector<std::string>::const_iterator iterRigSet = find(vec_rigSet.begin(), vec_rigSet.end(), rigName);
+    size_t idr = -1;
+    if ( iterRigSet == vec_rigSet.end())
+    {
+      vec_rigSet.push_back(rigName);
+      idr = vec_rigSet.size()-1;
+    }
+    else
+    {
+      idr = std::distance( std::vector<std::string>::const_iterator(vec_rigSet.begin()), iterRigSet);
+    }
+
 
     CameraRigInfo camInfo;
     camInfo.m_sImageName    = vec_str[0];
     camInfo.m_intrinsicId   = id;
-    camInfo.m_rigId         = atoi(vec_str[12].c_str());
-    camInfo.m_subCameraId   = id;
+    camInfo.m_sRigName      = vec_str[12];
+    camInfo.m_rigId         = idr;
+    camInfo.m_subCameraId   = atoi(vec_str[13].c_str());
     vec_camImageName.push_back(camInfo);
 
     vec_str.clear();
