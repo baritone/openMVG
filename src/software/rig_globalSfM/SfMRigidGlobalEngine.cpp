@@ -962,7 +962,7 @@ bool GlobalRigidReconstructionEngine::Process()
       size_t  nStereoPoint = 0;
 
 #ifdef USE_OPENMP
-      #pragma comment omp parallel for schedule(dynamic)
+      #pragma omp parallel for schedule(dynamic)
 #endif
       for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
       {
@@ -993,41 +993,6 @@ bool GlobalRigidReconstructionEngine::Process()
           const Vec3 Xs  = trianObj.compute();
           _vec_allScenes[idx] = Xs;
 
-          // compute scale factor
-         size_t cpt_scale = 0;
-
-         Triangulation stereoRig;
-
-         for( std::map < size_t , std::vector < std::pair <size_t, size_t > > >::const_iterator iter = map_featIdPerRigId.begin();
-         iter != map_featIdPerRigId.end(); ++iter, ++cpt_scale)
-         {
-         const size_t rigId = iter->first;
-         const size_t numberOfFeature = iter->second.size();
-
-         // Build the P matrix
-         if ( numberOfFeature > 1 )
-         {
-           Triangulation stereoObj;
-
-           for( size_t k = 0 ; k < numberOfFeature ; ++k )
-           {
-             const size_t imaIndex = iter->second[k].first;
-             const size_t featIndex = iter->second[k].second;
-             const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
-             stereoObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
-           }
-
-           // compute 3D point and scale factor
-           const Vec3 X = stereoObj.compute();
-
-           if( stereoObj.minDepth() > 0.0 && trianObj.minDepth() > 0.0)
-           {
-             scaleFactor += stereoObj.minDepth() / trianObj.minDepth() ;
-             ++nStereoPoint ;
-           }
-          }
-        }
-
 #ifdef USE_OPENMP
 #pragma omp critical
 #endif
@@ -1039,11 +1004,11 @@ bool GlobalRigidReconstructionEngine::Process()
             const size_t imaIndex = iterSubTrack->first;
             const size_t featIndex = iterSubTrack->second;
             const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
-            dAverageResidual += _map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>());
+            dAverageResidual = std::max(_map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>()), dAverageResidual );
             // no ordering in vec_residuals since there is parallelism
           }
 
-          vec_residuals.push_back(dAverageResidual / subTrack.size() );
+          vec_residuals.push_back(dAverageResidual);
 
           if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
                || !is_finite(Xs[2]) )  {
@@ -1055,6 +1020,53 @@ bool GlobalRigidReconstructionEngine::Process()
       }
 
       std::cout << "\n Clean point cloud before BA \n " << endl;
+
+      {
+        // Display some statistics of reprojection errors
+        std::cout << "\n\nResidual statistics:\n" << std::endl;
+        minMaxMeanMedianQuantile<double>(vec_residuals.begin(), vec_residuals.end());
+        double min, max, mean, median, quantile;
+        minMaxMeanMedianQuantile<double>(vec_residuals.begin(), vec_residuals.end(), min, max, mean, median, quantile);
+
+        // remove tracks with error bigger than 2.0 * mean
+        for( size_t idx = 0 ; idx < vec_residuals.size() ; ++idx )
+        {
+           if( vec_residuals[idx] >= quantile )
+           {
+              set_idx_to_remove.insert( idx );
+           }
+        }
+
+        Histogram<float> histo(0.f, *max_element(vec_residuals.begin(),vec_residuals.end())*1.1f);
+        histo.Add(vec_residuals.begin(), vec_residuals.end());
+        std::cout << std::endl << "Residual Error pixels: " << std::endl << histo.ToString() << std::endl;
+
+        // Histogram between 0 and 10 pixels
+        {
+          std::cout << "\n Histogram between 0 and 10 pixels: \n";
+          Histogram<float> histo(0.f, 10.f, 20);
+          histo.Add(vec_residuals.begin(), vec_residuals.end());
+          std::cout << std::endl << "Residual Error pixels: " << std::endl << histo.ToString() << std::endl;
+        }
+
+        //-- Export initial triangulation statistics
+        if (_bHtmlReport)
+        {
+          using namespace htmlDocument;
+          std::ostringstream os;
+          os << "Initial triangulation statistics.";
+          _htmlDocStream->pushInfo("<hr>");
+          _htmlDocStream->pushInfo(htmlMarkup("h1",os.str()));
+
+          os.str("");
+          os << "-------------------------------" << "<br>"
+          << "-- #tracks: " << _map_selectedTracks.size() << ".<br>"
+          << "-- #observation: " << vec_residuals.size() << ".<br>"
+          << "-- residual mean (RMSE): " << std::sqrt(mean) << ".<br>"
+          << "-------------------------------" << "<br>";
+          _htmlDocStream->pushInfo(os.str());
+        }
+      }
 
       //-- Remove useless tracks and 3D points
       {
@@ -1095,44 +1107,6 @@ bool GlobalRigidReconstructionEngine::Process()
       }
 
       plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
-
-      {
-        // Display some statistics of reprojection errors
-        std::cout << "\n\nResidual statistics:\n" << std::endl;
-        minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end());
-        double min, max, mean, median;
-        minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(), min, max, mean, median);
-
-        Histogram<float> histo(0.f, *max_element(vec_residuals.begin(),vec_residuals.end())*1.1f);
-        histo.Add(vec_residuals.begin(), vec_residuals.end());
-        std::cout << std::endl << "Residual Error pixels: " << std::endl << histo.ToString() << std::endl;
-
-        // Histogram between 0 and 10 pixels
-        {
-          std::cout << "\n Histogram between 0 and 10 pixels: \n";
-          Histogram<float> histo(0.f, 10.f, 20);
-          histo.Add(vec_residuals.begin(), vec_residuals.end());
-          std::cout << std::endl << "Residual Error pixels: " << std::endl << histo.ToString() << std::endl;
-        }
-
-        //-- Export initial triangulation statistics
-        if (_bHtmlReport)
-        {
-          using namespace htmlDocument;
-          std::ostringstream os;
-          os << "Initial triangulation statistics.";
-          _htmlDocStream->pushInfo("<hr>");
-          _htmlDocStream->pushInfo(htmlMarkup("h1",os.str()));
-
-          os.str("");
-          os << "-------------------------------" << "<br>"
-            << "-- #tracks: " << _map_selectedTracks.size() << ".<br>"
-            << "-- #observation: " << vec_residuals.size() << ".<br>"
-            << "-- residual mean (RMSE): " << std::sqrt(mean) << ".<br>"
-            << "-------------------------------" << "<br>";
-          _htmlDocStream->pushInfo(os.str());
-        }
-      }
     }
   }
 

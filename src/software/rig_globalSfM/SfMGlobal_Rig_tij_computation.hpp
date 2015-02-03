@@ -111,7 +111,7 @@ bool estimate_T_rig_triplet(
 
   rigTrackTrifocalTensorModel T;
   dPrecision = dPrecision ;//std::numeric_limits<double>::infinity();
-  std::pair<double,double> acStat = robust::ACRANSAC(kernel, vec_inliers, ORSA_ITER, &T, dPrecision, false, false);
+  std::pair<double,double> acStat = robust::ACRANSAC(kernel, vec_inliers, ORSA_ITER, &T, dPrecision, false );
   dPrecision = acStat.first;
 
   //-- Export data in order to have an idea of the precision of the estimates
@@ -119,9 +119,6 @@ bool estimate_T_rig_triplet(
   vec_tis[0] = T.t1;
   vec_tis[1] = T.t2;
   vec_tis[2] = T.t3;
-
-  const size_t  iInlierSize = vec_inliers.size();
-  bool bTest( iInlierSize > 0.10 * featsAndRigIdPerTrack.size()  );
 
   // Compute initial triangulation
   std::vector<double> vec_residuals;
@@ -225,11 +222,14 @@ bool estimate_T_rig_triplet(
   minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
     min, max, mean, median);
 
+  const size_t  iInlierSize = vec_inliers.size();
+  bool bTest( iInlierSize > 30 * vec_rigOffset.size() );
+
   if (!bTest)
   {
     std::cout << "Triplet rejected : AC: " << dPrecision
       << " median: " << median
-      << " inliers count " << vec_inliers.size()
+      << " inliers count " << map_tracksInliers.size()
       << " total putative " << featsAndRigIdPerTrack.size() << std::endl;
   }
 
@@ -435,13 +435,11 @@ bool estimate_T_rig_triplet(
 
       for (size_t iExtrinsicId = 0; iExtrinsicId < ba_problem.num_rigs_; ++iExtrinsicId)
       {
-        if (!vec_constant_extrinsic.empty())
-        {
+         // fix rotation
           ceres::SubsetParameterization *subset_parameterization =
             new ceres::SubsetParameterization(6, vec_constant_extrinsic);
           problem.SetParameterization(ba_problem.mutable_rig_extrinsic(iExtrinsicId),
             subset_parameterization);
-        }
       }
     }
 
@@ -702,8 +700,8 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = 4.0 / averageFocal / averageFocal;
-          const double ThresholdUpperBound = 1.0 / averageFocal;
+          double dPrecision = 16.0 / averageFocal / averageFocal;
+          const double ThresholdUpperBound = 0.5 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;
