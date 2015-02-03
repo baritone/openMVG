@@ -25,7 +25,7 @@ FIND_PATH(OPENMVG_INCLUDE_DIR openMVG/version.h
 
 IF(OPENMVG_INCLUDE_DIR)
   MESSAGE(STATUS "OpenMVG headers found in ${OPENMVG_INCLUDE_DIRS}")
-  ELSE()
+ELSE()
   MESSAGE(STATUS "NOT FOUND")
 ENDIF (OPENMVG_INCLUDE_DIR)
 
@@ -36,11 +36,18 @@ SET(OPENMVG_LIBRARIES_NAMES
   openMVG_kvld
   openMVG_lInftyComputerVision
   openMVG_multiview
-  #find third_party libraries
+  #third_party libraries
   ceres
+  flann_cpp_s
+  lemon
   stlplus
   easyexif
-  lemon)
+  #optional third_party
+  vlsift
+  jpeg
+  png
+  tiff
+  zlib)
 
 FIND_LIBRARY(OPENMVG_LIBRARY NAMES ${OPENMVG_LIBRARIES_NAMES}
   HINTS
@@ -53,7 +60,7 @@ GET_FILENAME_COMPONENT(OPENMVG_LIBRARY_DIR "${OPENMVG_LIBRARY}" PATH)
 
 SET(OPENMVG_LIBRARY "")
 FOREACH(lib ${OPENMVG_LIBRARIES_NAMES})
-   LIST(APPEND OPENMVG_LIBRARY ${lib})  
+ LIST(APPEND OPENMVG_LIBRARY ${lib})  
 ENDFOREACH()
 
 SET(OPENMVG_LIBRARIES ${OPENMVG_LIBRARY})
@@ -71,3 +78,19 @@ find_package_handle_standard_args(OpenMVG  DEFAULT_MSG
                                   OPENMVG_LIBRARY OPENMVG_INCLUDE_DIR)
 
 MARK_AS_ADVANCED(OPENMVG_INCLUDE_DIR OPENMVG_LIBRARY)
+
+#Third parties:
+# - include directories
+
+IF(OPENMVG_FOUND)
+  SET(OPENMVG_INCLUDE_DIRS
+    ${OPENMVG_INCLUDE_DIR}
+    ${OPENMVG_INCLUDE_DIR}/openMVG_third_party
+    ${OPENMVG_INCLUDE_DIR}/openMVG_third_party/eigen
+    #${OPENMVG_INCLUDE_DIR}/openMVG_third_party/lemon
+    #${OPENMVG_INCLUDE_DIR}/openMVG_third_party/ceres-solver/include
+    #${OPENMVG_INCLUDE_DIR}/openMVG_third_party/ceres-solver/internal/ceres/miniglog
+    #${OPENMVG_INCLUDE_DIR}/openMVG_third_party/ceres-solver/config
+    #${OPENMVG_INCLUDE_DIR}/openMVG_third_party/flann/src/cpp
+  )
+ENDIF(OPENMVG_FOUND)
