@@ -223,7 +223,7 @@ bool estimate_T_rig_triplet(
     min, max, mean, median);
 
   const size_t  iInlierSize = vec_inliers.size();
-  bool bTest( iInlierSize > 30 * vec_rigOffset.size() );
+  bool bTest( iInlierSize > 0.15 * map_tracksCommon.size() );
 
   if (!bTest)
   {
