@@ -400,7 +400,7 @@ bool estimate_T_rig_triplet(
     // Create residuals for each observation in the bundle adjustment problem. The
     // parameters for cameras and points are added automatically.
     ceres::Problem problem;
-    ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
+    ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
     for (size_t i = 0; i < ba_problem.num_observations(); ++i) {
       // Each Residual block takes a point and a camera as input and outputs a 2
       // dimensional residual. Internally, the cost function stores the observed
@@ -700,8 +700,8 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = 16.0 / averageFocal / averageFocal;
-          const double ThresholdUpperBound = 0.5 / averageFocal;
+          double dPrecision = 4.0 / averageFocal / averageFocal;
+          const double ThresholdUpperBound = 1.0 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;

@@ -1004,11 +1004,11 @@ bool GlobalRigidReconstructionEngine::Process()
             const size_t imaIndex = iterSubTrack->first;
             const size_t featIndex = iterSubTrack->second;
             const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
-            dAverageResidual = std::max(_map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>()), dAverageResidual );
+            dAverageResidual += _map_camera[imaIndex].Residual(Xs, pt.coords().cast<double>()) ;
             // no ordering in vec_residuals since there is parallelism
           }
 
-          vec_residuals.push_back(dAverageResidual);
+          vec_residuals.push_back(dAverageResidual /subTrack.size() );
 
           if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
                || !is_finite(Xs[2]) )  {
@@ -1024,18 +1024,9 @@ bool GlobalRigidReconstructionEngine::Process()
       {
         // Display some statistics of reprojection errors
         std::cout << "\n\nResidual statistics:\n" << std::endl;
-        minMaxMeanMedianQuantile<double>(vec_residuals.begin(), vec_residuals.end());
-        double min, max, mean, median, quantile;
-        minMaxMeanMedianQuantile<double>(vec_residuals.begin(), vec_residuals.end(), min, max, mean, median, quantile);
-
-        // remove tracks with error bigger than 2.0 * mean
-        for( size_t idx = 0 ; idx < vec_residuals.size() ; ++idx )
-        {
-           if( vec_residuals[idx] >= quantile )
-           {
-              set_idx_to_remove.insert( idx );
-           }
-        }
+        minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end());
+        double min, max, mean, median ;
+        minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(), min, max, mean, median);
 
         Histogram<float> histo(0.f, *max_element(vec_residuals.begin(),vec_residuals.end())*1.1f);
         histo.Add(vec_residuals.begin(), vec_residuals.end());
@@ -1914,7 +1905,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         ceres::Problem problem;
         // Set a LossFunction to be less penalized by false measurements
         //  - set it to NULL if you don't want use a lossFunction.
-        ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
+        ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
         for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
           // Each Residual block takes a point and a camera as input and outputs a 2
           // dimensional residual. Internally, the cost function stores the observed
@@ -2374,7 +2365,7 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
   ceres::Problem problem;
   // Set a LossFunction to be less penalized by false measurements
   //  - set it to NULL if you don't want use a lossFunction.
-  ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
+  ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
   for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
     // Each Residual block takes a point and a camera as input and outputs a 2
     // dimensional residual. Internally, the cost function stores the observed

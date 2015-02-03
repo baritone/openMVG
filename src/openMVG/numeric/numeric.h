@@ -363,36 +363,18 @@ namespace openMVG {
   /// Get back the min, mean, median and the max
   ///  values of an iterable sequence.
   template <typename Type, typename DataInputIterator>
-  void minMaxMeanMedianQuantile(DataInputIterator begin, DataInputIterator end,
-  Type & min, Type & max, Type & mean, Type & median, Type & quantile)
-{
-  if(std::distance(begin,end)<1)
-    return;
+  void quantile(DataInputIterator begin, DataInputIterator end, Type & quant, const Type & val )
+  {
+    if(std::distance(begin,end)<1)
+      return;
+
+    if( val < 0.0 || val > 1.0)
+      return;
 
     std::vector<Type> vec_val(begin, end);
     std::sort(vec_val.begin(), vec_val.end());
-    min = vec_val[0];
-    max = vec_val[vec_val.size()-1];
-    mean = accumulate(vec_val.begin(), vec_val.end(), 0.0)
-    / static_cast<double>(vec_val.size());
-    median = vec_val[vec_val.size()/2];
-    quantile = vec_val[ 0.75 * vec_val.size() ];
+    quant = vec_val[ val * vec_val.size() ];
   }
-
-  /// Display to the console the min, mean, median and the max
-  ///  values of an iterable sequence.
-  template <typename Type, typename DataInputIterator>
-  void minMaxMeanMedianQuantile(DataInputIterator begin, DataInputIterator end)
-{
-  Type min, max, mean, median, quantile;
-  minMaxMeanMedianQuantile(begin,end, min, max, mean, median, quantile);
-  std::cout << "\n"
-  << "\t min: " << min << "\n"
-  << "\t mean: " << mean << "\n"
-  << "\t median: " << median << std::endl
-  << "\t max: " << max << std::endl
-  << "\t quantile: " << quantile << std::endl;
-}
 
 } // namespace openMVG
 
