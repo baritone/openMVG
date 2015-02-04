@@ -207,7 +207,7 @@ bool robustRigPose(
     1024, relativePose, precision, false, false);
   *errorMax = acRansacOut.first;
 
-   return (pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * rigOffsets.size() );
+   return (pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES );
 }
 
 /// Triangulate a set of points between two view

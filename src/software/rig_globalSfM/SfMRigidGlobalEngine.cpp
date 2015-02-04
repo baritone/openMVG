@@ -1032,6 +1032,14 @@ bool GlobalRigidReconstructionEngine::Process()
         histo.Add(vec_residuals.begin(), vec_residuals.end());
         std::cout << std::endl << "Residual Error pixels: " << std::endl << histo.ToString() << std::endl;
 
+        // remove point with big reprojection error
+        double quant;
+        quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
+
+        for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
+          if( vec_residuals[idx] > quant)
+            set_idx_to_remove.insert(idx);
+
         // Histogram between 0 and 10 pixels
         {
           std::cout << "\n Histogram between 0 and 10 pixels: \n";
@@ -1905,7 +1913,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         ceres::Problem problem;
         // Set a LossFunction to be less penalized by false measurements
         //  - set it to NULL if you don't want use a lossFunction.
-        ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
+        ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
         for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
           // Each Residual block takes a point and a camera as input and outputs a 2
           // dimensional residual. Internally, the cost function stores the observed

@@ -197,6 +197,14 @@ bool estimate_T_rig_triplet(
       }
     }
 
+    // remove point with big reprojection error
+    double quant;
+    quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.90);
+
+    for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
+      if( vec_residuals[idx] > quant)
+        set_idx_to_remove.insert(idx);
+
     //-- Remove useless tracks and 3D points
     {
       std::vector<Vec3> vec_Xis_cleaned;
@@ -221,7 +229,7 @@ bool estimate_T_rig_triplet(
     min, max, mean, median);
 
   const size_t  iInlierSize = vec_inliers.size();
-  bool bTest( iInlierSize > 0.15 * map_tracksCommon.size() );
+  bool bTest( iInlierSize > 0.80 * map_tracksCommon.size() );
 
   if (!bTest)
   {
@@ -698,7 +706,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = 1.0e10;
+          double dPrecision = std::numeric_limits<double>::max();
           const double ThresholdUpperBound = 1.0 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
