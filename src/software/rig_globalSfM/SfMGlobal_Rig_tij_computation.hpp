@@ -230,7 +230,7 @@ bool estimate_T_rig_triplet(
   minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
     min, max, mean, median);
 
-  bool bTest( map_tracksInliers.size() > 2.5 * SolverType::MINIMUM_SAMPLES * vec_rigOffset.size()
+  bool bTest( map_tracksInliers.size() > 30 * vec_rigOffset.size()
                &&  map_tracksInliers.size() > 0.50 * map_tracksCommon.size()  );
 
   if (!bTest)
@@ -714,7 +714,8 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;
 
-          if( estimate_T_rig_triplet(
+          if( map_tracksCommon.size() > 40 * rigOffsets.size() &&
+                estimate_T_rig_triplet(
                     map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                     rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,
                     vec_tis, dPrecision, vec_inliers, ThresholdUpperBound, _sOutDirectory, I, J, K) )
