@@ -1034,7 +1034,7 @@ bool GlobalRigidReconstructionEngine::Process()
 
         // remove point with big reprojection error
         double quant;
-        quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
+        quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.95);
 
         for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
           if( vec_residuals[idx] > quant)
@@ -1684,6 +1684,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         }
 
         // Triangulation of all the tracks
+        std::vector <double >  vec_residuals;
         {
           Map_Camera map_camera;
           vec_allScenes.resize(map_tracksInliers.size());
@@ -1735,6 +1736,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
             // Compute the 3D point and keep point index with negative depth
             const Vec3 Xs = trianObj.compute();
+            vec_residuals.push_back( trianObj.error() / subTrack.size() );
             vec_allScenes[idx] = Xs;
 
             if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
@@ -1742,6 +1744,14 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
               set_idx_to_remove.insert(idx);
             }
           }
+
+          // remove point with big reprojection error
+          double quant;
+          quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
+
+          for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
+            if( vec_residuals[idx] > quant)
+              set_idx_to_remove.insert(idx);
 
           //-- Remove useless tracks and 3D points
           {
@@ -2373,7 +2383,7 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
   ceres::Problem problem;
   // Set a LossFunction to be less penalized by false measurements
   //  - set it to NULL if you don't want use a lossFunction.
-  ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
+  ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
   for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
     // Each Residual block takes a point and a camera as input and outputs a 2
     // dimensional residual. Internally, the cost function stores the observed

@@ -98,6 +98,8 @@ bool estimate_T_rig_triplet(
   using namespace openMVG::trifocal;
   using namespace openMVG::trifocal::kernel;
 
+  typedef  rigTrackTisXisTrifocalSolver  SolverType;
+
   typedef rig_TrackTrifocalKernel_ACRansac_N_tisXis<
     rigTrackTisXisTrifocalSolver,
     rigTrackTisXisTrifocalSolver,
@@ -188,7 +190,7 @@ bool estimate_T_rig_triplet(
 
       // Compute the 3D point and keep point index with negative depth
       const Vec3 Xs = trianObj.compute();
-      vec_residuals.push_back( trianObj.error() );
+      vec_residuals.push_back( trianObj.error() / subTrack.size() );
       vec_Xis.push_back(Xs);
 
       if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
@@ -199,7 +201,7 @@ bool estimate_T_rig_triplet(
 
     // remove point with big reprojection error
     double quant;
-    quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.90);
+    quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
 
     for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
       if( vec_residuals[idx] > quant)
@@ -228,8 +230,8 @@ bool estimate_T_rig_triplet(
   minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
     min, max, mean, median);
 
-  const size_t  iInlierSize = vec_inliers.size();
-  bool bTest( iInlierSize > 0.80 * map_tracksCommon.size() );
+  bool bTest( map_tracksInliers.size() > 2.5 * SolverType::MINIMUM_SAMPLES * vec_rigOffset.size()
+               &&  map_tracksInliers.size() > 0.50 * map_tracksCommon.size()  );
 
   if (!bTest)
   {
@@ -406,7 +408,7 @@ bool estimate_T_rig_triplet(
     // Create residuals for each observation in the bundle adjustment problem. The
     // parameters for cameras and points are added automatically.
     ceres::Problem problem;
-    ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
+    ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
     for (size_t i = 0; i < ba_problem.num_observations(); ++i) {
       // Each Residual block takes a point and a camera as input and outputs a 2
       // dimensional residual. Internally, the cost function stores the observed
@@ -706,14 +708,13 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = std::numeric_limits<double>::max();
-          const double ThresholdUpperBound = 1.0 / averageFocal;
+          double dPrecision = 16.0 / averageFocal / averageFocal;
+          const double ThresholdUpperBound = 2.5 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;
 
-          if (map_tracksCommon.size() > 50 * rigOffsets.size() &&
-              estimate_T_rig_triplet(
+          if( estimate_T_rig_triplet(
                     map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                     rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,
                     vec_tis, dPrecision, vec_inliers, ThresholdUpperBound, _sOutDirectory, I, J, K) )
