@@ -119,4 +119,3 @@ class ImageCollectionGeometricFilter
   // Features per image
   std::map<size_t, std::vector<FeatureT> > map_Feat;
 };
-

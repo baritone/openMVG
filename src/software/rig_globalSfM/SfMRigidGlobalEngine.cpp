@@ -1999,7 +1999,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
           #pragma omp critical
         #endif
         {
-          vec_relatives[std::make_pair(R0,R1)] = std::make_pair(R,t);
+          vec_relatives.insert( std::make_pair ( std::make_pair(R0,R1), std::make_pair(R,t) ) );
         }
     }
     #ifdef USE_OPENMP
