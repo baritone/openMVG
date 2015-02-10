@@ -314,6 +314,9 @@ bool OSI_X_SolverWrapper<SOLVERINTERFACE>::solve()
   //-- Compute solution
   if ( si != NULL )
   {
+    // set this parameter to 50 in order to improve stability, robustness and cpu time
+    si->getModelPtr()->setPerturbation(50);
+
     si->initialSolve();
     return si->isProvenOptimal();
   }
