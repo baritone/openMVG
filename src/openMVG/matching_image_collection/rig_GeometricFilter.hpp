@@ -9,8 +9,16 @@
 
 #include "openMVG/features/features.hpp"
 #include "openMVG/matching/indMatch.hpp"
+#include "software/SfM/SfMIOHelper.hpp"
+
+#include <opengv/types.hpp>
+#include <opengv/relative_pose/methods.hpp>
+#include <opengv/relative_pose/NoncentralRelativeAdapter.hpp>
+#include <opengv/sac/Ransac.hpp>
+#include <opengv/sac_problems/relative_pose/NoncentralRelativePoseSacProblem.hpp>
 
 using namespace openMVG;
+using namespace opengv;
 
 #include "third_party/stlplus3/filesystemSimplified/file_system.hpp"
 #include "third_party/progress/progress.hpp"
@@ -48,8 +56,13 @@ class ImageCollectionGeometricFilter
   void Filter(
     const GeometricFilterT & geometricFilter,  // geometric filter functor
     RigWiseMatches & map_PutativesMatchesPair, // putative correspondences to filter
-    RigWiseMatches & map_GeometricMatches,
-    const std::vector<std::pair<size_t, size_t> > & vec_imagesSize) const
+    RigWiseMatches & map_GeometricMatches,     // filtered putative matches
+    translations_t rigOffsets,                 // rig translations
+    rotations_t rigRotations,                   // rig rotations
+    const std::map < size_t, size_t > map_IntrinsicIdPerImageId,  // map intrinsic image id -> intrinsic id
+    const std::map < size_t, size_t > map_subCamIdPerImageId,     // map image id -> subcam Id
+    const std::vector<openMVG::SfMIO::IntrinsicCameraRigInfo> vec_focalGroup // set of intrinsic parameters
+    ) const
   {
     C_Progress_display my_progress_bar( map_PutativesMatchesPair.size() );
 
@@ -62,6 +75,14 @@ class ImageCollectionGeometricFilter
       RigWiseMatches::const_iterator iter = map_PutativesMatchesPair.begin();
       advance(iter,i);
 
+      // initialize structure used for matching between rigs
+      bearingVectors_t bearingVectorsRigOne;
+      bearingVectors_t bearingVectorsRigTwo;
+
+      std::vector<int>  camCorrespondencesRigOne;
+      std::vector<int>  camCorrespondencesRigTwo;
+
+      // loop on putative match between the two rigs
       for( PairWiseMatches::const_iterator iter_pair = iter->second.begin();
       iter_pair != iter->second.end();
       ++iter_pair )
@@ -76,25 +97,55 @@ class ImageCollectionGeometricFilter
         const std::vector<FeatureT> & kpSetI = iterFeatsI->second;
         const std::vector<FeatureT> & kpSetJ = iterFeatsJ->second;
 
-        //-- Copy point to array in order to estimate fundamental matrix :
-        const size_t n = vec_PutativeMatches.size();
-        Mat xI(2,n), xJ(2,n);
+        //-- extract camera matrix in order to normalize coordinates
+        const Mat3  Ki = vec_focalGroup [ map_IntrinsicIdPerImageId.at( iIndex) ].m_K;
+        const Mat3  Kj = vec_focalGroup [ map_IntrinsicIdPerImageId.at( jIndex) ].m_K;
 
-        for (size_t i=0; i < vec_PutativeMatches.size(); ++i)  {
+        for (size_t i=0; i < vec_PutativeMatches.size(); ++i)
+        {
+          // intialize bearing vectors
+          bearingVector_t  bearingOne;
+          bearingVector_t  bearingTwo;
+
+          // compute and store normalized coordinates for image I
           const FeatureT & imaA = kpSetI[vec_PutativeMatches[i]._i];
+          bearingOne(0) = imaA.x();
+          bearingOne(1) = imaA.y();
+          bearingOne(2) = 1.0;
+
+          // compute and store normalized coordinates for image J
           const FeatureT & imaB = kpSetJ[vec_PutativeMatches[i]._j];
-          xI.col(i) = Vec2f(imaA.coords()).cast<double>();
-          xJ.col(i) = Vec2f(imaB.coords()).cast<double>();
+          bearingTwo(0) = imaB.x();
+          bearingTwo(1) = imaB.y();
+          bearingTwo(2) = 1.0;
+
+          // normalize features
+          bearingOne = Ki.inverse() * bearingOne;
+          bearingTwo = Kj.inverse() * bearingTwo;
+
+          // normalize bearing vectors
+          bearingOne = bearingOne / bearingOne.norm();
+          bearingTwo = bearingTwo / bearingTwo.norm();
+
+          // add bearing vectors to list and update correspondences list
+          bearingVectorsRigOne.push_back( bearingOne  );
+          camCorrespondencesRigOne.push_back( map_subCamIdPerImageId.at( iIndex) );
+
+          bearingVectorsRigTwo.push_back( bearingTwo  );
+          camCorrespondencesRigTwo.push_back( map_subCamIdPerImageId.at( jIndex) );
         }
 
         //-- Apply the geometric filter
         {
           std::vector<size_t> vec_inliers;
           geometricFilter.Fit(
-            iter_pair->first,
-            xI, vec_imagesSize[iIndex],
-            xJ, vec_imagesSize[jIndex],
-            vec_inliers);
+            bearingVectorsRigOne,
+            bearingVectorsRigTwo,
+            camCorrespondencesRigOne,
+            camCorrespondencesRigTwo,
+            rigOffsets,
+            rigRotations,
+            vec_inliers );
 
           if(!vec_inliers.empty())
           {

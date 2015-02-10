@@ -1593,8 +1593,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     std::vector<int>  camCorrespondencesRigTwo;
 
     // loop on inter-rig correspondences
-    std::pair<size_t, size_t> imageSize;
-
     cpt = 0;
     for( STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
                 iterTracks != map_tracks.end(); ++iterTracks, ++cpt)
@@ -1648,7 +1646,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     if ( SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
         camCorrespondencesRigOne, camCorrespondencesRigTwo,
-        rigOffsets, rigRotations, &pose, &vec_inliers, imageSize,
+        rigOffsets, rigRotations, &pose, &vec_inliers,
         &errorMax, maxExpectedError) )
     {
         // retrieve relative rig orientation and translation

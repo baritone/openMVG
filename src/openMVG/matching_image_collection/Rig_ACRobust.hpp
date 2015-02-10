@@ -14,7 +14,6 @@
 #include <opengv/sac_problems/relative_pose/NoncentralRelativePoseSacProblem.hpp>
 #include <../test/time_measurement.hpp>
 
-#include "openMVG/multiview/solver_essential_kernel.hpp"
 #include "openMVG/multiview/solver_nonCentral_kernel.hpp"
 #include "openMVG/multiview/essential.hpp"
 #include "openMVG/robust_estimation/robust_estimator_ACRansac.hpp"
@@ -33,40 +32,41 @@ struct GeometricFilter_RigEMatrix_AC
     size_t iteration = 4096)
     : m_dPrecision(dPrecision), m_stIteration(iteration) {};
 
-  /// Robust fitting of the ESSENTIAL matrix
+  /// Robust fitting of the rig pose
   void Fit(
-    const std::pair<size_t, size_t> pairIndex,
-    const Mat & xA,
-    const std::pair<size_t, size_t> & imgSizeA,
-    const Mat & xB,
-    const std::pair<size_t, size_t> & imgSizeB,
-    std::vector<size_t> & vec_inliers) const
+    const bearingVectors_t & b1,
+    const bearingVectors_t & b2,
+    const std::vector<int> & camCorrespondencesRigOne,
+    const std::vector<int> & camCorrespondencesRigTwo,
+    const translations_t & rigOffsets,
+    const rotations_t & rigRotations,
+    std::vector<size_t> & vec_inliers ) const
   {
     vec_inliers.clear();
 
-    const Mat3 iterK_I = Mat3::Identity();
-    const Mat3 iterK_J = Mat3::Identity();
+    // Use the 6 point solver to the pose
+    typedef openMVG::noncentral::kernel::GePointSolver SolverType;
+    // Define the AContrario adaptor
+    typedef ACKernelAdaptorRigPose<  SolverType,
+        openMVG::noncentral::kernel::RigAngularError,
+        transformation_t>   KernelType;
 
-    // Define the AContrario adapted Essential matrix solver
-    typedef ACKernelAdaptorEssential<
-        openMVG::essential::kernel::FivePointKernel,
-        openMVG::fundamental::kernel::EpipolarDistanceError,
-        UnnormalizerT,
-        Mat3>
-        KernelType;
+    KernelType kernel(b1,
+                      b2,
+                      camCorrespondencesRigOne,
+                      camCorrespondencesRigOne,
+                      rigOffsets,
+                      rigRotations);
 
-    KernelType kernel(xA, imgSizeA.first, imgSizeA.second,
-                      xB, imgSizeB.first, imgSizeB.second,
-                      iterK_I, iterK_J);
-
-    // Robustly estimate the Essential matrix with A Contrario ransac
-    Mat3 E;
+    // Robustly estimation of the Essential matrix and it's precision
+    transformation_t * relativePose;
     double upper_bound_precision = m_dPrecision;
-    std::pair<double,double> ACRansacOut =
-      ACRANSAC(kernel, vec_inliers, m_stIteration, &E, upper_bound_precision);
 
-    if (vec_inliers.size() < KernelType::MINIMUM_SAMPLES * 2.5)  {
-      vec_inliers.clear();
+    std::pair<double,double> acRansacOut = ACRANSAC(kernel, vec_inliers,
+      1024, relativePose, upper_bound_precision, false );
+
+    if (vec_inliers.size() < KernelType::MINIMUM_SAMPLES * 2.5 * rigOffsets.size() )  {
+        vec_inliers.clear();
     }
   }
 

@@ -185,7 +185,6 @@ bool robustRigPose(
   const rotations_t & rigRotations,
   transformation_t * relativePose,
   std::vector<size_t> * pvec_inliers,
-  const std::pair<size_t, size_t> & size_ima1,
   double * errorMax,
   double precision = std::numeric_limits<double>::infinity())
 {
@@ -200,7 +199,7 @@ bool robustRigPose(
       transformation_t>
       KernelType;
 
-  KernelType kernel(b1, b2, scIdOne, scIdTwo, rigOffsets, rigRotations, size_ima1.first, size_ima1.second);
+  KernelType kernel(b1, b2, scIdOne, scIdTwo, rigOffsets, rigRotations);
 
   // Robustly estimation of the Essential matrix and it's precision
   std::pair<double,double> acRansacOut = ACRANSAC(kernel, *pvec_inliers,

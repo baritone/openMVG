@@ -291,7 +291,6 @@ int main(int argc, char **argv)
   RigWiseMatches map_GeometricMatches;
 
   ImageCollectionGeometricFilter<FeatureT> collectionGeomFilter;
-  const double maxResidualError = 4.0;
   if (collectionGeomFilter.loadData(vec_fileNames, sOutDir))
   {
       Timer timer;
@@ -375,12 +374,19 @@ int main(int argc, char **argv)
         }
       }
 
+      double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
+
       // Now filter images
       collectionGeomFilter.Filter(
-          GeometricFilter_RigEMatrix_AC(maxResidualError),
+          GeometricFilter_RigEMatrix_AC( maxExpectedError ),
           map_Matches_Rig,
           map_GeometricMatches,
-          vec_imagesSize);
+          rigOffsets,
+          rigRotations,
+          map_subCamIdPerImageId,
+          map_IntrinsicIdPerImageId,
+          vec_focalGroup
+          );
 
       //-- Perform an additional check to remove pairs with poor overlap
       std::vector<RigWiseMatches::key_type> vec_toRemove;
