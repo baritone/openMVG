@@ -13,9 +13,6 @@
 #include "openMVG/matching_image_collection/Matcher_AllInMemory.hpp"
 #include "openMVG/matching_image_collection/GeometricFilter.hpp"
 #include "openMVG/matching_image_collection/Rig_ACRobust.hpp"
-#include "openMVG/matching_image_collection/F_ACRobust.hpp"
-#include "openMVG/matching_image_collection/E_ACRobust.hpp"
-#include "openMVG/matching_image_collection/H_ACRobust.hpp"
 #include "software/SfM/pairwiseAdjacencyDisplay.hpp"
 #include "software/SfM/SfMIOHelper.hpp"
 #include "openMVG/matching/matcher_brute_force.hpp"
@@ -313,7 +310,7 @@ int main(int argc, char **argv)
       }
 
       collectionGeomFilter.Filter(
-          GeometricFilter_EMatrix_AC(map_K, maxResidualError),
+          GeometricFilter_RigEMatrix_AC(map_K, maxResidualError),
           map_PutativesMatches,
           map_GeometricMatches,
           vec_imagesSize);
