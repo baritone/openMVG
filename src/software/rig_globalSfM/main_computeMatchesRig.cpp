@@ -11,7 +11,7 @@
 
 /// Generic Image Collection image matching
 #include "openMVG/matching_image_collection/Matcher_AllInMemory.hpp"
-#include "openMVG/matching_image_collection/GeometricFilter.hpp"
+#include "openMVG/matching_image_collection/rig_GeometricFilter.hpp"
 #include "openMVG/matching_image_collection/Rig_ACRobust.hpp"
 #include "software/SfM/pairwiseAdjacencyDisplay.hpp"
 #include "software/SfM/SfMIOHelper.hpp"
@@ -288,7 +288,7 @@ int main(int argc, char **argv)
   //    - AContrario Estimation of the desired geometric model
   //    - Use an upper bound for the a contrario estimated threshold
   //---------------------------------------
-  PairWiseMatches map_GeometricMatches;
+  RigWiseMatches map_GeometricMatches;
 
   ImageCollectionGeometricFilter<FeatureT> collectionGeomFilter;
   const double maxResidualError = 4.0;
@@ -297,39 +297,106 @@ int main(int argc, char **argv)
       Timer timer;
       std::cout << std::endl << " - GEOMETRIC FILTERING - " << std::endl;
 
-      // Build the intrinsic parameter map for each image
-      std::map<size_t, Mat3> map_K;
-      size_t cpt = 0;
-      for ( std::vector<openMVG::SfMIO::CameraRigInfo>::const_iterator
-          iter_camInfo = vec_camImageName.begin();
-          iter_camInfo != vec_camImageName.end();
-          ++iter_camInfo, ++cpt )
+      // Find to which intrinsic groups each image belong
+      std::map < size_t, size_t > map_IntrinsicIdPerImageId;
+      std::map < size_t, size_t > map_RigIdPerImageId;
+      std::map < size_t, size_t > map_subCamIdPerImageId;
+
+      for (std::vector<openMVG::SfMIO::CameraRigInfo>::const_iterator iter = vec_camImageName.begin();
+          iter != vec_camImageName.end(); ++iter)
       {
-          if (vec_focalGroup[iter_camInfo->m_intrinsicId].m_bKnownIntrinsic)
-            map_K[cpt] = vec_focalGroup[iter_camInfo->m_intrinsicId].m_K;
+        const openMVG::SfMIO::CameraRigInfo & camInfo = *iter;
+
+        // Find the index of the camera
+        const size_t idx = std::distance((std::vector<openMVG::SfMIO::CameraRigInfo>::const_iterator) vec_camImageName.begin(), iter);
+
+        // to which intrinsic group each image belongs
+        map_IntrinsicIdPerImageId[idx] = camInfo.m_intrinsicId;
+
+        // to which rigid rig each image belongs
+        map_RigIdPerImageId[idx]       = camInfo.m_rigId;
+
+        // to which subcamera is related image
+        map_subCamIdPerImageId[idx]    = camInfo.m_subCameraId;
       }
 
+      // create rig structure using openGV
+      translations_t  rigOffsets;
+      rotations_t     rigRotations;
+      double          averageFocal=0.0;
+
+      for(int k=0; k < vec_focalGroup.size(); ++k)
+      {
+        translation_t   t =  vec_focalGroup[k].m_rigC;
+        rotation_t      R =  vec_focalGroup[k].m_R.transpose();
+
+        rigOffsets.push_back(t);
+        rigRotations.push_back(R);
+        averageFocal +=  vec_focalGroup[k].m_focal ;
+      }
+
+      averageFocal /= (double)  vec_focalGroup.size();
+
+      // create the structure with putative match per rigs
+      matching::RigWiseMatches  map_Matches_Rig;
+      for (PairWiseMatches::const_iterator iter = map_PutativesMatches.begin();
+      iter != map_PutativesMatches.end(); ++iter)
+      {
+        // extract rig id from image id
+        const size_t  I = min(map_RigIdPerImageId[iter->first.first], map_RigIdPerImageId[iter->first.second]);
+        const size_t  J = max(map_RigIdPerImageId[iter->first.first], map_RigIdPerImageId[iter->first.second]);
+
+        const bool  bRigSwap = ( I != map_RigIdPerImageId[iter->first.first] );
+
+        if( I != J){
+
+          if( !bRigSwap){
+            map_Matches_Rig[make_pair(I,J)][iter->first] = iter->second ;
+          }
+          else
+          {
+            // swap I and J matches in order to have matches grouped per rig id
+            std::vector <matching::IndMatch>   matches;
+
+            matches.clear();
+
+            for(size_t  k(0); k < map_PutativesMatches[iter->first].size(); ++k)
+            {
+              IndMatch  featurePair;
+
+              featurePair._i = map_PutativesMatches[iter->first][k]._j;
+              featurePair._j = map_PutativesMatches[iter->first][k]._i;
+
+              matches.push_back( featurePair );
+            }
+
+            map_Matches_Rig[make_pair(I,J)][make_pair(iter->first.second, iter->first.first)] = matches;
+          }
+        }
+      }
+
+      // Now filter images
       collectionGeomFilter.Filter(
-          GeometricFilter_RigEMatrix_AC(map_K, maxResidualError),
-          map_PutativesMatches,
+          GeometricFilter_RigEMatrix_AC(maxResidualError),
+          map_Matches_Rig,
           map_GeometricMatches,
           vec_imagesSize);
 
       //-- Perform an additional check to remove pairs with poor overlap
-      std::vector<PairWiseMatches::key_type> vec_toRemove;
-      for (PairWiseMatches::const_iterator iterMap = map_GeometricMatches.begin();
+      std::vector<RigWiseMatches::key_type> vec_toRemove;
+      for (RigWiseMatches::const_iterator iterMap = map_GeometricMatches.begin();
           iterMap != map_GeometricMatches.end(); ++iterMap)
       {
           const size_t putativePhotometricCount = map_PutativesMatches.find(iterMap->first)->second.size();
           const size_t putativeGeometricCount = iterMap->second.size();
           const float ratio = putativeGeometricCount / (float)putativePhotometricCount;
-          if (putativeGeometricCount < 50 || ratio < .3f)  {
+          if (putativeGeometricCount < 50 * rigOffsets.size() || ratio < .3f)  {
             // the pair will be removed
             vec_toRemove.push_back(iterMap->first);
           }
       }
       //-- remove discarded pairs
-      for (std::vector<PairWiseMatches::key_type>::const_iterator
+      for (std::vector<RigWiseMatches::key_type>::const_iterator
           iter =  vec_toRemove.begin(); iter != vec_toRemove.end(); ++iter)
       {
           map_GeometricMatches.erase(*iter);
@@ -345,12 +412,14 @@ int main(int argc, char **argv)
 
       std::cout << "Task done in (s): " << timer.elapsed() << std::endl;
 
+#if 0
       //-- export Adjacency matrix
       std::cout << "\n Export Adjacency Matrix of the pairwise's geometric matches"
         << std::endl;
       PairWiseMatchingToAdjacencyMatrixSVG(vec_fileNames.size(),
         map_GeometricMatches,
         stlplus::create_filespec(sOutDir, "GeometricAdjacencyMatrix", "svg"));
+#endif
   }
   return EXIT_SUCCESS;
 }

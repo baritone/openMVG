@@ -37,6 +37,30 @@ static bool PairedIndMatchToStream(
   return os.good();
 }
 
+/// Export vector of IndMatch to a stream
+static bool PairedIndMatchToStream(
+const RigWiseMatches & map_indexedMatches,
+std::ostream & os)
+{
+  for (RigWiseMatches::const_iterator iter = map_indexedMatches.begin();
+  iter != map_indexedMatches.end();
+  ++iter)
+{
+  for( PairWiseMatches::const_iterator iter_pair = iter->second.begin();
+        iter_pair != iter->second.end();
+        ++iter_pair )
+  {
+    const size_t I = iter_pair->first.first;
+    const size_t J = iter_pair->first.second;
+    const std::vector<IndMatch> & vec_matches = iter_pair->second;
+    os << I << " " << J << '\n' << vec_matches.size() << '\n';
+    copy(vec_matches.begin(), vec_matches.end(),
+    std::ostream_iterator<IndMatch>(os, "\n"));
+  }
+}
+return os.good();
+}
+
 /// Import vector of IndMatch from a file
 static bool PairedIndMatchImport(
   const std::string & fileName,
