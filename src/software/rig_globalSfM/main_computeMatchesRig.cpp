@@ -12,6 +12,7 @@
 /// Generic Image Collection image matching
 #include "openMVG/matching_image_collection/Matcher_AllInMemory.hpp"
 #include "openMVG/matching_image_collection/GeometricFilter.hpp"
+#include "openMVG/matching_image_collection/Rig_ACRobust.hpp"
 #include "openMVG/matching_image_collection/F_ACRobust.hpp"
 #include "openMVG/matching_image_collection/E_ACRobust.hpp"
 #include "openMVG/matching_image_collection/H_ACRobust.hpp"
@@ -41,13 +42,6 @@ using namespace openMVG;
 using namespace openMVG::matching;
 using namespace openMVG::robust;
 using namespace std;
-
-enum eGeometricModel
-{
-  FUNDAMENTAL_MATRIX = 0,
-  ESSENTIAL_MATRIX   = 1,
-  HOMOGRAPHY_MATRIX  = 2
-};
 
 enum ePairMode
 {
@@ -133,26 +127,7 @@ int main(int argc, char **argv)
     return EXIT_FAILURE;
   }
 
-  eGeometricModel eGeometricModelToCompute = FUNDAMENTAL_MATRIX;
-  std::string sGeometricMatchesFilename = "";
-  switch(sGeometricModel[0])
-  {
-    case 'f': case 'F':
-      eGeometricModelToCompute = FUNDAMENTAL_MATRIX;
-      sGeometricMatchesFilename = "matches.f.txt";
-    break;
-    case 'e': case 'E':
-      eGeometricModelToCompute = ESSENTIAL_MATRIX;
-      sGeometricMatchesFilename = "matches.e.txt";
-    break;
-    case 'h': case 'H':
-      eGeometricModelToCompute = HOMOGRAPHY_MATRIX;
-      sGeometricMatchesFilename = "matches.h.txt";
-    break;
-    default:
-      std::cerr << "Unknown geometric model" << std::endl;
-      return EXIT_FAILURE;
-  }
+  std::string  sGeometricMatchesFilename = "matches.e.txt";
 
   // -----------------------------
   // a. List images
@@ -322,44 +297,32 @@ int main(int argc, char **argv)
   const double maxResidualError = 4.0;
   if (collectionGeomFilter.loadData(vec_fileNames, sOutDir))
   {
-    Timer timer;
-    std::cout << std::endl << " - GEOMETRIC FILTERING - " << std::endl;
-    switch (eGeometricModelToCompute)
-    {
-      case FUNDAMENTAL_MATRIX:
-      {
-       collectionGeomFilter.Filter(
-          GeometricFilter_FMatrix_AC(maxResidualError),
-          map_PutativesMatches,
-          map_GeometricMatches,
-          vec_imagesSize);
-      }
-      break;
-      case ESSENTIAL_MATRIX:
-      {
-        // Build the intrinsic parameter map for each image
-        std::map<size_t, Mat3> map_K;
-        size_t cpt = 0;
-        for ( std::vector<openMVG::SfMIO::CameraInfo>::const_iterator
+      Timer timer;
+      std::cout << std::endl << " - GEOMETRIC FILTERING - " << std::endl;
+
+      // Build the intrinsic parameter map for each image
+      std::map<size_t, Mat3> map_K;
+      size_t cpt = 0;
+      for ( std::vector<openMVG::SfMIO::CameraInfo>::const_iterator
           iter_camInfo = vec_camImageName.begin();
           iter_camInfo != vec_camImageName.end();
           ++iter_camInfo, ++cpt )
-        {
+      {
           if (vec_focalGroup[iter_camInfo->m_intrinsicId].m_bKnownIntrinsic)
             map_K[cpt] = vec_focalGroup[iter_camInfo->m_intrinsicId].m_K;
-        }
+      }
 
-        collectionGeomFilter.Filter(
+      collectionGeomFilter.Filter(
           GeometricFilter_EMatrix_AC(map_K, maxResidualError),
           map_PutativesMatches,
           map_GeometricMatches,
           vec_imagesSize);
 
-        //-- Perform an additional check to remove pairs with poor overlap
-        std::vector<PairWiseMatches::key_type> vec_toRemove;
-        for (PairWiseMatches::const_iterator iterMap = map_GeometricMatches.begin();
+      //-- Perform an additional check to remove pairs with poor overlap
+      std::vector<PairWiseMatches::key_type> vec_toRemove;
+      for (PairWiseMatches::const_iterator iterMap = map_GeometricMatches.begin();
           iterMap != map_GeometricMatches.end(); ++iterMap)
-        {
+      {
           const size_t putativePhotometricCount = map_PutativesMatches.find(iterMap->first)->second.size();
           const size_t putativeGeometricCount = iterMap->second.size();
           const float ratio = putativeGeometricCount / (float)putativePhotometricCount;
@@ -367,42 +330,30 @@ int main(int argc, char **argv)
             // the pair will be removed
             vec_toRemove.push_back(iterMap->first);
           }
-        }
-        //-- remove discarded pairs
-        for (std::vector<PairWiseMatches::key_type>::const_iterator
+      }
+      //-- remove discarded pairs
+      for (std::vector<PairWiseMatches::key_type>::const_iterator
           iter =  vec_toRemove.begin(); iter != vec_toRemove.end(); ++iter)
-        {
-          map_GeometricMatches.erase(*iter);
-        }
-      }
-      break;
-      case HOMOGRAPHY_MATRIX:
       {
-        collectionGeomFilter.Filter(
-          GeometricFilter_HMatrix_AC(maxResidualError),
-          map_PutativesMatches,
-          map_GeometricMatches,
-          vec_imagesSize);
+          map_GeometricMatches.erase(*iter);
       }
-      break;
-    }
 
-    //---------------------------------------
-    //-- Export geometric filtered matches
-    //---------------------------------------
-    std::ofstream file (string(sOutDir + "/" + sGeometricMatchesFilename).c_str());
-    if (file.is_open())
-      PairedIndMatchToStream(map_GeometricMatches, file);
-    file.close();
+      //---------------------------------------
+      //-- Export geometric filtered matches
+      //---------------------------------------
+      std::ofstream file (string(sOutDir + "/" + sGeometricMatchesFilename).c_str());
+      if (file.is_open())
+        PairedIndMatchToStream(map_GeometricMatches, file);
+      file.close();
 
-    std::cout << "Task done in (s): " << timer.elapsed() << std::endl;
+      std::cout << "Task done in (s): " << timer.elapsed() << std::endl;
 
-    //-- export Adjacency matrix
-    std::cout << "\n Export Adjacency Matrix of the pairwise's geometric matches"
-      << std::endl;
-    PairWiseMatchingToAdjacencyMatrixSVG(vec_fileNames.size(),
-      map_GeometricMatches,
-      stlplus::create_filespec(sOutDir, "GeometricAdjacencyMatrix", "svg"));
+      //-- export Adjacency matrix
+      std::cout << "\n Export Adjacency Matrix of the pairwise's geometric matches"
+        << std::endl;
+      PairWiseMatchingToAdjacencyMatrixSVG(vec_fileNames.size(),
+        map_GeometricMatches,
+        stlplus::create_filespec(sOutDir, "GeometricAdjacencyMatrix", "svg"));
   }
   return EXIT_SUCCESS;
 }
