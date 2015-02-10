@@ -49,10 +49,10 @@ enum ePairMode
 
 // Equality functor to count the number of similar K matrices in the essential matrix case.
 bool testIntrinsicsEquality(
-  SfMIO::IntrinsicCameraInfo const &ci1,
-  SfMIO::IntrinsicCameraInfo const &ci2)
+  SfMIO::IntrinsicCameraRigInfo const &ci1,
+  SfMIO::IntrinsicCameraRigInfo const &ci2)
 {
-  return ci1.m_K == ci2.m_K;
+  return ci1.m_K == ci2.m_K && ci1.m_sCameraMaker == ci2.m_sCameraMaker && ci1.m_sCameraModel == ci2.m_sCameraModel;
 }
 
 int main(int argc, char **argv)
@@ -148,8 +148,8 @@ int main(int argc, char **argv)
     return false;
   }
 
-  std::vector<openMVG::SfMIO::CameraInfo> vec_camImageName;
-  std::vector<openMVG::SfMIO::IntrinsicCameraInfo> vec_focalGroup;
+  std::vector<openMVG::SfMIO::CameraRigInfo> vec_camImageName;
+  std::vector<openMVG::SfMIO::IntrinsicCameraRigInfo> vec_focalGroup;
   if (!openMVG::SfMIO::loadImageList( vec_camImageName,
                                       vec_focalGroup,
                                       sListsFile) )
@@ -161,7 +161,7 @@ int main(int argc, char **argv)
   //-- Two alias to ease access to image filenames and image sizes
   std::vector<std::string> vec_fileNames;
   std::vector<std::pair<size_t, size_t> > vec_imagesSize;
-  for ( std::vector<openMVG::SfMIO::CameraInfo>::const_iterator
+  for ( std::vector<openMVG::SfMIO::CameraRigInfo>::const_iterator
     iter_camInfo = vec_camImageName.begin();
     iter_camInfo != vec_camImageName.end();
     iter_camInfo++ )
@@ -300,7 +300,7 @@ int main(int argc, char **argv)
       // Build the intrinsic parameter map for each image
       std::map<size_t, Mat3> map_K;
       size_t cpt = 0;
-      for ( std::vector<openMVG::SfMIO::CameraInfo>::const_iterator
+      for ( std::vector<openMVG::SfMIO::CameraRigInfo>::const_iterator
           iter_camInfo = vec_camImageName.begin();
           iter_camInfo != vec_camImageName.end();
           ++iter_camInfo, ++cpt )
