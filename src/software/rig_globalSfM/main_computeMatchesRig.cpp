@@ -390,13 +390,23 @@ int main(int argc, char **argv)
 
       //-- Perform an additional check to remove pairs with poor overlap
       std::vector<RigWiseMatches::key_type> vec_rigtoRemove;
-      for (RigWiseMatches::const_iterator iterMap = map_GeometricMatches.begin();
-          iterMap != map_GeometricMatches.end(); ++iterMap)
+#ifdef USE_OPENMP
+  #pragma  omp parallel for schedule(dynamic)
+#endif
+      for ( size_t i = 0 ; i < map_GeometricMatches.size(); ++i)
       {
+          RigWiseMatches::const_iterator iterMap = map_GeometricMatches.begin();
+          advance(iterMap, i);
+
           std::vector<PairWiseMatches::key_type> vec_toRemove;
-          for (PairWiseMatches::const_iterator iter = map_PutativesMatches.begin();
-          iter != map_PutativesMatches.end(); ++iter)
+      #ifdef USE_OPENMP
+          #pragma  omp parallel for schedule(dynamic)
+      #endif
+          for ( size_t j = 0 ; j < map_GeometricMatches.size(); ++j)
           {
+            PairWiseMatches::const_iterator iter = map_PutativesMatches.begin();
+            advance(iter, j);
+
             const size_t putativePhotometricCount = map_PutativesMatches.find(iter->first)->second.size();
             const size_t putativeGeometricCount = iter->second.size();
             const float ratio = putativeGeometricCount / (float)putativePhotometricCount;
@@ -414,7 +424,7 @@ int main(int argc, char **argv)
         }
 
         // additional check to keep rig matches or not
-        if( map_GeometricMatches[iterMap->first].size() < .3f * rigOffsets.size() )
+        if( map_GeometricMatches[iterMap->first].size() < rigOffsets.size() )
           vec_rigtoRemove.push_back(iterMap->first);
 
       }
