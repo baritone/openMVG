@@ -7,21 +7,15 @@
 
 #pragma once
 
-#include <opengv/types.hpp>
-#include <opengv/relative_pose/methods.hpp>
-#include <opengv/relative_pose/NoncentralRelativeAdapter.hpp>
-#include <opengv/sac/Ransac.hpp>
-#include <opengv/sac_problems/relative_pose/NoncentralRelativePoseSacProblem.hpp>
-#include <../test/time_measurement.hpp>
-
 #include "openMVG/multiview/solver_nonCentral_kernel.hpp"
-#include "openMVG/multiview/essential.hpp"
+#include "openMVG/multiview/conditioning.hpp"
 #include "openMVG/robust_estimation/robust_estimator_ACRansac.hpp"
 #include "openMVG/robust_estimation/robust_estimator_ACRansacKernelAdaptator.hpp"
 #include <limits>
 
 namespace openMVG {
 using namespace openMVG::robust;
+using namespace opengv;
 
 //-- A contrario Functor to filter putative corresponding points
 //--  thanks estimation of the essential matrix.
