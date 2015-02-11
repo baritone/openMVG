@@ -23,7 +23,7 @@ struct GeometricFilter_RigEMatrix_AC
 {
   GeometricFilter_RigEMatrix_AC(
     double dPrecision = std::numeric_limits<double>::infinity(),
-    size_t iteration = 4096)
+    size_t iteration = 1024)
     : m_dPrecision(dPrecision), m_stIteration(iteration) {};
 
   /// Robust fitting of the rig pose

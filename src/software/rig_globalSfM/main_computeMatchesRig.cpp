@@ -374,7 +374,7 @@ int main(int argc, char **argv)
         }
       }
 
-      double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 10.0 / averageFocal )));
+      double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
 
       // Now filter images
       collectionGeomFilter.Filter(
@@ -388,27 +388,43 @@ int main(int argc, char **argv)
           vec_focalGroup
           );
 
-#if 0
       //-- Perform an additional check to remove pairs with poor overlap
-      std::vector<RigWiseMatches::key_type> vec_toRemove;
+      std::vector<RigWiseMatches::key_type> vec_rigtoRemove;
       for (RigWiseMatches::const_iterator iterMap = map_GeometricMatches.begin();
           iterMap != map_GeometricMatches.end(); ++iterMap)
       {
-          const size_t putativePhotometricCount = map_PutativesMatches.find(iterMap->first)->second.size();
-          const size_t putativeGeometricCount = iterMap->second.size();
-          const float ratio = putativeGeometricCount / (float)putativePhotometricCount;
-          if (putativeGeometricCount < 50 * rigOffsets.size() || ratio < .3f)  {
-            // the pair will be removed
-            vec_toRemove.push_back(iterMap->first);
+          std::vector<PairWiseMatches::key_type> vec_toRemove;
+          for (PairWiseMatches::const_iterator iter = map_PutativesMatches.begin();
+          iter != map_PutativesMatches.end(); ++iter)
+          {
+            const size_t putativePhotometricCount = map_PutativesMatches.find(iter->first)->second.size();
+            const size_t putativeGeometricCount = iter->second.size();
+            const float ratio = putativeGeometricCount / (float)putativePhotometricCount;
+            if (putativeGeometricCount < 50 || ratio < .3f)  {
+              // the pair will be removed
+              vec_toRemove.push_back(iter->first);
           }
+
+          // -- remove discarded pairs
+          for (std::vector<PairWiseMatches::key_type>::const_iterator
+            iter =  vec_toRemove.begin(); iter != vec_toRemove.end(); ++iter)
+          {
+            map_GeometricMatches[iterMap->first].erase(*iter);
+          }
+        }
+
+        // additional check to keep rig matches or not
+        if( map_GeometricMatches[iterMap->first].size() < .3f * rigOffsets.size() )
+          vec_rigtoRemove.push_back(iterMap->first);
+
       }
-      //-- remove discarded pairs
+
+      // -- remove discarded pairs
       for (std::vector<RigWiseMatches::key_type>::const_iterator
-          iter =  vec_toRemove.begin(); iter != vec_toRemove.end(); ++iter)
+        iter =  vec_rigtoRemove.begin(); iter != vec_rigtoRemove.end(); ++iter)
       {
-          map_GeometricMatches.erase(*iter);
+        map_GeometricMatches.erase(*iter);
       }
-#endif
 
       //---------------------------------------
       //-- Export geometric filtered matches
