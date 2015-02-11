@@ -67,7 +67,7 @@ class ImageCollectionGeometricFilter
     C_Progress_display my_progress_bar( map_PutativesMatchesPair.size() );
 
 #ifdef USE_OPENMP
-  #pragma omp parallel for schedule(dynamic)
+  #pragma  omp parallel for schedule(dynamic)
 #endif
     for (int i = 0; i < (int)map_PutativesMatchesPair.size(); ++i)
     {
@@ -82,10 +82,14 @@ class ImageCollectionGeometricFilter
       std::vector<int>  camCorrespondencesRigOne;
       std::vector<int>  camCorrespondencesRigTwo;
 
+      // initialize structure in order to export inliers
+      std::vector < std::pair < size_t, std::pair <size_t, size_t > > >  featureAndImages;
+
       // loop on putative match between the two rigs
+      size_t  cpt = 0;
       for( PairWiseMatches::const_iterator iter_pair = iter->second.begin();
-      iter_pair != iter->second.end();
-      ++iter_pair )
+            iter_pair != iter->second.end();
+            ++iter_pair )
       {
         const size_t iIndex = iter_pair->first.first;
         const size_t jIndex = iter_pair->first.second;
@@ -129,45 +133,54 @@ class ImageCollectionGeometricFilter
 
           // add bearing vectors to list and update correspondences list
           bearingVectorsRigOne.push_back( bearingOne  );
-          camCorrespondencesRigOne.push_back( map_subCamIdPerImageId.at( iIndex) );
+          camCorrespondencesRigOne.push_back( map_IntrinsicIdPerImageId.at( iIndex) );
 
           bearingVectorsRigTwo.push_back( bearingTwo  );
-          camCorrespondencesRigTwo.push_back( map_subCamIdPerImageId.at( jIndex) );
-        }
+          camCorrespondencesRigTwo.push_back( map_IntrinsicIdPerImageId.at( jIndex) );
 
-        //-- Apply the geometric filter
-        {
-          std::vector<size_t> vec_inliers;
-          geometricFilter.Fit(
-            bearingVectorsRigOne,
-            bearingVectorsRigTwo,
-            camCorrespondencesRigOne,
-            camCorrespondencesRigTwo,
-            rigOffsets,
-            rigRotations,
-            vec_inliers );
-
-          if(!vec_inliers.empty())
-          {
-            std::vector<IndMatch> vec_filteredMatches;
-            vec_filteredMatches.reserve(vec_inliers.size());
-            for (size_t i=0; i < vec_inliers.size(); ++i)  {
-              vec_filteredMatches.push_back( vec_PutativeMatches[vec_inliers[i]] );
-            }
-  #ifdef USE_OPENMP
-    #pragma omp critical
-  #endif
-            {
-              map_GeometricMatches[iter->first][std::make_pair(iIndex,jIndex)] = vec_filteredMatches;
-            }
-          }
+          //update datastructure
+          featureAndImages.push_back( std::make_pair(i, iter_pair->first) );
+          ++cpt;
         }
       }
+
+      //-- Apply the geometric filter
+      {
+        std::vector<size_t> vec_inliers;
+        geometricFilter.Fit(
+          bearingVectorsRigOne,
+          bearingVectorsRigTwo,
+          camCorrespondencesRigOne,
+          camCorrespondencesRigTwo,
+          rigOffsets,
+          rigRotations,
+          vec_inliers);
+
+        if(!vec_inliers.empty())
+        {
+          // export computed matches. Step one, compute PairWiseMatches structure
+          PairWiseMatches   rigInliers;
+
+          for (size_t i=0; i < vec_inliers.size(); ++i)
+          {
+            const std::pair < size_t, size_t >   IJ_pair = featureAndImages[vec_inliers[i]].second;
+            const size_t    featIndex = featureAndImages[vec_inliers[i]].first;
+
+            rigInliers[IJ_pair].push_back( iter->second.at(IJ_pair)[featIndex] );
+          }
+          #ifdef USE_OPENMP
+          #pragma omp critical
+          #endif
+          {
+            map_GeometricMatches[iter->first] = rigInliers;
+          }
+        }
 #ifdef USE_OPENMP
 #pragma omp critical
 #endif
-      {
-        ++my_progress_bar;
+        {
+          ++my_progress_bar;
+        }
       }
     }
   }

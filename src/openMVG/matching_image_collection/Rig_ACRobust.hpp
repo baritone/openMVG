@@ -48,7 +48,7 @@ struct GeometricFilter_RigEMatrix_AC
     KernelType kernel(b1,
                       b2,
                       camCorrespondencesRigOne,
-                      camCorrespondencesRigOne,
+                      camCorrespondencesRigTwo,
                       rigOffsets,
                       rigRotations);
 
@@ -57,9 +57,9 @@ struct GeometricFilter_RigEMatrix_AC
     double upper_bound_precision = m_dPrecision;
 
     std::pair<double,double> acRansacOut = ACRANSAC(kernel, vec_inliers,
-      1024, relativePose, upper_bound_precision, false );
+        m_stIteration, relativePose, upper_bound_precision, false );
 
-    if (vec_inliers.size() < KernelType::MINIMUM_SAMPLES * 2.5 * rigOffsets.size() )  {
+    if (vec_inliers.size() < KernelType::MINIMUM_SAMPLES * 2.5 )  {
         vec_inliers.clear();
     }
   }

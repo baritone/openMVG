@@ -374,7 +374,7 @@ int main(int argc, char **argv)
         }
       }
 
-      double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
+      double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 10.0 / averageFocal )));
 
       // Now filter images
       collectionGeomFilter.Filter(
@@ -383,11 +383,12 @@ int main(int argc, char **argv)
           map_GeometricMatches,
           rigOffsets,
           rigRotations,
-          map_subCamIdPerImageId,
           map_IntrinsicIdPerImageId,
+          map_subCamIdPerImageId,
           vec_focalGroup
           );
 
+#if 0
       //-- Perform an additional check to remove pairs with poor overlap
       std::vector<RigWiseMatches::key_type> vec_toRemove;
       for (RigWiseMatches::const_iterator iterMap = map_GeometricMatches.begin();
@@ -407,6 +408,7 @@ int main(int argc, char **argv)
       {
           map_GeometricMatches.erase(*iter);
       }
+#endif
 
       //---------------------------------------
       //-- Export geometric filtered matches
