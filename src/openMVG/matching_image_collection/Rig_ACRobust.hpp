@@ -23,7 +23,7 @@ struct GeometricFilter_RigEMatrix_AC
 {
   GeometricFilter_RigEMatrix_AC(
     double dPrecision = std::numeric_limits<double>::infinity(),
-    size_t iteration = 1024)
+    size_t iteration = 4096)
     : m_dPrecision(dPrecision), m_stIteration(iteration) {};
 
   /// Robust fitting of the rig pose
@@ -59,7 +59,7 @@ struct GeometricFilter_RigEMatrix_AC
     std::pair<double,double> acRansacOut = ACRANSAC(kernel, vec_inliers,
         m_stIteration, relativePose, upper_bound_precision, false );
 
-    if (vec_inliers.size() < KernelType::MINIMUM_SAMPLES * 2.5 )  {
+    if (vec_inliers.size() < KernelType::MINIMUM_SAMPLES * 2.5 * rigOffsets.size() )  {
         vec_inliers.clear();
     }
   }
