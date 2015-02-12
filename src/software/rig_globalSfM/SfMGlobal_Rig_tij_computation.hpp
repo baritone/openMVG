@@ -230,8 +230,7 @@ bool estimate_T_rig_triplet(
   minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
     min, max, mean, median);
 
-  bool bTest( map_tracksInliers.size() > 30 * vec_rigOffset.size()
-               &&  map_tracksInliers.size() > 0.50 * map_tracksCommon.size()  );
+  bool bTest( map_tracksInliers.size() > 30 * vec_rigOffset.size() );
 
   if (!bTest)
   {

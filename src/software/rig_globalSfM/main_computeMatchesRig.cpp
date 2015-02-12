@@ -398,13 +398,11 @@ int main(int argc, char **argv)
           RigWiseMatches::const_iterator iterMap = map_GeometricMatches.begin();
           advance(iterMap, i);
 
+          const PairWiseMatches  map_Matches = iterMap->second;
           std::vector<PairWiseMatches::key_type> vec_toRemove;
-      #ifdef USE_OPENMP
-          #pragma  omp parallel for schedule(dynamic)
-      #endif
-          for ( size_t j = 0 ; j < map_GeometricMatches.size(); ++j)
+          for ( size_t j = 0 ; j < map_Matches.size(); ++j)
           {
-            PairWiseMatches::const_iterator iter = map_PutativesMatches.begin();
+            PairWiseMatches::const_iterator iter = map_Matches.begin();
             advance(iter, j);
 
             const size_t putativePhotometricCount = map_PutativesMatches.find(iter->first)->second.size();
@@ -424,7 +422,7 @@ int main(int argc, char **argv)
         }
 
         // additional check to keep rig matches or not
-        if( map_GeometricMatches[iterMap->first].size() < rigOffsets.size() )
+        if( map_GeometricMatches[iterMap->first].size() < 2 )
           vec_rigtoRemove.push_back(iterMap->first);
 
       }
