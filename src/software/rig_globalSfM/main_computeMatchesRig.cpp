@@ -444,14 +444,12 @@ int main(int argc, char **argv)
 
       std::cout << "Task done in (s): " << timer.elapsed() << std::endl;
 
-#if 0
       //-- export Adjacency matrix
       std::cout << "\n Export Adjacency Matrix of the pairwise's geometric matches"
         << std::endl;
-      PairWiseMatchingToAdjacencyMatrixSVG(vec_fileNames.size(),
+      RigWiseMatchingToAdjacencyMatrixSVG(vec_fileNames.size(),
         map_GeometricMatches,
         stlplus::create_filespec(sOutDir, "GeometricAdjacencyMatrix", "svg"));
-#endif
   }
   return EXIT_SUCCESS;
 }
