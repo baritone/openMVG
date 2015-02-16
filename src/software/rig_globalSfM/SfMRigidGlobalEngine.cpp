@@ -1034,12 +1034,12 @@ bool GlobalRigidReconstructionEngine::Process()
       std::cout << "\n Clean point cloud before BA \n " << endl;
 
       // remove point with big reprojection error
-      double quant;
-      quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.95);
+//      double quant;
+//      quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.95);
 
-      for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
-        if( vec_residuals[idx] > quant)
-          set_idx_to_remove.insert(idx);
+//      for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
+//        if( vec_residuals[idx] > quant)
+//          set_idx_to_remove.insert(idx);
 
       //-- Remove useless tracks and 3D points
       {
@@ -1109,19 +1109,34 @@ bool GlobalRigidReconstructionEngine::Process()
   //-------------------
 
   // Refine only Structure and translations
-  bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, false, true, false);
+  bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, false, true, false, false);
   plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_T_Xi", "ply"));
 
   // Refine Structure, rotations and translations
-  bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, false);
+  bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, false, false);
   plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_RT_Xi", "ply"));
+
+  if (_bRefineRigStruct)
+  {
+    // Refine Structure, rotations, translations and rig structure
+    bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, true, false);
+    plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_RT_RT_Xi", "ply"));
+  }
 
   if (_bRefineIntrinsics)
   {
-    // Refine Structure, rotations, translations and intrinsics
-    bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, true);
-    plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_KRT_Xi", "ply"));
+    // Refine Structure, rotations, translations and rig structure
+    bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, false, true);
+    plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_K_RT_Xi", "ply"));
   }
+
+  if (_bRefineIntrinsics && _bRefineRigStruct)
+  {
+    // Refine Structure, rotations, translations, rig structure and camera intrinsics
+    bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, true, true);
+    plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_KRT_RT_Xi", "ply"));
+  }
+
 
   // Triangulation of all the tracks
   {
@@ -2232,6 +2247,7 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
     const STLMAPTracks & map_tracksSelected,
     bool bRefineRotation,
     bool bRefineTranslation,
+    bool bRefineRigStructure,
     bool bRefineIntrinsics)
 {
   using namespace std;
@@ -2456,7 +2472,7 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
       }
     }
 
-    if (!bRefineIntrinsics)
+    if (!bRefineIntrinsics && !bRefineRigStructure)
     {
       // No camera intrinsics are being refined,
       // set the whole parameter block as constant for best performance.
@@ -2466,10 +2482,27 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
         problem.SetParameterBlockConstant(ba_problem.mutable_cameras_extrinsic(iIntrinsicGroupId));
       }
     }
+    else
+    {
+      if ( bRefineRigStructure)
+      {
+        for (size_t iIntrinsicGroupId = 0; iIntrinsicGroupId < ba_problem.num_intrinsics() ; ++iIntrinsicGroupId)
+        {
+          problem.SetParameterBlockConstant(ba_problem.mutable_cameras_intrinsic(iIntrinsicGroupId));
+        }
+      }
+      if ( bRefineIntrinsics)
+      {
+        for (size_t iIntrinsicGroupId = 0; iIntrinsicGroupId < ba_problem.num_intrinsics() ; ++iIntrinsicGroupId)
+        {
+          problem.SetParameterBlockConstant(ba_problem.mutable_cameras_extrinsic(iIntrinsicGroupId));
+        }
+      }
+    }
   }
 
   // fix position of rig one
-  problem.SetParameterBlockConstant(  ba_problem.mutable_rig_extrinsic(0) );
+  // problem.SetParameterBlockConstant(  ba_problem.mutable_rig_extrinsic(0) );
 
   // Solve BA
   ceres::Solver::Summary summary;
