@@ -390,9 +390,6 @@ int main(int argc, char **argv)
 
       //-- Perform an additional check to remove pairs with poor overlap
       std::vector<RigWiseMatches::key_type> vec_rigtoRemove;
-#ifdef USE_OPENMP
-  #pragma  omp parallel for schedule(dynamic)
-#endif
       for ( size_t i = 0 ; i < map_GeometricMatches.size(); ++i)
       {
           RigWiseMatches::const_iterator iterMap = map_GeometricMatches.begin();

@@ -1034,12 +1034,12 @@ bool GlobalRigidReconstructionEngine::Process()
       std::cout << "\n Clean point cloud before BA \n " << endl;
 
       // remove point with big reprojection error
-//      double quant;
-//      quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.95);
+      double quant;
+      quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.95);
 
-//      for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
-//        if( vec_residuals[idx] > quant)
-//          set_idx_to_remove.insert(idx);
+      for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
+        if( vec_residuals[idx] > quant)
+          set_idx_to_remove.insert(idx);
 
       //-- Remove useless tracks and 3D points
       {
@@ -1205,7 +1205,7 @@ bool GlobalRigidReconstructionEngine::Process()
             // compute 3D point and scale factor
             const Vec3 X = stereoObj.compute();
 
-            if( stereoObj.minDepth() > 0.0 && trianObj.minDepth() > 1.0 && stereoObj.maxDepth() < 50.0 )
+            if( stereoObj.minDepth() > 0.0 && trianObj.minDepth() > 1.0 )
             {
               scaleFactor += stereoObj.minDepth() / trianObj.minDepth() ;
               ++nStereoPoint ;
