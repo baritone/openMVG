@@ -41,6 +41,6 @@ UNIT_TEST(openMVG solver_resection_kernel "openMVG_multiview;openMVG_multiview_t
 UNIT_TEST(openMVG solver_translation_knownRotation_kernel "openMVG_multiview;openMVG_multiview_test_data")
 
 # Averaging routines
-UNIT_TEST(openMVG rotation_averaging "lemon;openMVG_multiview;openMVG_multiview_test_data")
+UNIT_TEST(openMVG rotation_averaging "lemon;openMVG_multiview;openMVG_multiview_test_data;ceres")
 UNIT_TEST(openMVG translation_averaging "lemon;openMVG_multiview;openMVG_multiview_test_data;ceres")
 
