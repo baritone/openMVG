@@ -578,17 +578,16 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
     // Compute tracks:
     openMVG::tracks::STLMAPTracks map_tracks;
-    TracksBuilder tracksBuilder;
+    openMVG::tracks::TracksBuilder tracksBuilder;
     {
       tracksBuilder.Build(map_matchesIJK);
       tracksBuilder.Filter(_map_RigIdPerImageId,3);
-      tracksBuilder.ExportToSTL(map_tracks);
     }
 #ifdef USE_OPENMP
   #pragma omp critical
 #endif
    {
-    map_tracksPerTriplets[i] = map_tracks.size();
+     map_tracksPerTriplets[i] = tracksBuilder.NbTracks();
    }
   }
 
@@ -614,9 +613,6 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
   std::cout << std::endl
     << "Computation of the relative translations over the graph with an edge coverage algorithm" << std::endl;
-#ifdef USE_OPENMP
-    #pragma omp parallel for schedule(dynamic)
-#endif
   for (int k = 0; k < vec_edges.size(); ++k)
   {
     const myEdge & edge = vec_edges[k];
@@ -664,6 +660,9 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
       // Try to solve the triplets
       // Search the possible triplet:
+  #ifdef USE_OPENMP
+      #pragma omp parallel for schedule(dynamic)
+  #endif
       for (size_t i = 0; i < vec_possibleTriplets.size(); ++i)
       {
         const graphUtils::Triplet & triplet = vec_triplets[vec_possibleTriplets[i]];
@@ -719,7 +718,9 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
                     rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,
                     vec_tis, dPrecision, vec_inliers, ThresholdUpperBound, _sOutDirectory, I, J, K) )
           {
-            std::cout << dPrecision * averageFocal << "\t" << vec_inliers.size() << std::endl;
+            std::cout << I << " " << J << " " << K << ":"
+                      << dPrecision * averageFocal << "\t" << vec_inliers.size() << std::endl;
+
 
             //-- Build the three camera:
             const Mat3 RI = map_globalR.find(I)->second;
@@ -755,12 +756,11 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
               vec_initialEstimates.push_back(
                 std::make_pair(std::make_pair(I, K), std::make_pair(RikGt, tik)));
 
+              //-- Remove the 3 edges validated by the trifocal tensor
+              m_mutexSet.discard(std::make_pair(std::min(I,J), std::max(I,J)));
+              m_mutexSet.discard(std::make_pair(std::min(I,K), std::max(I,K)));
+              m_mutexSet.discard(std::make_pair(std::min(J,K), std::max(J,K)));
             }
-
-            //-- Remove the 3 edges validated by the trifocal tensor
-            m_mutexSet.discard(std::make_pair(std::min(I,J), std::max(I,J)));
-            m_mutexSet.discard(std::make_pair(std::min(I,K), std::max(I,K)));
-            m_mutexSet.discard(std::make_pair(std::min(J,K), std::max(J,K)));
           }
         }
       }
