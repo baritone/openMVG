@@ -417,12 +417,12 @@ int main(int argc, char **argv)
           for (std::vector<PairWiseMatches::key_type>::const_iterator
             iter =  vec_toRemove.begin(); iter != vec_toRemove.end(); ++iter)
           {
-            map_GeometricMatches[iterMap->first].erase(*iter);
+            map_GeometricMatches.at(iterMap->first).erase(*iter);
           }
         }
 
         // additional check to keep rig matches or not
-        if( map_GeometricMatches[iterMap->first].size() < sqrt(rigOffsets.size()) )
+        if( map_GeometricMatches[iterMap->first].size() < 2 )
           vec_rigtoRemove.push_back(iterMap->first);
 
       }
