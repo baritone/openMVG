@@ -346,19 +346,13 @@ public:
     const std::vector<int> & scIdOne,
     const std::vector<int> & scIdTwo,
     const translations_t & rigOffsets,
-    const rotations_t & rigRotations,
-    const size_t & w, const size_t & h )
+    const rotations_t & rigRotations )
     : b1_(b1), b2_(b2),
       scIdOne_(scIdOne), scIdTwo_(scIdTwo),
       offSets(rigOffsets), rotations(rigRotations),
       logalpha0_(log10(M_PI))
 {
     assert(b1_.size() == b2_.size());
-
-    //Point to line probability (line is the epipolar line)
-    double D = sqrt(w*(double)w + h*(double)h); // diameter
-    double A = w*(double)h; // area
-    //logalpha0_ = log10(2.0*D/A * .5);
     logalpha0_ = log10(1.0/2.0);
   }
 

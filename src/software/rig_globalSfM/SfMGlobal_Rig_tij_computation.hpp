@@ -78,7 +78,6 @@ bool estimate_T_rig_triplet(
       // extract features
       const SIOPointFeature & pt = map_feats.find(imaIndex)->second[featIndex];
 
-      if( nrig == map_rigIdToTripletId.at(rigId) )
       {
         //export informations
         std::vector <double>  tmp;
@@ -92,13 +91,14 @@ bool estimate_T_rig_triplet(
       }
     }
 
-    if( nrig == 3)
-       featsAndRigIdPerTrack.push_back( subTrackInfo );
+    featsAndRigIdPerTrack.push_back( subTrackInfo );
   }
 
   // compute model
   using namespace openMVG::trifocal;
   using namespace openMVG::trifocal::kernel;
+
+  typedef  rigTrackTisXisTrifocalSolver  SolverType;
 
   typedef rig_TrackTrifocalKernel_ACRansac_N_tisXis<
     rigTrackTisXisTrifocalSolver,
@@ -190,7 +190,7 @@ bool estimate_T_rig_triplet(
 
       // Compute the 3D point and keep point index with negative depth
       const Vec3 Xs = trianObj.compute();
-      vec_residuals.push_back( trianObj.error() );
+      vec_residuals.push_back( trianObj.error() / subTrack.size() );
       vec_Xis.push_back(Xs);
 
       if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
@@ -198,6 +198,14 @@ bool estimate_T_rig_triplet(
         set_idx_to_remove.insert(i);
       }
     }
+
+    // remove point with big reprojection error
+    double quant;
+    quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
+
+    for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
+      if( vec_residuals[idx] > quant)
+        set_idx_to_remove.insert(idx);
 
     //-- Remove useless tracks and 3D points
     {
@@ -222,8 +230,7 @@ bool estimate_T_rig_triplet(
   minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
     min, max, mean, median);
 
-  const size_t  iInlierSize = vec_inliers.size();
-  bool bTest( iInlierSize > 0.15 * map_tracksCommon.size() );
+  bool bTest( map_tracksInliers.size() > 30 * vec_rigOffset.size() );
 
   if (!bTest)
   {
@@ -400,7 +407,7 @@ bool estimate_T_rig_triplet(
     // Create residuals for each observation in the bundle adjustment problem. The
     // parameters for cameras and points are added automatically.
     ceres::Problem problem;
-    ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
+    ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
     for (size_t i = 0; i < ba_problem.num_observations(); ++i) {
       // Each Residual block takes a point and a camera as input and outputs a 2
       // dimensional residual. Internally, the cost function stores the observed
@@ -571,17 +578,16 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
     // Compute tracks:
     openMVG::tracks::STLMAPTracks map_tracks;
-    TracksBuilder tracksBuilder;
+    openMVG::tracks::TracksBuilder tracksBuilder;
     {
       tracksBuilder.Build(map_matchesIJK);
       tracksBuilder.Filter(_map_RigIdPerImageId,3);
-      tracksBuilder.ExportToSTL(map_tracks);
     }
 #ifdef USE_OPENMP
   #pragma omp critical
 #endif
    {
-    map_tracksPerTriplets[i] = map_tracks.size();
+     map_tracksPerTriplets[i] = tracksBuilder.NbTracks();
    }
   }
 
@@ -654,9 +660,9 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
       // Try to solve the triplets
       // Search the possible triplet:
-      #ifdef USE_OPENMP
-        #pragma omp parallel for schedule(dynamic)
-      #endif
+  #ifdef USE_OPENMP
+      #pragma omp parallel for schedule(dynamic)
+  #endif
       for (size_t i = 0; i < vec_possibleTriplets.size(); ++i)
       {
         const graphUtils::Triplet & triplet = vec_triplets[vec_possibleTriplets[i]];
@@ -700,19 +706,21 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = 4.0 / averageFocal / averageFocal;
-          const double ThresholdUpperBound = 1.0 / averageFocal;
+          double dPrecision = 16.0 / averageFocal / averageFocal;
+          const double ThresholdUpperBound = 2.5 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;
 
-          if (map_tracksCommon.size() > 50 * rigOffsets.size() &&
-              estimate_T_rig_triplet(
+          if( map_tracksCommon.size() > 40 * rigOffsets.size() &&
+                estimate_T_rig_triplet(
                     map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                     rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,
                     vec_tis, dPrecision, vec_inliers, ThresholdUpperBound, _sOutDirectory, I, J, K) )
           {
-            std::cout << dPrecision * averageFocal << "\t" << vec_inliers.size() << std::endl;
+            std::cout << I << " " << J << " " << K << ":"
+                      << dPrecision * averageFocal << "\t" << vec_inliers.size() << std::endl;
+
 
             //-- Build the three camera:
             const Mat3 RI = map_globalR.find(I)->second;

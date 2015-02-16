@@ -474,6 +474,11 @@ bool GlobalRigidReconstructionEngine::computeGlobalRotations(
         _reindexForward.size(),
         vec_relativeRotEstimate,
         vec_globalR);
+     //- Refine global rotation
+     if (bSuccess)
+        bSuccess = rotation_averaging::l2::L2RotationAveraging_Refine(
+        vec_relativeRotEstimate,
+        vec_globalR);
     }
     break;
     case ROTATION_AVERAGING_L1:
@@ -485,6 +490,12 @@ bool GlobalRigidReconstructionEngine::computeGlobalRotations(
       std::vector<bool> vec_inliers;
       bSuccess = rotation_averaging::l1::GlobalRotationsRobust(
         vec_relativeRotEstimate, vec_globalR, nMainViewID, 0.0f, &vec_inliers);
+
+      //- Refine global rotation
+      if (bSuccess)
+        bSuccess = rotation_averaging::l2::L2RotationAveraging_Refine(
+        vec_relativeRotEstimate,
+        vec_globalR);
 
       std::cout << "\ninliers: " << std::endl;
       std::copy(vec_inliers.begin(), vec_inliers.end(), ostream_iterator<bool>(std::cout, " "));
@@ -952,6 +963,7 @@ bool GlobalRigidReconstructionEngine::Process()
     _vec_allScenes.resize(_map_selectedTracks.size());
     {
       std::vector<double> vec_residuals;
+      vec_residuals.resize(_map_selectedTracks.size());
       std::set<size_t> set_idx_to_remove;
 
       C_Progress_display my_progress_bar_triangulation( _map_selectedTracks.size(),
@@ -993,10 +1005,6 @@ bool GlobalRigidReconstructionEngine::Process()
           const Vec3 Xs  = trianObj.compute();
           _vec_allScenes[idx] = Xs;
 
-#ifdef USE_OPENMP
-#pragma omp critical
-#endif
-        {
           //-- Compute residual over all the projections
           double  dAverageResidual = 0.0;
 
@@ -1008,8 +1016,12 @@ bool GlobalRigidReconstructionEngine::Process()
             // no ordering in vec_residuals since there is parallelism
           }
 
-          vec_residuals.push_back(dAverageResidual /subTrack.size() );
+          vec_residuals[idx] = dAverageResidual /subTrack.size() ;
 
+#ifdef USE_OPENMP
+      #pragma omp critical
+#endif
+        {
           if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
                || !is_finite(Xs[2]) )  {
             set_idx_to_remove.insert(idx);
@@ -1021,7 +1033,38 @@ bool GlobalRigidReconstructionEngine::Process()
 
       std::cout << "\n Clean point cloud before BA \n " << endl;
 
+      // remove point with big reprojection error
+      double quant;
+      quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.95);
+
+      for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
+        if( vec_residuals[idx] > quant)
+          set_idx_to_remove.insert(idx);
+
+      //-- Remove useless tracks and 3D points
       {
+        std::vector<Vec3> vec_allScenes_cleaned;
+        for(size_t i = 0; i < _vec_allScenes.size(); ++i)
+        {
+          if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
+          {
+            vec_allScenes_cleaned.push_back(_vec_allScenes[i]);
+          }
+        }
+        _vec_allScenes.swap(vec_allScenes_cleaned);
+
+        for( std::set<size_t>::const_iterator iter = set_idx_to_remove.begin();
+        iter != set_idx_to_remove.end(); ++iter)
+        {
+          _map_selectedTracks.erase(*iter);
+        }
+
+        std::cout << "\n #Tracks removed: " << set_idx_to_remove.size() << std::endl;
+     }
+
+     plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
+
+     {
         // Display some statistics of reprojection errors
         std::cout << "\n\nResidual statistics:\n" << std::endl;
         minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end());
@@ -1058,46 +1101,6 @@ bool GlobalRigidReconstructionEngine::Process()
           _htmlDocStream->pushInfo(os.str());
         }
       }
-
-      //-- Remove useless tracks and 3D points
-      {
-      std::map<size_t, Vec3> map_allScenes_cleaned;
-      std::vector < Vec3 >   vec_allScenes_cleaned;
-
-#ifdef USE_OPENMP
-    #pragma omp parallel for schedule(dynamic)
-#endif
-      for(size_t i = 0; i < _vec_allScenes.size(); ++i)
-      {
-        if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
-        {
-          #ifdef USE_OPENMP
-              #pragma omp critical
-          #endif
-          {
-             map_allScenes_cleaned[i] = _vec_allScenes[i];
-          }
-        }
-      }
-
-      // export cleaned 3d points
-      for( std::map<size_t, Vec3>::const_iterator iter = map_allScenes_cleaned.begin();
-        iter != map_allScenes_cleaned.end(); ++iter)
-      {
-          vec_allScenes_cleaned.push_back(iter->second);
-      }
-
-      _vec_allScenes.swap(vec_allScenes_cleaned);
-
-      for( std::set<size_t>::const_iterator iter = set_idx_to_remove.begin();
-        iter != set_idx_to_remove.end(); ++iter)
-      {
-        _map_selectedTracks.erase(*iter);
-      }
-      std::cout << "\n #Tracks removed: " << set_idx_to_remove.size() << std::endl;
-      }
-
-      plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
     }
   }
 
@@ -1187,7 +1190,7 @@ bool GlobalRigidReconstructionEngine::Process()
             // compute 3D point and scale factor
             const Vec3 X = stereoObj.compute();
 
-            if( stereoObj.minDepth() > 0.0 && trianObj.minDepth() > 0.0)
+            if( stereoObj.minDepth() > 0.0 && trianObj.minDepth() > 1.0 && stereoObj.maxDepth() < 50.0 )
             {
               scaleFactor += stereoObj.minDepth() / trianObj.minDepth() ;
               ++nStereoPoint ;
@@ -1601,8 +1604,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     std::vector<int>  camCorrespondencesRigTwo;
 
     // loop on inter-rig correspondences
-    std::pair<size_t, size_t> imageSize;
-
     cpt = 0;
     for( STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
                 iterTracks != map_tracks.end(); ++iterTracks, ++cpt)
@@ -1649,14 +1650,14 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondances
     double errorMax = std::numeric_limits<double>::max();
-    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
+    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 2.5 / averageFocal )));
 
     transformation_t  pose;
     std::vector<size_t> vec_inliers;
 
     if ( SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
         camCorrespondencesRigOne, camCorrespondencesRigTwo,
-        rigOffsets, rigRotations, &pose, &vec_inliers, imageSize,
+        rigOffsets, rigRotations, &pose, &vec_inliers,
         &errorMax, maxExpectedError) )
     {
         // retrieve relative rig orientation and translation
@@ -1676,6 +1677,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         }
 
         // Triangulation of all the tracks
+        std::vector <double >  vec_residuals;
         {
           Map_Camera map_camera;
           vec_allScenes.resize(map_tracksInliers.size());
@@ -1727,6 +1729,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
             // Compute the 3D point and keep point index with negative depth
             const Vec3 Xs = trianObj.compute();
+            vec_residuals.push_back( trianObj.error() / subTrack.size() );
             vec_allScenes[idx] = Xs;
 
             if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
@@ -1734,6 +1737,14 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
               set_idx_to_remove.insert(idx);
             }
           }
+
+          // remove point with big reprojection error
+          double quant;
+          quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
+
+          for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
+            if( vec_residuals[idx] > quant)
+              set_idx_to_remove.insert(idx);
 
           //-- Remove useless tracks and 3D points
           {
@@ -1905,7 +1916,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         ceres::Problem problem;
         // Set a LossFunction to be less penalized by false measurements
         //  - set it to NULL if you don't want use a lossFunction.
-        ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
+        ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
         for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
           // Each Residual block takes a point and a camera as input and outputs a 2
           // dimensional residual. Internally, the cost function stores the observed
@@ -1997,7 +2008,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
           #pragma omp critical
         #endif
         {
-          vec_relatives[std::make_pair(R0,R1)] = std::make_pair(R,t);
+          vec_relatives.insert( std::make_pair ( std::make_pair(R0,R1), std::make_pair(R,t) ) );
         }
     }
     #ifdef USE_OPENMP
@@ -2365,7 +2376,7 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
   ceres::Problem problem;
   // Set a LossFunction to be less penalized by false measurements
   //  - set it to NULL if you don't want use a lossFunction.
-  ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
+  ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
   for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
     // Each Residual block takes a point and a camera as input and outputs a 2
     // dimensional residual. Internally, the cost function stores the observed
