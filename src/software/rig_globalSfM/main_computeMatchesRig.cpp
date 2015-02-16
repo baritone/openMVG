@@ -374,7 +374,7 @@ int main(int argc, char **argv)
         }
       }
 
-      double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
+      double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 10.0 / averageFocal )));
 
       // Now filter images
       collectionGeomFilter.Filter(
@@ -422,7 +422,7 @@ int main(int argc, char **argv)
         }
 
         // additional check to keep rig matches or not
-        if( map_GeometricMatches[iterMap->first].size() < 2 )
+        if( map_GeometricMatches[iterMap->first].size() < sqrt(rigOffsets.size()) )
           vec_rigtoRemove.push_back(iterMap->first);
 
       }
