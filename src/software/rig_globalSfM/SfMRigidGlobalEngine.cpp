@@ -1041,26 +1041,44 @@ bool GlobalRigidReconstructionEngine::Process()
         if( vec_residuals[idx] > quant)
           set_idx_to_remove.insert(idx);
 
+
       //-- Remove useless tracks and 3D points
       {
-        std::vector<Vec3> vec_allScenes_cleaned;
-        for(size_t i = 0; i < _vec_allScenes.size(); ++i)
-        {
-          if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
+         std::map<size_t, Vec3> map_allScenes_cleaned;
+         std::vector < Vec3 > vec_allScenes_cleaned;
+
+         #ifdef USE_OPENMP
+             #pragma omp parallel for schedule(dynamic)
+          #endif
+          for(size_t i = 0; i < _vec_allScenes.size(); ++i)
           {
-            vec_allScenes_cleaned.push_back(_vec_allScenes[i]);
+              if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
+              {
+                  #ifdef USE_OPENMP
+                    #pragma omp critical
+                  #endif
+                  {
+                      map_allScenes_cleaned[i] = _vec_allScenes[i];
+                  }
+              }
           }
-        }
-        _vec_allScenes.swap(vec_allScenes_cleaned);
 
-        for( std::set<size_t>::const_iterator iter = set_idx_to_remove.begin();
-        iter != set_idx_to_remove.end(); ++iter)
-        {
-          _map_selectedTracks.erase(*iter);
-        }
+          // export cleaned 3d points
+          for( std::map<size_t, Vec3>::const_iterator iter = map_allScenes_cleaned.begin();
+                  iter != map_allScenes_cleaned.end(); ++iter)
+          {
+               vec_allScenes_cleaned.push_back(iter->second);
+          }
 
-        std::cout << "\n #Tracks removed: " << set_idx_to_remove.size() << std::endl;
-     }
+           _vec_allScenes.swap(vec_allScenes_cleaned);
+
+          for( std::set<size_t>::const_iterator iter = set_idx_to_remove.begin();
+                  iter != set_idx_to_remove.end(); ++iter)
+          {
+              _map_selectedTracks.erase(*iter);
+          }
+          std::cout << "\n #Tracks removed: " << set_idx_to_remove.size() << std::endl;
+      }
 
      plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
 
