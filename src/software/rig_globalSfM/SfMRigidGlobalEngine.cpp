@@ -1033,6 +1033,7 @@ bool GlobalRigidReconstructionEngine::Process()
 
       std::cout << "\n Clean point cloud before BA \n " << endl;
 
+#if 0
       // remove point with big reprojection error
       double quant;
       quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.95);
@@ -1040,7 +1041,7 @@ bool GlobalRigidReconstructionEngine::Process()
       for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
         if( vec_residuals[idx] > quant)
           set_idx_to_remove.insert(idx);
-
+#endif
 
       //-- Remove useless tracks and 3D points
       {
@@ -1683,7 +1684,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondances
     double errorMax = std::numeric_limits<double>::max();
-    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
+    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 2.5 / averageFocal )));
 
     transformation_t  pose;
     std::vector<size_t> vec_inliers;
@@ -1704,9 +1705,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         // keep only tracks related to inliers
         openMVG::tracks::STLMAPTracks map_tracksInliers;
-        for(int l=0; l < vec_inliers.size(); ++l)
+        for(int l=0; l < map_tracks.size(); ++l)
         {
-          map_tracksInliers[l] = map_tracks[vec_inliers[l]];
+          map_tracksInliers[l] = map_tracks[l];
         }
 
         // Triangulation of all the tracks
@@ -2520,7 +2521,7 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
   }
 
   // fix position of rig one
-  // problem.SetParameterBlockConstant(  ba_problem.mutable_rig_extrinsic(0) );
+  problem.SetParameterBlockConstant(  ba_problem.mutable_rig_extrinsic(0) );
 
   // Solve BA
   ceres::Solver::Summary summary;

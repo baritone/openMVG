@@ -34,6 +34,7 @@ struct GeometricFilter_RigEMatrix_AC
     const std::vector<int> & camCorrespondencesRigTwo,
     const translations_t & rigOffsets,
     const rotations_t & rigRotations,
+    transformation_t * relativePose,
     std::vector<size_t> & vec_inliers ) const
   {
     vec_inliers.clear();
@@ -53,13 +54,12 @@ struct GeometricFilter_RigEMatrix_AC
                       rigRotations);
 
     // Robustly estimation of the Essential matrix and it's precision
-    transformation_t * relativePose;
     double upper_bound_precision = m_dPrecision;
 
     std::pair<double,double> acRansacOut = ACRANSAC(kernel, vec_inliers,
         m_stIteration, relativePose, upper_bound_precision, false );
 
-    if (vec_inliers.size() < KernelType::MINIMUM_SAMPLES * 2.5 * rigOffsets.size() )  {
+    if (vec_inliers.size() < 0.5 * b1.size() )  {
         vec_inliers.clear();
     }
   }

@@ -200,12 +200,12 @@ bool estimate_T_rig_triplet(
     }
 
     // remove point with big reprojection error
-    double quant;
-    quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
+    //double quant;
+    //quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
 
-    for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
-      if( vec_residuals[idx] > quant)
-        set_idx_to_remove.insert(idx);
+    //for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
+    //  if( vec_residuals[idx] > quant)
+    //    set_idx_to_remove.insert(idx);
 
     //-- Remove useless tracks and 3D points
     {
@@ -712,7 +712,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;
 
-          if( map_tracksCommon.size() > 40 * rigOffsets.size() &&
+          if( map_tracksCommon.size() > 50 * rigOffsets.size() &&
                 estimate_T_rig_triplet(
                     map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                     rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,
