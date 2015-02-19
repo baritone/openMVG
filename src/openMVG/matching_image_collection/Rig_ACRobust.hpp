@@ -59,7 +59,7 @@ struct GeometricFilter_RigEMatrix_AC
     std::pair<double,double> acRansacOut = ACRANSAC(kernel, vec_inliers,
         m_stIteration, relativePose, upper_bound_precision, false );
 
-    if (vec_inliers.size() < 0.5 * b1.size() )  {
+    if (vec_inliers.size() < 2.5 * SolverType::MINIMUM_SAMPLES )  {
         vec_inliers.clear();
     }
   }

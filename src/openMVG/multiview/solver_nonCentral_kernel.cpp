@@ -43,13 +43,11 @@ void SixPointSolver::Solve(relative_pose::NoncentralRelativeAdapter & adapter,
 {
 
   // convert size_t to int for opengv call
-  std::set<int>  fullIndices;
   std::vector<int> idx;
 
   for(size_t i=0; i < indices.size(); ++i)
   {
      idx.push_back( (int) indices[i]);
-     fullIndices.insert( idx[i] );
   }
 
    // create non central relative sac problem
@@ -71,13 +69,11 @@ const std::vector<size_t> &indices)
 {
 
   // convert size_t to int for opengv call
-  std::set<int>  fullIndices;
   std::vector<int> idx;
 
   for(size_t i=0; i < indices.size(); ++i)
   {
     idx.push_back( (int) indices[i]);
-    fullIndices.insert( idx[i] );
   }
 
   // create non central relative sac problem

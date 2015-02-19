@@ -172,6 +172,7 @@ class ImageCollectionGeometricFilter
             rigInliers[IJ_pair].push_back( iter->second.at(IJ_pair)[putativeInd] );
           }
 
+#if 0
           // retrieve relative rig orientation and translation
           const Mat3  Rrig = rigPose.block<3,3>(0,0).transpose();
           const Vec3  Crig = rigPose.col(3);
@@ -256,7 +257,7 @@ class ImageCollectionGeometricFilter
               iter_pair-> second = vec_inliersFund ;
 
           }
-
+#endif
           // update rigwise matches map
           #ifdef USE_OPENMP
             #pragma omp critical

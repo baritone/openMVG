@@ -611,10 +611,10 @@ bool GlobalRigidReconstructionEngine::Process()
     //---------------------------------------
     //-- Export geometric filtered matches
     //---------------------------------------
-  //  std::ofstream file (string(_sMatchesPath + "/matches.filtered.txt").c_str());
-  //  if (file.is_open())
-  //    PairedIndMatchToStream(_map_Matches_E, file); // need to modifiy that ?
-  //  file.close();
+    std::ofstream file (string(_sMatchesPath + "/matches.filtered.txt").c_str());
+    if (file.is_open())
+      PairedIndMatchToStream(_map_Matches_E, file); // need to modifiy that ?
+    file.close();
 
     std::cout << "\n Remaining cameras after inference filter: \n"
       << set_remainingIds.size() << " from a total of " << _vec_fileNames.size() / _vec_intrinsicGroups.size() << std::endl;
@@ -1033,7 +1033,6 @@ bool GlobalRigidReconstructionEngine::Process()
 
       std::cout << "\n Clean point cloud before BA \n " << endl;
 
-#if 0
       // remove point with big reprojection error
       double quant;
       quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.95);
@@ -1041,7 +1040,6 @@ bool GlobalRigidReconstructionEngine::Process()
       for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
         if( vec_residuals[idx] > quant)
           set_idx_to_remove.insert(idx);
-#endif
 
       //-- Remove useless tracks and 3D points
       {
@@ -1705,9 +1703,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         // keep only tracks related to inliers
         openMVG::tracks::STLMAPTracks map_tracksInliers;
-        for(int l=0; l < map_tracks.size(); ++l)
+        for(int l=0; l < vec_inliers.size(); ++l)
         {
-          map_tracksInliers[l] = map_tracks[l];
+          map_tracksInliers[l] = map_tracks[vec_inliers[l]];
         }
 
         // Triangulation of all the tracks

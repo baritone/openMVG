@@ -200,12 +200,12 @@ bool estimate_T_rig_triplet(
     }
 
     // remove point with big reprojection error
-    //double quant;
-    //quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
+    double quant;
+    quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
 
-    //for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
-    //  if( vec_residuals[idx] > quant)
-    //    set_idx_to_remove.insert(idx);
+    for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
+      if( vec_residuals[idx] > quant)
+        set_idx_to_remove.insert(idx);
 
     //-- Remove useless tracks and 3D points
     {
