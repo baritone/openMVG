@@ -422,7 +422,7 @@ int main(int argc, char **argv)
         }
 
         // additional check to keep rig matches or not
-        if( map_GeometricMatches[iterMap->first].size() < 2 )
+        if( map_GeometricMatches[iterMap->first].size() < sqrt(rigOffsets.size()) )
           vec_rigtoRemove.push_back(iterMap->first);
 
       }

@@ -474,6 +474,11 @@ bool GlobalRigidReconstructionEngine::computeGlobalRotations(
         _reindexForward.size(),
         vec_relativeRotEstimate,
         vec_globalR);
+     //- Refine global rotation
+     if (bSuccess)
+        bSuccess = rotation_averaging::l2::L2RotationAveraging_Refine(
+        vec_relativeRotEstimate,
+        vec_globalR);
     }
     break;
     case ROTATION_AVERAGING_L1:
@@ -485,6 +490,12 @@ bool GlobalRigidReconstructionEngine::computeGlobalRotations(
       std::vector<bool> vec_inliers;
       bSuccess = rotation_averaging::l1::GlobalRotationsRobust(
         vec_relativeRotEstimate, vec_globalR, nMainViewID, 0.0f, &vec_inliers);
+
+      //- Refine global rotation
+      if (bSuccess)
+        bSuccess = rotation_averaging::l2::L2RotationAveraging_Refine(
+        vec_relativeRotEstimate,
+        vec_globalR);
 
       std::cout << "\ninliers: " << std::endl;
       std::copy(vec_inliers.begin(), vec_inliers.end(), ostream_iterator<bool>(std::cout, " "));

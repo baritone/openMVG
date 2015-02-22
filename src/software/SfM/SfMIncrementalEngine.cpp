@@ -101,6 +101,14 @@ bool IncrementalReconstructionEngine::Process()
   BundleAdjustment(); // Adjust 3D point and camera parameters.
 
   size_t round = 0;
+
+  // export initial point cloud
+  std::ostringstream os;
+  os << std::setw(8) << std::setfill('0') << round << "_Resection";
+  _reconstructorData.exportToPly( stlplus::create_filespec(_sOutDirectory, os.str(), ".ply"));
+
+  ++round;
+
   // Compute robust Resection of remaining image
   std::vector<size_t> vec_possible_resection_indexes;
   while (FindImagesWithPossibleResection(vec_possible_resection_indexes))
@@ -318,6 +326,77 @@ bool IncrementalReconstructionEngine::ReadInputData()
   return true;
 }
 
+// Load an image file list
+// One basename per line.
+// It handle different scenario based on the intrinsic info of the tested image
+// - a camera without exif data
+// - a camera with exif data found in the database
+// - a camera with exif data not found in the database
+// - a camera with known intrinsic
+bool IncrementalReconstructionEngine::loadInitialPose(std::string sFileName)
+{
+
+  std::ifstream in(sFileName.c_str());
+  if(!in.is_open())  {
+    std::cerr << std::endl
+      << "Impossible to read the specified file." << std::endl;
+  }
+  std::string sValue;
+  std::vector<std::string> vec_str;
+  while(getline( in, sValue ) )
+  {
+    vec_str.clear();
+    split( sValue, ";", vec_str );
+    if (vec_str.size() == 1)
+    {
+      std::cerr << "Invalid input file" << std::endl;
+      in.close();
+      return false;
+    }
+
+    std::stringstream oss;
+    oss.clear(); oss.str(vec_str[0]);
+    size_t channel_one, channel_two;
+    oss >> channel_one;
+    oss.clear(); oss.str(vec_str[1]);
+    oss >> channel_two;
+
+    // load rotation (row after row)
+    oss.clear(); oss.str(vec_str[2]);
+    oss >> _vec_initialPose[0];
+    oss.clear(); oss.str(vec_str[3]);
+    oss >> _vec_initialPose[1];
+    oss.clear(); oss.str(vec_str[4]);
+    oss >> _vec_initialPose[2];
+    oss.clear(); oss.str(vec_str[5]);
+    oss >> _vec_initialPose[3];
+    oss.clear(); oss.str(vec_str[6]);
+    oss >> _vec_initialPose[4];
+    oss.clear(); oss.str(vec_str[7]);
+    oss >> _vec_initialPose[5];
+    oss.clear(); oss.str(vec_str[8]);
+    oss >> _vec_initialPose[6];
+    oss.clear(); oss.str(vec_str[9]);
+    oss >> _vec_initialPose[7];
+    oss.clear(); oss.str(vec_str[10]);
+    oss >> _vec_initialPose[8];
+
+    //load translation
+    oss.clear(); oss.str(vec_str[11]);
+    oss >> _vec_initialPose[9];
+    oss.clear(); oss.str(vec_str[12]);
+    oss >> _vec_initialPose[10];
+    oss.clear(); oss.str(vec_str[13]);
+    oss >> _vec_initialPose[11];
+
+  }
+
+  // close stream
+  in.close();
+
+  return true;
+}
+
 /// Find the best initial pair
 bool IncrementalReconstructionEngine::InitialPairChoice( std::pair<size_t, size_t> & initialPairIndex)
 {
@@ -442,6 +521,9 @@ bool IncrementalReconstructionEngine::MakeInitialPair3D(const std::pair<size_t,s
     return false;
   }
 
+  Mat3 RJ;
+  Vec3 tJ;
+
   if (!SfMRobust::robustEssential(intrinsicCamI.m_K, intrinsicCamJ.m_K,
     x1, x2,
     &E, &vec_inliers,
@@ -459,8 +541,6 @@ bool IncrementalReconstructionEngine::MakeInitialPair3D(const std::pair<size_t,s
     << "--  Threshold: " << errorMax << std::endl;
 
   //--> Estimate the best possible Rotation/Translation from E
-  Mat3 RJ;
-  Vec3 tJ;
   if (!SfMRobust::estimate_Rt_fromE(intrinsicCamI.m_K, intrinsicCamJ.m_K,
         x1, x2, E, vec_inliers,
         &RJ, &tJ))
@@ -468,6 +548,23 @@ bool IncrementalReconstructionEngine::MakeInitialPair3D(const std::pair<size_t,s
     std::cout << " /!\\ Failed to compute initial R|t for the initial pair" << std::endl;
     return false;
   }
+
+  if(_bInitialPoseKnown)
+  {
+      // we suppose here that relative pose of second camera is known
+     int i,j;
+
+     // affect initial rotation
+      for(i=0; i < 3 ; ++i)
+        for(j=0 ; j < 3 ; ++j)
+          RJ(3*i+j) = _vec_initialPose[3*j+i];
+
+      // affect initial translation
+      tJ[0] = _vec_initialPose[9];
+      tJ[1] = _vec_initialPose[10];
+      tJ[2] = _vec_initialPose[11];
+  }
+
   std::cout << std::endl
     << "-- Rotation|Translation matrices: --" << std::endl
     << RJ << std::endl << std::endl << tJ << std::endl;
@@ -1422,15 +1519,21 @@ void IncrementalReconstructionEngine::BundleAdjustment()
                              ba_problem.mutable_camera_intrinsic_for_observation(i),
                              ba_problem.mutable_camera_extrinsic_for_observation(i),
                              ba_problem.mutable_point_for_observation(i));
+
   }
 
+
   //-- Lock the first camera to better deal with scene orientation ambiguity
-  if (_vec_added_order.size()>0 && map_camIndexToNumber_extrinsic.size()>0)
+  if( _vec_added_order.size() > 1 )
   {
     // First camera is the first one that have been used
     problem.SetParameterBlockConstant(
-      ba_problem.mutable_camera_extrinsic_for_observation(
-        map_camIndexToNumber_extrinsic[_vec_added_order[0]]));
+      ba_problem.mutable_cameras_extrinsic() + 6 * map_camIndexToNumber_extrinsic [ _vec_added_order[0] ] );
+
+    // First camera is the first one that have been used
+    problem.SetParameterBlockConstant(
+      ba_problem.mutable_cameras_extrinsic() + 6 * map_camIndexToNumber_extrinsic [ _vec_added_order[1] ] );
+
   }
 
   // Parametrization used to restrict camera intrinsics

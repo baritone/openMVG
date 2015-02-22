@@ -46,7 +46,7 @@ bool computeIndexFromImageNames(
       std::cerr << "\nCannot access to the specified image: \""<< initialPairName.first << "\"" << std::endl;
       return false;
   }
-  initialPairIndex.first = std::distance<std::vector<std::string>::const_iterator>(vec_camImageName.begin(), imageName);  
+  initialPairIndex.first = std::distance<std::vector<std::string>::const_iterator>(vec_camImageName.begin(), imageName);
   imageName = find(vec_camImageName.begin(), vec_camImageName.end(), initialPairName.second);
   if(imageName == vec_camImageName.end())
   {
@@ -74,6 +74,7 @@ int main(int argc, char **argv)
   bool bRefinePPandDisto = true;
   bool bRefineFocal = true;
   bool bColoredPointCloud = false;
+  bool bInitialPoseKnown = false;
   std::pair<std::string,std::string> initialPair("","");
 
   cmd.add( make_option('i', sImaDirectory, "imadir") );
@@ -119,6 +120,19 @@ int main(int argc, char **argv)
     stlplus::folder_create(sOutDir);
 
   //---------------------------------------
+  // check if an initial pose exists and load it
+  //---------------------------------------
+  std::string sPoseFile = stlplus::create_filespec(sImaDirectory, "pose.txt" );
+  if (stlplus::is_file(sPoseFile)) {
+    std::cout << std::endl
+      << "The input file \""<< sPoseFile << "\" is found -> initial pose is known."
+      << std::endl;
+
+    bInitialPoseKnown = true ;
+  }
+
+
+  //---------------------------------------
   // Incremental reconstruction process
   //---------------------------------------
 
@@ -135,9 +149,13 @@ int main(int argc, char **argv)
     if(!computeIndexFromImageNames(sMatchesDir, initialPair, initialPairIndex))
       return EXIT_FAILURE;
     to3DEngine.setInitialPair(initialPairIndex);
-  }  
+  }
   to3DEngine.setIfRefinePrincipalPointAndRadialDisto(bRefinePPandDisto);
   to3DEngine.setIfRefineFocal(bRefineFocal);
+  to3DEngine.setInitialPoseKnown(bInitialPoseKnown);
+
+  if(bInitialPoseKnown)
+     to3DEngine.loadInitialPose(sPoseFile);
 
   if (to3DEngine.Process())
   {

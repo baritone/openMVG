@@ -495,7 +495,7 @@ void GlobalReconstructionEngine::computePutativeTranslation_EdgesCoverage(
         const double averageFocal = ( KI(0,0) + KJ(0,0) + KK(0,0) ) / 3.0 ;
 
         double dPrecision = 4.0 / averageFocal / averageFocal;
-        const double ThresholdUpperBound = 0.5 / averageFocal;
+        const double ThresholdUpperBound = 2.5 / averageFocal;
 
         std::vector<Vec3> vec_tis(3);
         std::vector<size_t> vec_inliers;

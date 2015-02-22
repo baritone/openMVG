@@ -8,6 +8,14 @@ INSTALL(TARGETS openMVG_main_CreateList DESTINATION bin/)
 
 #Add executable that computes:
 # - features and descriptors
+
+ADD_EXECUTABLE(openMVG_main_featureDetect main_featureDetect.cpp)
+TARGET_LINK_LIBRARIES(openMVG_main_featureDetect
+                     ${OpenMVG_LIBS})
+SET_PROPERTY(TARGET openMVG_main_featureDetect PROPERTY FOLDER OpenMVG/software)
+
+#Add executable that computes:
+# - features and descriptors
 # - putatives matches
 # - geometric filtered matches
 #
