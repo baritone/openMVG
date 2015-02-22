@@ -459,6 +459,8 @@ bool IncrementalReconstructionEngine::MakeInitialPair3D(const std::pair<size_t,s
     << "--  Threshold: " << errorMax << std::endl;
 
   //--> Estimate the best possible Rotation/Translation from E
+  Mat3 RJ;
+  Vec3 tJ;
   if (!SfMRobust::estimate_Rt_fromE(intrinsicCamI.m_K, intrinsicCamJ.m_K,
         x1, x2, E, vec_inliers,
         &RJ, &tJ))
@@ -466,23 +468,6 @@ bool IncrementalReconstructionEngine::MakeInitialPair3D(const std::pair<size_t,s
     std::cout << " /!\\ Failed to compute initial R|t for the initial pair" << std::endl;
     return false;
   }
-
-  if(_bInitialPoseKnown)
-  {
-      // we suppose here that relative pose of second camera is known
-     int i,j;
-
-     // affect initial rotation
-      for(i=0; i < 3 ; ++i)
-        for(j=0 ; j < 3 ; ++j)
-          RJ(3*i+j) = _vec_initialPose[3*j+i];
-
-      // affect initial translation
-      tJ[0] = _vec_initialPose[9];
-      tJ[1] = _vec_initialPose[10];
-      tJ[2] = _vec_initialPose[11];
-  }
-
   std::cout << std::endl
     << "-- Rotation|Translation matrices: --" << std::endl
     << RJ << std::endl << std::endl << tJ << std::endl;
@@ -1440,7 +1425,6 @@ void IncrementalReconstructionEngine::BundleAdjustment()
   }
 
   //-- Lock the first camera to better deal with scene orientation ambiguity
-
   if (_vec_added_order.size()>0 && map_camIndexToNumber_extrinsic.size()>0)
   {
     // First camera is the first one that have been used

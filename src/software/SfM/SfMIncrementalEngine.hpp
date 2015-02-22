@@ -112,7 +112,7 @@ public:
   {
     _bUseBundleAdjustment = bUseBundleAdjustment;
   }
-
+  
   void setIfRefinePrincipalPointAndRadialDisto(bool bRefinePPandDisto)
   {
     _bRefinePPandDisto = bRefinePPandDisto;
@@ -122,8 +122,6 @@ public:
   {
     _bRefineFocal = bRefineFocal;
   }
-
-  bool loadInitialPose(std::string sPoseFile);
 
 private:
 

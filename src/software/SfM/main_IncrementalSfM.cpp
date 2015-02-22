@@ -46,7 +46,7 @@ bool computeIndexFromImageNames(
       std::cerr << "\nCannot access to the specified image: \""<< initialPairName.first << "\"" << std::endl;
       return false;
   }
-  initialPairIndex.first = std::distance<std::vector<std::string>::const_iterator>(vec_camImageName.begin(), imageName);
+  initialPairIndex.first = std::distance<std::vector<std::string>::const_iterator>(vec_camImageName.begin(), imageName); 
   imageName = find(vec_camImageName.begin(), vec_camImageName.end(), initialPairName.second);
   if(imageName == vec_camImageName.end())
   {
