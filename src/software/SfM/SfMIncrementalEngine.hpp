@@ -112,7 +112,7 @@ public:
   {
     _bUseBundleAdjustment = bUseBundleAdjustment;
   }
-
+  
   void setIfRefinePrincipalPointAndRadialDisto(bool bRefinePPandDisto)
   {
     _bRefinePPandDisto = bRefinePPandDisto;
@@ -123,13 +123,6 @@ public:
     _bRefineFocal = bRefineFocal;
   }
 
-  void setInitialPoseKnown(bool bInitialPoseKnown)
-  {
-    _bInitialPoseKnown = bInitialPoseKnown;
-  }
-
-  bool loadInitialPose(std::string sPoseFile);
-
 private:
 
   // -----
@@ -138,7 +131,6 @@ private:
   std::vector<openMVG::SfMIO::CameraInfo> _vec_camImageNames;
   std::vector<openMVG::SfMIO::IntrinsicCameraInfo> _vec_intrinsicGroups;
   std::map< size_t, std::vector<SIOPointFeature> > _map_feats; // feature per images
-  double _vec_initialPose[12] = {1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
 
   // Intrinsic Id per imageId
   std::map<size_t, size_t> _map_IntrinsicIdPerImageId;
@@ -152,7 +144,6 @@ private:
   bool _bUseBundleAdjustment;
   bool _bRefinePPandDisto; // Boolean used to know if Principal point and Radial disto is refined
   bool _bRefineFocal;      // Boolean used to know if we refine focal or not
-  bool _bInitialPoseKnown; // boolean used to know if pose of initial pair is known
 
   // -----
   // Future reconstructed data
