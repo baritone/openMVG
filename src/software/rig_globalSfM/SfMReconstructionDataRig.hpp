@@ -22,11 +22,11 @@
 #include "openMVG/image/image.hpp"
 #include "openMVG/tracks/tracks.hpp"
 #include "openMVG/cameras/Camera_IO.hpp"
+#include "openMVG/stl/stlMap.hpp"
 
 #include "software/SfM/SfMPlyHelper.hpp"
 #include "software/SfM/SfMReconstructionData.hpp"
 #include "third_party/progress/progress.hpp"
-#include "third_party/stlAddition/stlMap.hpp"
 #include "third_party/stlplus3/filesystemSimplified/file_system.hpp"
 
 namespace openMVG{

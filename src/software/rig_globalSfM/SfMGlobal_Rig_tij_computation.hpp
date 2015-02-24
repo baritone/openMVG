@@ -20,7 +20,7 @@
 #include "openMVG/bundle_adjustment/rig_pinhole_ceres_functor.hpp"
 #include "software/globalSfM/SfMBundleAdjustmentHelper_tonly.hpp"
 
-#include "openMVG/matching/indexed_sort.hpp"
+#include "openMVG/stl/indexed_sort.hpp"
 
 #include "software/globalSfM/mutexSet.hpp"
 
@@ -706,7 +706,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = 16.0 / averageFocal / averageFocal;
+          double dPrecision = square ( 4.0 / averageFocal ) ;
           const double ThresholdUpperBound = 2.5 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
