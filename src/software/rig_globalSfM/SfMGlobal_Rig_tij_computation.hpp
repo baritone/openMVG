@@ -706,7 +706,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = square ( 4.0 / averageFocal ) ;
+          double dPrecision = pow ( 4.0 / averageFocal , 2.0 ) ;
           const double ThresholdUpperBound = 2.5 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
