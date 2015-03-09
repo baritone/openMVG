@@ -10,6 +10,7 @@
 #include "openMVG/features/features.hpp"
 #include "openMVG/matching/indMatch.hpp"
 #include "software/SfM/SfMIOHelper.hpp"
+#include "openMVG/multiview/essential.hpp"
 
 #include <opengv/types.hpp>
 #include <opengv/relative_pose/methods.hpp>
@@ -147,6 +148,7 @@ class ImageCollectionGeometricFilter
       //-- Apply the geometric filter
       {
         std::vector<size_t> vec_inliers;
+        transformation_t  rigPose;
         geometricFilter.Fit(
           bearingVectorsRigOne,
           bearingVectorsRigTwo,
@@ -154,6 +156,7 @@ class ImageCollectionGeometricFilter
           camCorrespondencesRigTwo,
           rigOffsets,
           rigRotations,
+          &rigPose,
           vec_inliers);
 
         if(!vec_inliers.empty())
@@ -161,15 +164,103 @@ class ImageCollectionGeometricFilter
           // export computed matches. Step one, compute PairWiseMatches structure
           PairWiseMatches   rigInliers;
 
-          for (size_t i=0; i < vec_inliers.size(); ++i)
+          for (size_t i=0; i < vec_inliers.size() ; ++i)
           {
             const std::pair < size_t, size_t >   IJ_pair = featureAndImages[vec_inliers[i]].second;
-            const size_t    featIndex = featureAndImages[vec_inliers[i]].first;
+            const size_t    putativeInd = featureAndImages[vec_inliers[i]].first;
 
-            rigInliers[IJ_pair].push_back( iter->second.at(IJ_pair)[featIndex] );
+            rigInliers[IJ_pair].push_back( iter->second.at(IJ_pair)[putativeInd] );
           }
+
+#if 0
+          // retrieve relative rig orientation and translation
+          const Mat3  Rrig = rigPose.block<3,3>(0,0).transpose();
+          const Vec3  Crig = rigPose.col(3);
+          const Vec3  tRig = -Rrig * Crig;
+
+          // step two. For each image pair, filter inliers using epipolar condition
+          for( PairWiseMatches::iterator iter_pair = rigInliers.begin();
+                         iter_pair != rigInliers.end();
+                         ++iter_pair )
+          {
+              // extract image index and camera matrix
+              const size_t  I = iter_pair->first.first;
+              const size_t  J = iter_pair->first.second;
+
+              const Mat3  KI = vec_focalGroup [ map_IntrinsicIdPerImageId.at( I ) ].m_K;
+              const Mat3  KJ = vec_focalGroup [ map_IntrinsicIdPerImageId.at( J ) ].m_K;
+
+              const Mat3  KI_inv = KI.inverse();
+              const Mat3  KJ_inv = KJ.inverse();
+
+              // compute pose of each camera
+              const Mat3  RI = vec_focalGroup [ map_IntrinsicIdPerImageId.at( I ) ].m_R ;
+              const Mat3  RJ = vec_focalGroup [ map_IntrinsicIdPerImageId.at( J ) ].m_R * Rrig;
+
+              const Vec3  tI = -RI * vec_focalGroup [ map_IntrinsicIdPerImageId.at( I ) ].m_rigC;
+              const Vec3  tJ = RJ * tRig - RJ * vec_focalGroup [ map_IntrinsicIdPerImageId.at( J ) ].m_rigC;
+
+              // compute relative pose
+              Mat3  R ;
+              Vec3  t;
+
+              RelativeCameraMotion(RI, tI, RJ, tJ, &R, &t);
+
+              // compute fundamental matrix
+              Mat3  tx;
+              tx <<   0.0, -t[2],  t[1],
+                     t[2],   0.0, -t[0],
+                    -t[1],  t[0],   0.0;
+
+              const Mat3 F = (KJ_inv).transpose() * tx * R * KI_inv ;
+
+              // loop on features
+              const std::vector<IndMatch> & vec_inliersMatches = iter_pair->second;
+
+              // Load features of Inth and Jnth images
+              typename std::map<size_t, std::vector<FeatureT> >::const_iterator iterFeatsI = map_Feat.find(I);
+              typename std::map<size_t, std::vector<FeatureT> >::const_iterator iterFeatsJ = map_Feat.find(J);
+              const std::vector<FeatureT> & kpSetI = iterFeatsI->second;
+              const std::vector<FeatureT> & kpSetJ = iterFeatsJ->second;
+
+              std::vector<IndMatch>  vec_inliersFund;
+
+              for (size_t i=0; i < vec_inliersMatches.size(); ++i)
+              {
+                // intialize bearing vectors
+                bearingVector_t  bearingOne;
+                bearingVector_t  bearingTwo;
+
+                // compute and store normalized coordinates for image I
+                const FeatureT & imaA = kpSetI[vec_inliersMatches[i]._i];
+                bearingOne(0) = imaA.x();
+                bearingOne(1) = imaA.y();
+                bearingOne(2) = 1.0;
+
+                // compute and store normalized coordinates for image J
+                const FeatureT & imaB = kpSetJ[vec_inliersMatches[i]._j];
+                bearingTwo(0) = imaB.x();
+                bearingTwo(1) = imaB.y();
+                bearingTwo(2) = 1.0;
+
+                // compute line coefficient
+                const  Vec3  F_x = F * bearingOne ;
+                double  UpperThreshold = 8.0;
+
+                double   xpFx = abs(F_x.dot(bearingTwo)) /  F_x.head<2>().norm();
+
+                if ( xpFx < UpperThreshold )
+                    vec_inliersFund.push_back( vec_inliersMatches[i] ) ;
+              }
+
+              // swap filtered matches
+              iter_pair-> second = vec_inliersFund ;
+
+          }
+#endif
+          // update rigwise matches map
           #ifdef USE_OPENMP
-          #pragma omp critical
+            #pragma omp critical
           #endif
           {
             map_GeometricMatches[iter->first] = rigInliers;

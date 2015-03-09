@@ -374,7 +374,7 @@ int main(int argc, char **argv)
         }
       }
 
-      double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
+      double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 10.0 / averageFocal )));
 
       // Now filter images
       collectionGeomFilter.Filter(
@@ -390,9 +390,6 @@ int main(int argc, char **argv)
 
       //-- Perform an additional check to remove pairs with poor overlap
       std::vector<RigWiseMatches::key_type> vec_rigtoRemove;
-#ifdef USE_OPENMP
-  #pragma  omp parallel for schedule(dynamic)
-#endif
       for ( size_t i = 0 ; i < map_GeometricMatches.size(); ++i)
       {
           RigWiseMatches::const_iterator iterMap = map_GeometricMatches.begin();
@@ -417,7 +414,7 @@ int main(int argc, char **argv)
           for (std::vector<PairWiseMatches::key_type>::const_iterator
             iter =  vec_toRemove.begin(); iter != vec_toRemove.end(); ++iter)
           {
-            map_GeometricMatches[iterMap->first].erase(*iter);
+            map_GeometricMatches.at(iterMap->first).erase(*iter);
           }
         }
 
@@ -444,14 +441,12 @@ int main(int argc, char **argv)
 
       std::cout << "Task done in (s): " << timer.elapsed() << std::endl;
 
-#if 0
       //-- export Adjacency matrix
       std::cout << "\n Export Adjacency Matrix of the pairwise's geometric matches"
         << std::endl;
-      PairWiseMatchingToAdjacencyMatrixSVG(vec_fileNames.size(),
+      RigWiseMatchingToAdjacencyMatrixSVG(vec_fileNames.size(),
         map_GeometricMatches,
         stlplus::create_filespec(sOutDir, "GeometricAdjacencyMatrix", "svg"));
-#endif
   }
   return EXIT_SUCCESS;
 }

@@ -105,6 +105,7 @@ public:
 
   /// Tell if the final BA must refine Intrinsics data or not
   void setRefineIntrinsics(bool bStatus) { _bRefineIntrinsics = bStatus; }
+  void setRefineRigStruct (bool bStatus) { _bRefineRigStruct  = bStatus; }
 
   //--
   // TYPEDEF
@@ -157,6 +158,7 @@ private:
     const STLMAPTracks & map_tracksSelected,
     bool bRefineRotation = true,
     bool bRefineTranslation = true,
+    bool bRefineRigStruct = false,
     bool bRefineIntrinsics = false);
 
 private:
@@ -223,6 +225,7 @@ private:
   // Final Bundle Adjustment parameter
   // ----
   bool _bRefineIntrinsics;
+  bool _bRefineRigStruct;
 
   // -----
   // Reporting ..

@@ -8,8 +8,8 @@
 #include "openMVG/features/features.hpp"
 #include "openMVG/image/image.hpp"
 #include "openMVG/matching/indMatch_utils.hpp"
-#include "openMVG/matching/indexed_sort.hpp"
 #include "openMVG/multiview/triangulation_nview.hpp"
+#include "openMVG/stl/stl.hpp"
 
 #include "software/globalSfM/indexedImageGraph.hpp"
 #include "software/globalSfM/indexedImageGraphExport.hpp"
@@ -37,7 +37,6 @@
 
 #include "third_party/stlplus3/filesystemSimplified/file_system.hpp"
 #include "third_party/vectorGraphics/svgDrawer.hpp"
-#include "third_party/stlAddition/stlMap.hpp"
 #include "third_party/histogram/histogram.hpp"
 
 #include <opengv/types.hpp>
@@ -611,10 +610,10 @@ bool GlobalRigidReconstructionEngine::Process()
     //---------------------------------------
     //-- Export geometric filtered matches
     //---------------------------------------
-  //  std::ofstream file (string(_sMatchesPath + "/matches.filtered.txt").c_str());
-  //  if (file.is_open())
-  //    PairedIndMatchToStream(_map_Matches_E, file); // need to modifiy that ?
-  //  file.close();
+    std::ofstream file (string(_sMatchesPath + "/matches.filtered.txt").c_str());
+    if (file.is_open())
+      PairedIndMatchToStream(_map_Matches_E, file); // need to modifiy that ?
+    file.close();
 
     std::cout << "\n Remaining cameras after inference filter: \n"
       << set_remainingIds.size() << " from a total of " << _vec_fileNames.size() / _vec_intrinsicGroups.size() << std::endl;
@@ -1043,24 +1042,41 @@ bool GlobalRigidReconstructionEngine::Process()
 
       //-- Remove useless tracks and 3D points
       {
-        std::vector<Vec3> vec_allScenes_cleaned;
-        for(size_t i = 0; i < _vec_allScenes.size(); ++i)
-        {
-          if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
+         std::map<size_t, Vec3> map_allScenes_cleaned;
+         std::vector < Vec3 > vec_allScenes_cleaned;
+
+         #ifdef USE_OPENMP
+             #pragma omp parallel for schedule(dynamic)
+          #endif
+          for(size_t i = 0; i < _vec_allScenes.size(); ++i)
           {
-            vec_allScenes_cleaned.push_back(_vec_allScenes[i]);
+              if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
+              {
+                  #ifdef USE_OPENMP
+                    #pragma omp critical
+                  #endif
+                  {
+                      map_allScenes_cleaned[i] = _vec_allScenes[i];
+                  }
+              }
           }
-        }
-        _vec_allScenes.swap(vec_allScenes_cleaned);
 
-        for( std::set<size_t>::const_iterator iter = set_idx_to_remove.begin();
-        iter != set_idx_to_remove.end(); ++iter)
-        {
-          _map_selectedTracks.erase(*iter);
-        }
+          // export cleaned 3d points
+          for( std::map<size_t, Vec3>::const_iterator iter = map_allScenes_cleaned.begin();
+                  iter != map_allScenes_cleaned.end(); ++iter)
+          {
+               vec_allScenes_cleaned.push_back(iter->second);
+          }
 
-        std::cout << "\n #Tracks removed: " << set_idx_to_remove.size() << std::endl;
-     }
+           _vec_allScenes.swap(vec_allScenes_cleaned);
+
+          for( std::set<size_t>::const_iterator iter = set_idx_to_remove.begin();
+                  iter != set_idx_to_remove.end(); ++iter)
+          {
+              _map_selectedTracks.erase(*iter);
+          }
+          std::cout << "\n #Tracks removed: " << set_idx_to_remove.size() << std::endl;
+      }
 
      plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_LP", "ply"));
 
@@ -1109,19 +1125,34 @@ bool GlobalRigidReconstructionEngine::Process()
   //-------------------
 
   // Refine only Structure and translations
-  bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, false, true, false);
+  bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, false, true, false, false);
   plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_T_Xi", "ply"));
 
   // Refine Structure, rotations and translations
-  bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, false);
+  bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, false, false);
   plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_RT_Xi", "ply"));
+
+  if (_bRefineRigStruct)
+  {
+    // Refine Structure, rotations, translations and rig structure
+    bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, true, false);
+    plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_RT_RT_Xi", "ply"));
+  }
 
   if (_bRefineIntrinsics)
   {
-    // Refine Structure, rotations, translations and intrinsics
-    bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, true);
-    plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_KRT_Xi", "ply"));
+    // Refine Structure, rotations, translations and rig structure
+    bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, false, true);
+    plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_K_RT_Xi", "ply"));
   }
+
+  if (_bRefineIntrinsics && _bRefineRigStruct)
+  {
+    // Refine Structure, rotations, translations, rig structure and camera intrinsics
+    bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, true, true);
+    plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_KRT_RT_Xi", "ply"));
+  }
+
 
   // Triangulation of all the tracks
   {
@@ -1190,7 +1221,7 @@ bool GlobalRigidReconstructionEngine::Process()
             // compute 3D point and scale factor
             const Vec3 X = stereoObj.compute();
 
-            if( stereoObj.minDepth() > 0.0 && trianObj.minDepth() > 1.0 && stereoObj.maxDepth() < 50.0 )
+            if( stereoObj.minDepth() > 0.0 && trianObj.minDepth() > 1.0 )
             {
               scaleFactor += stereoObj.minDepth() / trianObj.minDepth() ;
               ++nStereoPoint ;
@@ -1648,9 +1679,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
       }
     }// end loop on tracks
 
-    //--> Estimate the best possible Rotation/Translation from correspondances
+    //--> Estimate the best possible Rotation/Translation from correspondences
     double errorMax = std::numeric_limits<double>::max();
-    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 2.5 / averageFocal )));
+    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
 
     transformation_t  pose;
     std::vector<size_t> vec_inliers;
@@ -2232,6 +2263,7 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
     const STLMAPTracks & map_tracksSelected,
     bool bRefineRotation,
     bool bRefineTranslation,
+    bool bRefineRigStructure,
     bool bRefineIntrinsics)
 {
   using namespace std;
@@ -2456,7 +2488,7 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
       }
     }
 
-    if (!bRefineIntrinsics)
+    if (!bRefineIntrinsics && !bRefineRigStructure)
     {
       // No camera intrinsics are being refined,
       // set the whole parameter block as constant for best performance.
@@ -2464,6 +2496,23 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
       {
         problem.SetParameterBlockConstant(ba_problem.mutable_cameras_intrinsic(iIntrinsicGroupId));
         problem.SetParameterBlockConstant(ba_problem.mutable_cameras_extrinsic(iIntrinsicGroupId));
+      }
+    }
+    else
+    {
+      if ( bRefineRigStructure)
+      {
+        for (size_t iIntrinsicGroupId = 0; iIntrinsicGroupId < ba_problem.num_intrinsics() ; ++iIntrinsicGroupId)
+        {
+          problem.SetParameterBlockConstant(ba_problem.mutable_cameras_intrinsic(iIntrinsicGroupId));
+        }
+      }
+      if ( bRefineIntrinsics)
+      {
+        for (size_t iIntrinsicGroupId = 0; iIntrinsicGroupId < ba_problem.num_intrinsics() ; ++iIntrinsicGroupId)
+        {
+          problem.SetParameterBlockConstant(ba_problem.mutable_cameras_extrinsic(iIntrinsicGroupId));
+        }
       }
     }
   }
