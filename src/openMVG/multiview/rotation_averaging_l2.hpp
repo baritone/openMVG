@@ -182,7 +182,7 @@ static bool L2RotationAveraging( size_t nCamera,
 
 // Ceres Functor to minimize global rotation regarding fixed relative rotation
 struct CeresPairRotationError {
-  CeresPairRotationError(const openMVG::Vec3& relative_rotation,    const double weight)
+  CeresPairRotationError(const openMVG::Vec3& relative_rotation,  const double weight)
   :relative_rotation_(relative_rotation), weight_(weight) {}
 
   // The error is given by the rotation cycle error (R2 * R1.t) * RRel.t
@@ -260,10 +260,10 @@ bool L2RotationAveraging_Refine(
   ceres::Solver::Options solverOptions;
   // Since the problem is sparse, use a sparse solver
   solverOptions.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
   solverOptions.num_threads = omp_get_max_threads();
   solverOptions.num_linear_solver_threads = omp_get_max_threads();
-#endif // USE_OPENMP
+#endif // OPENMVG_USE_OPENMP
 
   ceres::Solver::Summary summary;
   ceres::Solve(solverOptions, &problem, &summary);
