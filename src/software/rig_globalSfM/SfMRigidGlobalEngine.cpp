@@ -637,6 +637,8 @@ bool GlobalRigidReconstructionEngine::Process()
     }
   }
 
+  return 0;
+
   //----------------------------
   // Rotation averaging
   //----------------------------
@@ -1031,14 +1033,6 @@ bool GlobalRigidReconstructionEngine::Process()
       }
 
       std::cout << "\n Clean point cloud before BA \n " << endl;
-
-      // remove point with big reprojection error
-      double quant;
-      quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.95);
-
-      for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
-        if( vec_residuals[idx] > quant)
-          set_idx_to_remove.insert(idx);
 
       //-- Remove useless tracks and 3D points
       {
@@ -1608,8 +1602,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
       size_t subTrackCpt = 0;
       Vec2  rigIndex = -1.0*Vec2::Ones();
       Vec2  subTrackId;
-      for (submapTrack::const_iterator iter = subTrack.begin(); iter != subTrack.end(); ++iter, ++subTrackCpt) {
-        const size_t imaIndex = iter->first;
+      for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack, ++subTrackCpt) {
+        const size_t imaIndex = iterSubTrack->first;
         const size_t rigidId = _map_RigIdPerImageId.at(imaIndex);
         if( rigIndex[0] == -1 && index == 0 )
         {
@@ -1643,12 +1637,12 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
       // iter on subtracks
       for (size_t index = 0; index < 2 ; ++index)
       {
-        submapTrack::const_iterator iter = subTrack.begin();
-        std::advance(iter, subTrackIndex[cpt][index]);
+        submapTrack::const_iterator iterSub = subTrack.begin();
+        std::advance(iterSub, subTrackIndex[cpt][index]);
 
         // extract camId and feature index
-        const size_t imaIndex = iter->first;
-        const size_t featIndex = iter->second;
+        const size_t imaIndex = iterSub->first;
+        const size_t featIndex = iterSub->second;
 
         // extract features
         bearingVector_t  bearing;
@@ -1660,7 +1654,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         bearing(2) = 1.0;
 
         // normalize bearing vectors
-        bearing = bearing / bearing.norm();
+        // bearing = bearing / bearing.norm();
 
         // extract camera indexes
         size_t subCamId = _map_IntrinsicIdPerImageId.at(imaIndex);
@@ -1681,7 +1675,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondences
     double errorMax = std::numeric_limits<double>::max();
-    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
+    double maxExpectedError = 4.0 / averageFocal ;
 
     transformation_t  pose;
     std::vector<size_t> vec_inliers;
@@ -1696,6 +1690,18 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         const Vec3  CRig = pose.col(3);
         const Vec3  tRig = -Rrig * CRig;
 
+        #ifdef USE_OPENMP
+            #pragma omp critical
+        #endif
+        {
+            std::cout << R0 << " " << R1 << std::endl;
+            std::cout << Rrig << std::endl;
+            std::cout << tRig.transpose() << std::endl;
+        }
+
+        std::cout << " inlier \% " << vec_inliers.size() / (double) bearingVectorsRigTwo.size() << endl;
+
+#if 0
         // compute point cloud associated and do BA to refine pose of rigs
         Mat3  K = Mat3::Identity();
         std::vector<Vec3> vec_allScenes;
@@ -1768,14 +1774,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
               set_idx_to_remove.insert(idx);
             }
           }
-
-          // remove point with big reprojection error
-          double quant;
-          quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
-
-          for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
-            if( vec_residuals[idx] > quant)
-              set_idx_to_remove.insert(idx);
 
           //-- Remove useless tracks and 3D points
           {
@@ -1947,7 +1945,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         ceres::Problem problem;
         // Set a LossFunction to be less penalized by false measurements
         //  - set it to NULL if you don't want use a lossFunction.
-        ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
+        ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
         for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
           // Each Residual block takes a point and a camera as input and outputs a 2
           // dimensional residual. Internally, the cost function stores the observed
@@ -2034,19 +2032,15 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             RelativeCameraMotion(RotRigOne, tRigOne, RotRigTwo, tRigTwo, &R, &t);
 
         }
+        #endif
         // export rotation for rotation avereging
         #ifdef USE_OPENMP
           #pragma omp critical
         #endif
         {
-          vec_relatives.insert( std::make_pair ( std::make_pair(R0,R1), std::make_pair(R,t) ) );
+          vec_relatives[iter->first] = std::make_pair(Rrig,tRig);
+          ++my_progress_bar;
         }
-    }
-    #ifdef USE_OPENMP
-        #pragma omp critical
-    #endif
-    {
-        ++my_progress_bar;
     }
   }
 }
@@ -2408,7 +2402,7 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
   ceres::Problem problem;
   // Set a LossFunction to be less penalized by false measurements
   //  - set it to NULL if you don't want use a lossFunction.
-  ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
+  ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
   for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
     // Each Residual block takes a point and a camera as input and outputs a 2
     // dimensional residual. Internally, the cost function stores the observed

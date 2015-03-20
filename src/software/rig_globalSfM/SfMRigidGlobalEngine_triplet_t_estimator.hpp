@@ -126,7 +126,7 @@ namespace openMVG{
     cstBuilder,
     &vec_solution,
     ThresholdUpperBound,//admissibleResidual,
-    0.0, 1e-8, 2, &gamma, false))
+    0.0, 1e-8, 10, &gamma, false))
   {
     std::vector<Vec3> vec_tis(3);
     vec_tis[0] = Vec3(vec_solution[0], vec_solution[1], vec_solution[2]);
@@ -373,7 +373,7 @@ namespace openMVG{
         cstBuilder,
         &vec_solution,
         ThresholdUpperBound,//admissibleResidual,
-        0.0, 1e-8, 2, &gamma, false))
+        0.0, 1e-8, 5, &gamma, false))
       {
         std::vector<Vec3> vec_tis(3);
         vec_tis[0] = Vec3(vec_solution[0], vec_solution[1], vec_solution[2]);

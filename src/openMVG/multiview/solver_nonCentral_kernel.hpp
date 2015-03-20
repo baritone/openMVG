@@ -33,14 +33,14 @@ using namespace opengv;
  */
 struct SixPointSolver {
   enum { MINIMUM_SAMPLES = 9 };
-  enum { MAX_MODELS = 1 };
+  enum { MAX_MODELS = 64 };
   static void Solve(relative_pose::NoncentralRelativeAdapter & adapter,
                     std::vector<transformation_t> * models,
                     const std::vector<size_t> &indices);
 };
 
 struct GePointSolver {
-  enum { MINIMUM_SAMPLES = 8 };
+  enum { MINIMUM_SAMPLES = 17 };
   enum { MAX_MODELS = 1 };
   static void Solve(relative_pose::NoncentralRelativeAdapter & adapter,
   std::vector<transformation_t> * models,
@@ -84,7 +84,7 @@ struct RigProjError {
     Vec3 X;
     TriangulateDLT(cam1._P, x1, cam2._P, x2, &X);
 
-    return cam1.Residual(X,x1) +  cam2.Residual(X,x2);
+    return std::max(cam1.Residual(X,x1), cam2.Residual(X,x2));
   }
 };
 typedef RigProjError SimpleError;
@@ -125,16 +125,22 @@ struct RigAngularError {
 
     p_hom.block<3,1>(0,0) =
         opengv::triangulation::triangulate2(_adapter,index);
-    bearingVector_t reprojection1 = p_hom.block<3,1>(0,0).normalized();
-    bearingVector_t reprojection2 = (inverseSolution * p_hom).normalized();
+    bearingVector_t reprojection1 = p_hom.block<3,1>(0,0);
+    bearingVector_t reprojection2 = (inverseSolution * p_hom);
     bearingVector_t f1 = _adapter.getBearingVector1(index);
     bearingVector_t f2 = _adapter.getBearingVector2(index);
 
+    //scale vectors
+    reprojection1 /= reprojection1(2);
+    reprojection2 /= reprojection2(2);
+    f1 /= f1(2);
+    f2 /= f2(2);
+
     //bearing-vector based outlier criterium (select threshold accordingly):
     //1-(f1'*f2) = 1-cos(alpha) \in [0:2]
-    double reprojError1 = 1.0 - (f1.transpose() * reprojection1);
-    double reprojError2 = 1.0 - (f2.transpose() * reprojection2);
-    return reprojError1 + reprojError2;
+    double reprojError1 = (f1 - reprojection1).norm() ;
+    double reprojError2 = (f2 - reprojection2).norm() ;
+    return std::max(reprojError1,reprojError2);
   }
 };
 typedef RigAngularError SimpleAngularError;

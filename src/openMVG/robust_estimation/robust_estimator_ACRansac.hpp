@@ -229,14 +229,15 @@ std::pair<double, double> ACRANSAC(const Kernel &kernel,
       }
     }
 
-    if(bOptimize)
-    {
-      // ACRANSAC optimization: draw samples among best set of inliers so far
-      if((better && minNFA<0) || (iter+1==nIter && nIterReserve)) {
-        if(vec_inliers.empty()) { // No model found at all so far
-          nIter++; // Continue to look for any model, even not meaningful
-          nIterReserve--;
-        } else {
+    // ACRANSAC optimization: draw samples among best set of inliers so far
+    if((better && minNFA<0) || (iter+1==nIter && nIterReserve)) {
+      if(vec_inliers.empty()) { // No model found at all so far
+        nIter++; // Continue to look for any model, even not meaningful
+        nIterReserve--;
+      } else
+      {
+        if( vec_inliers.size() > 0.85 * vec_index.size() || bOptimize )
+        {
           // ACRANSAC optimization: draw samples among best set of inliers so far
           vec_index = vec_inliers;
           if(nIterReserve) {
