@@ -479,10 +479,10 @@ bool estimate_T_rig_triplet(
 
     options.minimizer_progress_to_stdout = false;
     options.logging_type = ceres::SILENT;
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
     options.num_threads = omp_get_max_threads();
     options.num_linear_solver_threads = omp_get_max_threads();
-#endif // USE_OPENMP
+#endif // OPENMVG_USE_OPENMP
 
     // Solve BA
     ceres::Solver::Summary summary;
@@ -556,7 +556,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
   //-- Prepare tracks count per triplets:
   std::map<size_t, size_t> map_tracksPerTriplets;
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
   #pragma omp parallel for schedule(dynamic) ordered
 #endif
   for (int i = 0; i < (int)vec_triplets.size(); ++i)
@@ -590,7 +590,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
       tracksBuilder.Build(map_matchesIJK);
       tracksBuilder.Filter(_map_RigIdPerImageId,3);
     }
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
   #pragma omp critical
 #endif
    {
@@ -667,7 +667,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
       // Try to solve the triplets
       // Search the possible triplet:
-  #ifdef USE_OPENMP
+  #ifdef OPENMVG_USE_OPENMP
       #pragma omp parallel for schedule(dynamic)
   #endif
       for (size_t i = 0; i < vec_possibleTriplets.size(); ++i)
@@ -741,7 +741,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
             // IJ, JK, IK
 
             //--- ATOMIC
-            #ifdef USE_OPENMP
+            #ifdef OPENMVG_USE_OPENMP
                #pragma omp critical
             #endif
             {
