@@ -637,8 +637,6 @@ bool GlobalRigidReconstructionEngine::Process()
     }
   }
 
-  return 0;
-
   //----------------------------
   // Rotation averaging
   //----------------------------
@@ -1690,18 +1688,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         const Vec3  CRig = pose.col(3);
         const Vec3  tRig = -Rrig * CRig;
 
-        #ifdef USE_OPENMP
-            #pragma omp critical
-        #endif
-        {
-            std::cout << R0 << " " << R1 << std::endl;
-            std::cout << Rrig << std::endl;
-            std::cout << tRig.transpose() << std::endl;
-        }
-
-        std::cout << " inlier \% " << vec_inliers.size() / (double) bearingVectorsRigTwo.size() << endl;
-
-#if 0
         // compute point cloud associated and do BA to refine pose of rigs
         Mat3  K = Mat3::Identity();
         std::vector<Vec3> vec_allScenes;
@@ -2032,16 +2018,21 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             RelativeCameraMotion(RotRigOne, tRigOne, RotRigTwo, tRigTwo, &R, &t);
 
         }
-        #endif
         // export rotation for rotation avereging
         #ifdef USE_OPENMP
           #pragma omp critical
         #endif
         {
-          vec_relatives[iter->first] = std::make_pair(Rrig,tRig);
-          ++my_progress_bar;
+          vec_relatives[iter->first] = std::make_pair(R,t);
         }
-    }
+      }
+
+     #ifdef USE_OPENMP
+        #pragma omp critical
+     #endif
+      {
+          ++my_progress_bar;
+      }
   }
 }
 
