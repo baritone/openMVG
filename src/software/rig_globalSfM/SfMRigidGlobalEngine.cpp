@@ -1563,7 +1563,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
   C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n " );
 #ifdef OPENMVG_USE_OPENMP
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel shared(rigOffsets, rigRotations, averageFocal, vec_relatives)
+    #pragma omp for schedule(static)
 #endif
   // loop on rigs
   for (int i = 0; i < _map_Matches_Rig.size(); ++i)
@@ -1652,7 +1653,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         bearing(2) = 1.0;
 
         // normalize bearing vectors
-        // bearing = bearing / bearing.norm();
+        bearing = bearing / bearing.norm();
 
         // extract camera indexes
         size_t subCamId = _map_IntrinsicIdPerImageId.at(imaIndex);
@@ -1683,11 +1684,16 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         rigOffsets, rigRotations, &pose, &vec_inliers,
         &errorMax, maxExpectedError) )
     {
+      #ifdef OPENMVG_USE_OPENMP
+        #pragma omp critical
+      #endif
+      {
         // retrieve relative rig orientation and translation
         const Mat3  Rrig = pose.block<3,3>(0,0).transpose();
         const Vec3  CRig = pose.col(3);
         const Vec3  tRig = -Rrig * CRig;
 
+#if 0
         // compute point cloud associated and do BA to refine pose of rigs
         Mat3  K = Mat3::Identity();
         std::vector<Vec3> vec_allScenes;
@@ -2018,14 +2024,16 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             RelativeCameraMotion(RotRigOne, tRigOne, RotRigTwo, tRigTwo, &R, &t);
 
         }
+        #endif
         // export rotation for rotation avereging
         #ifdef OPENMVG_USE_OPENMP
-          #pragma omp critical
+        //  #pragma omp critical
         #endif
         {
-          vec_relatives[iter->first] = std::make_pair(R,t);
+          vec_relatives.insert(std::make_pair(iter->first, std::make_pair(Rrig,tRig)));
         }
       }
+    }
 
      #ifdef OPENMVG_USE_OPENMP
         #pragma omp critical

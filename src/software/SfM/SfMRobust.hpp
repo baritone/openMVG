@@ -199,12 +199,19 @@ bool robustRigPose(
       transformation_t>
       KernelType;
 
+  KernelType kernel2(b1, b2, scIdOne, scIdTwo, rigOffsets, rigRotations);
+
+      #ifdef OPENMVG_USE_OPENMP
+          #pragma omp critical
+      #endif
+      {
   KernelType kernel(b1, b2, scIdOne, scIdTwo, rigOffsets, rigRotations);
 
   // Robustly estimation of the Essential matrix and it's precision
-  std::pair<double,double> acRansacOut = ACRANSAC(kernel, *pvec_inliers,
+  std::pair<double,double> acRansacOut = ACRANSAC(kernel2, *pvec_inliers,
     4096, relativePose, precision, false, false );
   *errorMax = acRansacOut.first;
+  }
 
   return (pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES );
 }

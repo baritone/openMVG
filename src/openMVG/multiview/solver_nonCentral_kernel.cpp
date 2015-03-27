@@ -15,7 +15,8 @@ namespace kernel {
 using namespace std;
 using namespace opengv;
 
-void SixPointSolver::Solve(relative_pose::NoncentralRelativeAdapter & adapter,
+void SixPointSolver::Solve(
+                  relative_pose::NoncentralRelativeAdapter & adapter,
                   std::vector<transformation_t> * models,
                   const std::vector<size_t> &indices)
 {
@@ -41,9 +42,10 @@ void SixPointSolver::Solve(relative_pose::NoncentralRelativeAdapter & adapter,
    models->push_back(relativePose);
 }
 
-void GePointSolver::Solve(relative_pose::NoncentralRelativeAdapter & adapter,
-std::vector<transformation_t> * models,
-const std::vector<size_t> &indices)
+void GePointSolver::Solve(
+          relative_pose::NoncentralRelativeAdapter & adapter,
+          std::vector<transformation_t> * models,
+          const std::vector<size_t> &indices)
 {
 
   // convert size_t to int for opengv call
@@ -56,9 +58,9 @@ const std::vector<size_t> &indices)
 
   // create non central relative sac problem
   sac_problems::relative_pose::NoncentralRelativePoseSacProblem
-  problem(adapter,
-  sac_problems::relative_pose::NoncentralRelativePoseSacProblem::GE,
-  false);
+            problem(adapter,
+                    sac_problems::relative_pose::NoncentralRelativePoseSacProblem::GE,
+                    false);
 
   // solve pose problem
   transformation_t relativePose;
