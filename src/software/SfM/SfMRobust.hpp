@@ -192,6 +192,7 @@ bool robustRigPose(
 
   // Use the 6 point solver to the pose
   typedef openMVG::noncentral::kernel::GePointSolver SolverType;
+
   // Define the AContrario adaptor
   typedef ACKernelAdaptorRigPose<
       SolverType,
@@ -199,16 +200,12 @@ bool robustRigPose(
       transformation_t>
       KernelType;
 
-  KernelType kernel2(b1, b2, scIdOne, scIdTwo, rigOffsets, rigRotations);
-
-      #ifdef OPENMVG_USE_OPENMP
-          #pragma omp critical
-      #endif
-      {
   KernelType kernel(b1, b2, scIdOne, scIdTwo, rigOffsets, rigRotations);
 
   // Robustly estimation of the Essential matrix and it's precision
-  std::pair<double,double> acRansacOut = ACRANSAC(kernel2, *pvec_inliers,
+  #pragma comment omp critical
+  {
+  std::pair<double,double> acRansacOut = ACRANSAC(kernel, *pvec_inliers,
     4096, relativePose, precision, false, false );
   *errorMax = acRansacOut.first;
   }

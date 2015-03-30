@@ -1679,15 +1679,26 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     transformation_t  pose;
     std::vector<size_t> vec_inliers;
 
-    if ( SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
-        camCorrespondencesRigOne, camCorrespondencesRigTwo,
-        rigOffsets, rigRotations, &pose, &vec_inliers,
-        &errorMax, maxExpectedError) )
+    bool isPoseUsable;
+    #ifdef OPENMVG_USE_OPENMP
+      #pragma comment omp critical
+    #endif
     {
-      #ifdef OPENMVG_USE_OPENMP
-        #pragma omp critical
-      #endif
-      {
+        isPoseUsable = SfMRobust::robustRigPose(
+                          bearingVectorsRigOne,
+                          bearingVectorsRigTwo,
+                          camCorrespondencesRigOne,
+                          camCorrespondencesRigTwo,
+                          rigOffsets,
+                          rigRotations,
+                          &pose,
+                          &vec_inliers,
+                          &errorMax,
+                          maxExpectedError);
+    }
+
+    if ( isPoseUsable )
+    {
         // retrieve relative rig orientation and translation
         const Mat3  Rrig = pose.block<3,3>(0,0).transpose();
         const Vec3  CRig = pose.col(3);
@@ -2033,7 +2044,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
           vec_relatives.insert(std::make_pair(iter->first, std::make_pair(Rrig,tRig)));
         }
       }
-    }
 
      #ifdef OPENMVG_USE_OPENMP
         #pragma omp critical
