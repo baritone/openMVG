@@ -144,15 +144,13 @@ std::pair<double, double> ACRANSAC(const Kernel &kernel,
 {
   const size_t sizeSample = Kernel::MINIMUM_SAMPLES;
   const size_t nData = kernel.NumSamples();
-//  if(nData <= (size_t)sizeSample)
-//    return std::make_pair(0.0,0.0);
+  if(nData <= (size_t)sizeSample)
+    return std::make_pair(0.0,0.0);
 
   // Output parameters
   double minNFA = std::numeric_limits<double>::infinity();
   double errorMax = std::numeric_limits<double>::infinity();
 
-#pragma omp critical
-{
   vec_inliers.clear();
 
   const double maxThreshold = (precision==std::numeric_limits<double>::infinity()) ?
@@ -260,7 +258,6 @@ std::pair<double, double> ACRANSAC(const Kernel &kernel,
       kernel.Unnormalize(model);
     errorMax = kernel.unormalizeError(errorMax);
   }
-}
 
   return std::make_pair(errorMax, minNFA);
 }

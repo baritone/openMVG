@@ -620,9 +620,19 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
   std::cout << std::endl
     << "Computation of the relative translations over the graph with an edge coverage algorithm" << std::endl;
+#ifdef OPENMVG_USE_OPENMP
+    #pragma omp parallel for ordered schedule(static,1)
+#endif
   for (int k = 0; k < vec_edges.size(); ++k)
   {
-    const myEdge & edge = vec_edges[k];
+    myEdge edge(std::make_pair(0,0));
+    #ifdef OPENMVG_USE_OPENMP
+        #pragma omp ordered
+    #endif
+    {
+        edge = vec_edges[k];
+    }
+
     bool  bEvaluate     = true;
 
     //-- If current edge already computed continue
@@ -667,9 +677,6 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
       // Try to solve the triplets
       // Search the possible triplet:
-  #ifdef OPENMVG_USE_OPENMP
-      #pragma omp parallel for schedule(dynamic)
-  #endif
       for (size_t i = 0; i < vec_possibleTriplets.size(); ++i)
       {
         const graphUtils::Triplet & triplet = vec_triplets[vec_possibleTriplets[i]];

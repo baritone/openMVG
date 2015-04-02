@@ -1561,20 +1561,40 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
   averageFocal /= (double) _vec_intrinsicGroups.size();
 
+  // initialize structure used for matching between rigs
+  bearingVectors_t bearingVectorsRigOne;
+  bearingVectors_t bearingVectorsRigTwo;
+
+  std::vector<int>  camCorrespondencesRigOne;
+  std::vector<int>  camCorrespondencesRigTwo;
+
+  transformation_t  pose;
+  std::vector<size_t> vec_inliers;
+
+  // initialize thresholds
+  double errorMax = std::numeric_limits<double>::max();
+  double maxExpectedError = 4.0 / averageFocal ;
+
   C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n " );
 #ifdef OPENMVG_USE_OPENMP
-    #pragma omp parallel shared(rigOffsets, rigRotations, averageFocal, vec_relatives)
-    #pragma omp for schedule(static)
+    #pragma omp parallel for ordered schedule(static,1) shared(vec_relatives) firstprivate(rigOffsets, rigRotations, averageFocal, bearingVectorsRigOne, bearingVectorsRigTwo, camCorrespondencesRigOne, camCorrespondencesRigTwo, pose, vec_inliers, errorMax, maxExpectedError)
 #endif
-  // loop on rigs
   for (int i = 0; i < _map_Matches_Rig.size(); ++i)
   {
+    size_t R0, R1;
+    bool isPoseUsable;
+
     RigWiseMatches::const_iterator iter = _map_Matches_Rig.begin();
+#ifdef OPENMVG_USE_OPENMP
+    #pragma omp ordered
+#endif
+ {
     std::advance(iter, i);
+ }
 
     // extract indices of matching rigs
-    const size_t R0 = iter->first.first;
-    const size_t R1 = iter->first.second;
+    R0 = iter->first.first;
+    R1 = iter->first.second;
 
     // compute tracks between rigs
     RigWiseMatches map_matchesR0R1;
@@ -1621,11 +1641,13 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     }
 
     // initialize structure used for matching between rigs
-    bearingVectors_t bearingVectorsRigOne;
-    bearingVectors_t bearingVectorsRigTwo;
+    bearingVectorsRigOne.clear();
+    bearingVectorsRigTwo.clear();
 
-    std::vector<int>  camCorrespondencesRigOne;
-    std::vector<int>  camCorrespondencesRigTwo;
+    camCorrespondencesRigOne.clear();
+    camCorrespondencesRigTwo.clear();
+
+    vec_inliers.clear();
 
     // loop on inter-rig correspondences
     cpt = 0;
@@ -1663,8 +1685,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
           bearingVectorsRigOne.push_back( bearing );
           camCorrespondencesRigOne.push_back(subCamId);
         }
-        else
-        {
+
+        if( _map_RigIdPerImageId.at(imaIndex) == R1 ){
           // add bearing vectors to list and update correspondences list
           bearingVectorsRigTwo.push_back( bearing );
           camCorrespondencesRigTwo.push_back(subCamId);
@@ -1674,17 +1696,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondences
     double errorMax = std::numeric_limits<double>::max();
-    double maxExpectedError = 4.0 / averageFocal ;
+    const double maxExpectedError = 4.0 / averageFocal ;
 
-    transformation_t  pose;
-    std::vector<size_t> vec_inliers;
-
-    bool isPoseUsable;
-    #ifdef OPENMVG_USE_OPENMP
-      #pragma comment omp critical
-    #endif
-    {
-        isPoseUsable = SfMRobust::robustRigPose(
+    isPoseUsable = SfMRobust::robustRigPose(
                           bearingVectorsRigOne,
                           bearingVectorsRigTwo,
                           camCorrespondencesRigOne,
@@ -1695,7 +1709,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
                           &vec_inliers,
                           &errorMax,
                           maxExpectedError);
-    }
 
     if ( isPoseUsable )
     {
@@ -1704,7 +1717,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         const Vec3  CRig = pose.col(3);
         const Vec3  tRig = -Rrig * CRig;
 
-#if 0
         // compute point cloud associated and do BA to refine pose of rigs
         Mat3  K = Mat3::Identity();
         std::vector<Vec3> vec_allScenes;
@@ -2035,13 +2047,12 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             RelativeCameraMotion(RotRigOne, tRigOne, RotRigTwo, tRigTwo, &R, &t);
 
         }
-        #endif
         // export rotation for rotation avereging
         #ifdef OPENMVG_USE_OPENMP
         //  #pragma omp critical
         #endif
         {
-          vec_relatives.insert(std::make_pair(iter->first, std::make_pair(Rrig,tRig)));
+          vec_relatives.insert(std::make_pair(iter->first, std::make_pair(R,t)));
         }
       }
 
