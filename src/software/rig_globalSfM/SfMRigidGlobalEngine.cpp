@@ -972,7 +972,7 @@ bool GlobalRigidReconstructionEngine::Process()
       double  scaleFactor = 0.0;
       size_t  nStereoPoint = 0;
 
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
       #pragma omp parallel for schedule(dynamic)
 #endif
       for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
@@ -1017,7 +1017,7 @@ bool GlobalRigidReconstructionEngine::Process()
 
           vec_residuals[idx] = dAverageResidual /subTrack.size() ;
 
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
       #pragma omp critical
 #endif
         {
@@ -1045,14 +1045,14 @@ bool GlobalRigidReconstructionEngine::Process()
          std::map<size_t, Vec3> map_allScenes_cleaned;
          std::vector < Vec3 > vec_allScenes_cleaned;
 
-         #ifdef USE_OPENMP
+         #ifdef OPENMVG_USE_OPENMP
              #pragma omp parallel for schedule(dynamic)
           #endif
           for(size_t i = 0; i < _vec_allScenes.size(); ++i)
           {
               if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
               {
-                  #ifdef USE_OPENMP
+                  #ifdef OPENMVG_USE_OPENMP
                     #pragma omp critical
                   #endif
                   {
@@ -1163,7 +1163,7 @@ bool GlobalRigidReconstructionEngine::Process()
     double  scaleFactor = 0.0;
     size_t  nStereoPoint = 0;
 
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
     #pragma omp parallel for schedule(dynamic)
 #endif
     for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
@@ -1570,7 +1570,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
   averageFocal /= (double) _vec_intrinsicGroups.size();
 
   C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n " );
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
     #pragma omp parallel for schedule(dynamic)
 #endif
   // loop on rigs
@@ -2035,14 +2035,14 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         }
         // export rotation for rotation avereging
-        #ifdef USE_OPENMP
+        #ifdef OPENMVG_USE_OPENMP
           #pragma omp critical
         #endif
         {
           vec_relatives.insert( std::make_pair ( std::make_pair(R0,R1), std::make_pair(R,t) ) );
         }
     }
-    #ifdef USE_OPENMP
+    #ifdef OPENMVG_USE_OPENMP
         #pragma omp critical
     #endif
     {
@@ -2456,10 +2456,10 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
     }
   options.minimizer_progress_to_stdout = false;
   options.logging_type = ceres::SILENT;
-  #ifdef USE_OPENMP
+  #ifdef OPENMVG_USE_OPENMP
   options.num_threads = omp_get_max_threads();
   options.num_linear_solver_threads = omp_get_max_threads();
-  #endif // USE_OPENMP
+  #endif // OPENMVG_USE_OPENMP
 
   // Configure constant parameters (if any)
   {

@@ -67,7 +67,7 @@ class ImageCollectionGeometricFilter
   {
     C_Progress_display my_progress_bar( map_PutativesMatchesPair.size() );
 
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
   #pragma  omp parallel for schedule(dynamic)
 #endif
     for (int i = 0; i < (int)map_PutativesMatchesPair.size(); ++i)
@@ -259,14 +259,14 @@ class ImageCollectionGeometricFilter
           }
 #endif
           // update rigwise matches map
-          #ifdef USE_OPENMP
+          #ifdef OPENMVG_USE_OPENMP
             #pragma omp critical
           #endif
           {
             map_GeometricMatches[iter->first] = rigInliers;
           }
         }
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
 #pragma omp critical
 #endif
         {
