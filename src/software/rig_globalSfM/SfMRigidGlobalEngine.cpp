@@ -1582,7 +1582,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
   for (int i = 0; i < _map_Matches_Rig.size(); ++i)
   {
     size_t R0, R1;
-    bool isPoseUsable;
+    bool isPoseUsable = false;
 
     RigWiseMatches::const_iterator iter = _map_Matches_Rig.begin();
     std::advance(iter, i);
@@ -1718,9 +1718,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         // keep only tracks related to inliers
         openMVG::tracks::STLMAPTracks map_tracksInliers;
-        for(int l=0; l < vec_inliers.size(); ++l)
+        for(int l=0; l < map_tracks.size(); ++l)
         {
-          map_tracksInliers[l] = map_tracks[vec_inliers[l]];
+          map_tracksInliers[l] = map_tracks[l];
         }
 
         // Triangulation of all the tracks
@@ -1774,7 +1774,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
               trianObj.add(map_camera[imaIndex]._P, pt.coords().cast<double>());
             }
 
-            // Compute the 3D point and keep point index with negative depth
+            // Compute the 3D point and keep point index with positive depth
             const Vec3 Xs = trianObj.compute();
             vec_residuals.push_back( trianObj.error() / subTrack.size() );
             vec_allScenes[idx] = Xs;
@@ -1804,6 +1804,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             }
           }
         }
+
+        if( map_tracksInliers.size() > 0 )
+        {
 
         // now do bundle adjustment
         using namespace std;
@@ -2050,6 +2053,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
           vec_relatives.insert(std::make_pair(iter->first, std::make_pair(R,t)));
         }
       }
+    }
 
      #ifdef OPENMVG_USE_OPENMP
         #pragma omp critical

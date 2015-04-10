@@ -138,7 +138,7 @@ bool estimate_T_rig_triplet(
   size_t  minMatchSubCamSize = std::min ( std::min (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
   size_t  maxMatchSubCamSize = std::max ( std::max (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
 
-  bool bTest( vec_inliers.size() > 0.50 * map_tracksCommon.size()
+  bool bTest( vec_inliers.size() > 0.30 * map_tracksCommon.size()
            && vec_inliers.size() > 30 * maxMatchSubCamSize
            && minMatchSubCamSize > 0.25 * vec_rigOffset.size() );
 
