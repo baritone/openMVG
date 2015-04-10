@@ -674,7 +674,7 @@ bool GlobalRigidReconstructionEngine::Process()
   // Relative translations estimation (Triplet based translation computation)
   //-------------------
   std::vector<openMVG::relativeInfo > vec_initialRijTijEstimates;
-  RigWiseMatches newpairMatches;
+  RigWiseMatches filteredMatches;
   {
     std::cout << "\n-------------------------------" << "\n"
       << " Relative translations computation: " << "\n"
@@ -690,7 +690,7 @@ bool GlobalRigidReconstructionEngine::Process()
 
     bool  bComputeTrifocal=true;
     if(bComputeTrifocal){
-       computePutativeTranslation_EdgesCoverage(map_globalR, vec_triplets, vec_initialRijTijEstimates, newpairMatches);
+       computePutativeTranslation_EdgesCoverage(map_globalR, vec_triplets, vec_initialRijTijEstimates, filteredMatches);
     }
     else
     {
@@ -760,7 +760,7 @@ bool GlobalRigidReconstructionEngine::Process()
     //-- Clean global rotations that are not in the TRIPLET GRAPH
     KeepOnlyReferencedElement(set_representedImageIndex, map_globalR);
     KeepOnlyReferencedElement(set_representedImageIndex, vec_initialRijTijEstimates);
-    KeepOnlyReferencedElement(set_representedImageIndex, newpairMatches);
+    KeepOnlyReferencedElement(set_representedImageIndex, filteredMatches);
     // clean _map_matches_E?
 
     // create map initial rig id to remaining rig id
@@ -938,8 +938,8 @@ bool GlobalRigidReconstructionEngine::Process()
   {
     // keep tracks that are seen in remaining rigs
     RigWiseMatches newpairMatches;
-    for(RigWiseMatches::const_iterator iter = _map_Matches_Rig.begin();
-          iter != _map_Matches_Rig.end(); ++iter )
+    for(RigWiseMatches::const_iterator iter = filteredMatches.begin();
+          iter != filteredMatches.end(); ++iter )
     {
       const size_t RigOne = iter->first.first;
       const size_t RigTwo = iter->first.second;
@@ -1577,7 +1577,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
   C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n " );
 #ifdef OPENMVG_USE_OPENMP
-    #pragma omp parallel for ordered schedule(static,1) shared(vec_relatives) firstprivate(rigOffsets, rigRotations, averageFocal, bearingVectorsRigOne, bearingVectorsRigTwo, camCorrespondencesRigOne, camCorrespondencesRigTwo, pose, vec_inliers, errorMax, maxExpectedError)
+    #pragma omp parallel for schedule(dynamic) shared(vec_relatives) firstprivate(rigOffsets, rigRotations, averageFocal, bearingVectorsRigOne, bearingVectorsRigTwo, camCorrespondencesRigOne, camCorrespondencesRigTwo, pose, vec_inliers, errorMax, maxExpectedError)
 #endif
   for (int i = 0; i < _map_Matches_Rig.size(); ++i)
   {
@@ -1585,12 +1585,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     bool isPoseUsable;
 
     RigWiseMatches::const_iterator iter = _map_Matches_Rig.begin();
-#ifdef OPENMVG_USE_OPENMP
-    #pragma omp ordered
-#endif
- {
     std::advance(iter, i);
- }
 
     // extract indices of matching rigs
     R0 = iter->first.first;

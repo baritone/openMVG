@@ -621,18 +621,11 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
   std::cout << std::endl
     << "Computation of the relative translations over the graph with an edge coverage algorithm" << std::endl;
 #ifdef OPENMVG_USE_OPENMP
-    #pragma omp parallel for ordered schedule(static,1)
+    #pragma omp parallel for schedule(dynamic)
 #endif
   for (int k = 0; k < vec_edges.size(); ++k)
   {
-    myEdge edge(std::make_pair(0,0));
-    #ifdef OPENMVG_USE_OPENMP
-        #pragma omp ordered
-    #endif
-    {
-        edge = vec_edges[k];
-    }
-
+    const myEdge & edge(vec_edges[k]);
     bool  bEvaluate     = true;
 
     //-- If current edge already computed continue
@@ -769,6 +762,76 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
               RelativeCameraMotion(RI, ti, RK, tk, &RikGt, &tik);
               vec_initialEstimates.push_back(
                 std::make_pair(std::make_pair(I, K), std::make_pair(RikGt, tik)));
+
+              // Add trifocal inliers as valid 3D points
+              for (std::vector<size_t>::const_iterator iterInliers = vec_inliers.begin();
+                  iterInliers != vec_inliers.end(); ++iterInliers)
+              {
+                  STLMAPTracks::const_iterator iterTracks = map_tracksCommon.begin();
+                  std::advance(iterTracks, *iterInliers);
+                  const submapTrack & subTrack = iterTracks->second;
+
+                  std::vector<std::pair<size_t, size_t> >  imgAndFeat_rigI;
+                  std::vector<std::pair<size_t, size_t> >  imgAndFeat_rigJ;
+                  std::vector<std::pair<size_t, size_t> >  imgAndFeat_rigK;
+
+                  // split track into rig subset
+                  for (size_t index = 0; index < subTrack.size() ; ++index)
+                  { submapTrack::const_iterator iter = subTrack.begin();
+                    std::advance(iter, index);
+
+                    // extract camera indexes
+                    const size_t imaIndex  = iter->first;
+                    const size_t featIndex = iter->second;
+                    const size_t rigId     = _map_RigIdPerImageId.at(imaIndex);
+
+                    //update subcameras sets
+                    if ( rigId == I )
+                        imgAndFeat_rigI.push_back( std::make_pair(imaIndex, featIndex) );
+
+                    if ( rigId == J)
+                        imgAndFeat_rigJ.push_back( std::make_pair(imaIndex, featIndex) );
+
+                    if ( rigId == K)
+                        imgAndFeat_rigK.push_back( std::make_pair(imaIndex, featIndex) );
+                  }
+
+                  // compute pairwise matches between rigs (I,J)
+                  for( size_t ind_I=0; ind_I < imgAndFeat_rigI.size() ; ++ ind_I )
+                  {
+                      for( size_t  ind_J=0; ind_J < imgAndFeat_rigJ.size() ; ++ind_J )
+                      {
+                          const std::pair<size_t, size_t> pairI= imgAndFeat_rigI[ind_I];
+                          const std::pair<size_t, size_t> pairJ= imgAndFeat_rigJ[ind_J];
+
+                          newpairMatches[std::make_pair(I,J)][std::make_pair(pairI.first, pairJ.first)].push_back(IndMatch(pairI.second, pairJ.second));
+                      }
+                  }
+
+                  // compute pairwise matches between rigs (I,K)
+                  for( size_t ind_I=0; ind_I < imgAndFeat_rigI.size() ; ++ ind_I )
+                  {
+                      for( size_t  ind_K=0; ind_K < imgAndFeat_rigK.size() ; ++ind_K )
+                      {
+                          const std::pair<size_t, size_t> pairI= imgAndFeat_rigI[ind_I];
+                          const std::pair<size_t, size_t> pairK= imgAndFeat_rigK[ind_K];
+
+                          newpairMatches[std::make_pair(I,K)][std::make_pair(pairI.first, pairK.first)].push_back(IndMatch(pairI.second, pairK.second));
+                      }
+                  }
+
+                  // compute pairwise matches between rigs (J,K)
+                  for( size_t ind_J=0; ind_J < imgAndFeat_rigJ.size() ; ++ ind_J )
+                  {
+                      for( size_t  ind_K=0; ind_K < imgAndFeat_rigK.size() ; ++ind_K )
+                      {
+                          const std::pair<size_t, size_t> pairJ= imgAndFeat_rigJ[ind_J];
+                          const std::pair<size_t, size_t> pairK= imgAndFeat_rigK[ind_K];
+
+                          newpairMatches[std::make_pair(J,K)][std::make_pair(pairJ.first, pairK.first)].push_back(IndMatch(pairJ.second, pairK.second));
+                      }
+                  }
+              }
 
               //-- Remove the 3 edges validated by the trifocal tensor
               m_mutexSet.discard(std::make_pair(std::min(I,J), std::max(I,J)));
