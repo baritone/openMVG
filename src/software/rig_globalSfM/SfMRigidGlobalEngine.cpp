@@ -1571,13 +1571,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
   transformation_t  pose;
   std::vector<size_t> vec_inliers;
 
-  // initialize thresholds
-  double errorMax = std::numeric_limits<double>::max();
-  double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 4.0 / averageFocal ) );
-
   C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n " );
 #ifdef OPENMVG_USE_OPENMP
-    #pragma omp parallel for schedule(dynamic) shared(vec_relatives) firstprivate(rigOffsets, rigRotations, averageFocal, bearingVectorsRigOne, bearingVectorsRigTwo, camCorrespondencesRigOne, camCorrespondencesRigTwo, pose, vec_inliers, errorMax, maxExpectedError)
+    #pragma omp parallel for schedule(dynamic) shared(vec_relatives) firstprivate(rigOffsets, rigRotations, averageFocal, bearingVectorsRigOne, bearingVectorsRigTwo, camCorrespondencesRigOne, camCorrespondencesRigTwo, pose, vec_inliers)
 #endif
   for (int i = 0; i < _map_Matches_Rig.size(); ++i)
   {
@@ -1691,7 +1687,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondences
     double errorMax = std::numeric_limits<double>::max();
-    const double maxExpectedError = 4.0 / averageFocal ;
+    const double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 4.0 / averageFocal ) );
 
     isPoseUsable = SfMRobust::robustRigPose(
                           bearingVectorsRigOne,
