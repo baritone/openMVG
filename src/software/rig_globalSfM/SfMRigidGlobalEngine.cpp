@@ -1573,7 +1573,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
   // initialize thresholds
   double errorMax = std::numeric_limits<double>::max();
-  double maxExpectedError = 4.0 / averageFocal ;
+  double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 4.0 / averageFocal ) );
 
   C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n " );
 #ifdef OPENMVG_USE_OPENMP
@@ -1718,9 +1718,9 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
         // keep only tracks related to inliers
         openMVG::tracks::STLMAPTracks map_tracksInliers;
-        for(int l=0; l < map_tracks.size(); ++l)
+        for(int l=0; l < vec_inliers.size(); ++l)
         {
-          map_tracksInliers[l] = map_tracks[l];
+          map_tracksInliers[l] = map_tracks[vec_inliers[l]];
         }
 
         // Triangulation of all the tracks
