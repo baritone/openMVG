@@ -1600,37 +1600,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
       tracksBuilder.ExportToSTL(map_tracks);
     }
 
-    // extract associated subcamera id for each tracks
-    std::vector<Vec2> subTrackIndex;
-
-    size_t cpt = 0;
-    for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
-      iterTracks != map_tracks.end(); ++iterTracks, ++cpt)
-    {
-      const submapTrack & subTrack = iterTracks->second;
-      size_t index = 0;
-      size_t subTrackCpt = 0;
-      Vec2  rigIndex = -1.0*Vec2::Ones();
-      Vec2  subTrackId;
-      for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack, ++subTrackCpt) {
-        const size_t imaIndex = iterSubTrack->first;
-        const size_t rigidId = _map_RigIdPerImageId.at(imaIndex);
-        if( rigIndex[0] == -1 && index == 0 )
-        {
-          rigIndex[index]    = rigidId;
-          subTrackId[index]  = subTrackCpt;
-          ++index;
-        }
-        if( rigIndex[1] == -1 && rigIndex[0] != rigidId && index == 1 )
-        {
-          rigIndex[index]    = rigidId;
-          subTrackId[index]  = subTrackCpt;
-          ++index;
-        }
-      }
-      subTrackIndex.push_back(subTrackId);
-    }
-
     // initialize structure used for matching between rigs
     bearingVectorsRigOne.clear();
     bearingVectorsRigTwo.clear();
@@ -1640,49 +1609,78 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     vec_inliers.clear();
 
-    // loop on inter-rig correspondences
-    cpt = 0;
-    for( STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
-                iterTracks != map_tracks.end(); ++iterTracks, ++cpt)
+    // extract associated subcamera id for each tracks
+    std::map < size_t, size_t >  map_bearingIdToTrackId;
+    size_t cpt = 0;
+    for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
+      iterTracks != map_tracks.end(); ++iterTracks, ++cpt)
     {
       const submapTrack & subTrack = iterTracks->second;
-      // iter on subtracks
-      for (size_t index = 0; index < 2 ; ++index)
+      std::vector<std::pair<size_t, size_t> >  imgAndFeat_rigI;
+      std::vector<std::pair<size_t, size_t> >  imgAndFeat_rigJ;
+
+      for (submapTrack::const_iterator iterSubTrack = subTrack.begin();
+              iterSubTrack != subTrack.end(); ++iterSubTrack)
       {
-        submapTrack::const_iterator iterSub = subTrack.begin();
-        std::advance(iterSub, subTrackIndex[cpt][index]);
+        const size_t imaIndex  = iterSubTrack->first;
+        const size_t featIndex = iterSubTrack->second;
+        const size_t rigidId = _map_RigIdPerImageId.at(imaIndex);
 
-        // extract camId and feature index
-        const size_t imaIndex = iterSub->first;
-        const size_t featIndex = iterSub->second;
+        if( rigidId == R0 )
+            imgAndFeat_rigI.push_back(std::make_pair(imaIndex,featIndex));
 
-        // extract features
-        bearingVector_t  bearing;
-
-        // extract normalized keypoints coordinates
-        const SIOPointFeature & pt = _map_feats_normalized.at(imaIndex)[featIndex];
-        bearing(0) = pt.x();
-        bearing(1) = pt.y();
-        bearing(2) = 1.0;
-
-        // normalize bearing vectors
-        bearing = bearing / bearing.norm();
-
-        // extract camera indexes
-        size_t subCamId = _map_IntrinsicIdPerImageId.at(imaIndex);
-
-        if( _map_RigIdPerImageId.at(imaIndex) == R0 ){
-          // add bearing vectors to list and update correspondences list
-          bearingVectorsRigOne.push_back( bearing );
-          camCorrespondencesRigOne.push_back(subCamId);
-        }
-
-        if( _map_RigIdPerImageId.at(imaIndex) == R1 ){
-          // add bearing vectors to list and update correspondences list
-          bearingVectorsRigTwo.push_back( bearing );
-          camCorrespondencesRigTwo.push_back(subCamId);
-        }
+        if( rigidId == R1 )
+            imgAndFeat_rigJ.push_back(std::make_pair(imaIndex,featIndex));
       }
+
+      // loop on matches between rigs
+      for( size_t  indI = 0; indI < imgAndFeat_rigI.size(); ++indI )
+      {
+          for( size_t indJ = 0; indJ < imgAndFeat_rigJ.size(); ++indJ )
+          {
+            // extract image index and feat index
+            const size_t  ima_one  = imgAndFeat_rigI[indI].first;
+            const size_t  feat_one = imgAndFeat_rigI[indI].second;
+
+            const size_t  ima_two  = imgAndFeat_rigJ[indJ].first;
+            const size_t  feat_two = imgAndFeat_rigJ[indJ].second;
+
+            // extract features
+            bearingVector_t  bearing_one;
+            bearingVector_t  bearing_two;
+
+            // extract normalized keypoints coordinates
+            const SIOPointFeature & pt_one = _map_feats_normalized.at(ima_one)[feat_one];
+            bearing_one(0) = pt_one.x();
+            bearing_one(1) = pt_one.y();
+            bearing_one(2) = 1.0;
+
+            const SIOPointFeature & pt_two = _map_feats_normalized.at(ima_two)[feat_two];
+            bearing_two(0) = pt_two.x();
+            bearing_two(1) = pt_two.y();
+            bearing_two(2) = 1.0;
+
+            // normalize bearing vectors
+            bearing_one.normalized();
+            bearing_two.normalized();
+
+            // extract camera indexes
+            const size_t subCamId_one = _map_IntrinsicIdPerImageId.at(ima_one);
+            const size_t subCamId_two = _map_IntrinsicIdPerImageId.at(ima_two);
+
+            // add bearing vectors to list and update correspondences list
+            bearingVectorsRigOne.push_back( bearing_one );
+            camCorrespondencesRigOne.push_back( subCamId_one );
+
+            // add bearing vectors to list and update correspondences list
+            bearingVectorsRigTwo.push_back( bearing_two );
+            camCorrespondencesRigTwo.push_back( subCamId_two );
+
+            // update map
+            map_bearingIdToTrackId[bearingVectorsRigTwo.size()-1] = cpt;
+          }
+      }
+
     }// end loop on tracks
 
     //--> Estimate the best possible Rotation/Translation from correspondences
@@ -1716,7 +1714,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         openMVG::tracks::STLMAPTracks map_tracksInliers;
         for(int l=0; l < vec_inliers.size(); ++l)
         {
-          map_tracksInliers[l] = map_tracks[vec_inliers[l]];
+            const size_t  trackId = map_bearingIdToTrackId.at(vec_inliers[l]);
+            map_tracksInliers[l] = map_tracks.at( trackId );
         }
 
         // Triangulation of all the tracks
