@@ -205,9 +205,6 @@ struct Rig_Translation_Structure_L1_ConstraintBuilder
 
     constraint._nbParams = (Nrig + N3D) * 3;
 
-    // to be sure that cost vector is empty
-    constraint._vec_cost.clear();
-
     return true;
   }
 

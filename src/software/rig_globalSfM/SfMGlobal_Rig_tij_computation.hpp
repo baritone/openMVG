@@ -138,9 +138,7 @@ bool estimate_T_rig_triplet(
   size_t  minMatchSubCamSize = std::min ( std::min (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
   size_t  maxMatchSubCamSize = std::max ( std::max (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
 
-  bool bTest( vec_inliers.size() > 0.30 * map_tracksCommon.size()
-           && vec_inliers.size() > 30 * maxMatchSubCamSize
-           && minMatchSubCamSize > 0.25 * vec_rigOffset.size() );
+  bool bTest( vec_inliers.size() > 30 * minMatchSubCamSize );
 
   if (!bTest)
   {
@@ -540,12 +538,12 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
   // create rig structure using openGV
   std::vector<Vec3>  rigOffsets;
   std::vector<Mat3>  rigRotations;
-  double          averageFocal=0.0;
+  double             averageFocal=0.0;
 
   for(int k=0; k < _vec_intrinsicGroups.size(); ++k)
   {
-      const Vec3 t = _vec_intrinsicGroups[k].m_rigC;
       const Mat3 R = _vec_intrinsicGroups[k].m_R;
+      const Vec3 t = _vec_intrinsicGroups[k].m_rigC;
 
       rigOffsets.push_back(t);
       rigRotations.push_back(R);
@@ -703,6 +701,47 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
             tracksBuilder.ExportToSTL(map_tracksCommon);
           }
 
+          // initialize subcamera set
+          std::set < size_t >  set_subCam0 ;
+          std::set < size_t >  set_subCam1 ;
+          std::set < size_t >  set_subCam2 ;
+
+          // initialize structure pour triplet estimation
+          size_t cpt = 0;
+          for (STLMAPTracks::const_iterator iterTracks = map_tracksCommon.begin();
+          iterTracks != map_tracksCommon.end(); ++iterTracks, ++cpt) {
+            const submapTrack & subTrack = iterTracks->second;
+
+            std::vector < std::vector <double> > subTrackInfo;
+
+            // loop on subtracks
+            size_t nrig = 0;
+            for (size_t index = 0; index < subTrack.size() ; ++index)
+            { submapTrack::const_iterator iter = subTrack.begin();
+              std::advance(iter, index);
+
+              // extract camera indexes
+              const size_t imaIndex  = iter->first;
+              const size_t cameraId  = _map_IntrinsicIdPerImageId.at(imaIndex);
+              const size_t rigId     = _map_RigIdPerImageId.at(imaIndex);
+
+              //update subcameras sets
+              if ( rigId == I )
+                set_subCam0.insert( cameraId );
+
+              if ( rigId == J)
+                set_subCam1.insert( cameraId );
+
+              if ( rigId == K)
+                set_subCam2.insert( cameraId );
+
+              }
+          }
+
+          // compute minimal number of matches subcameras
+          size_t  minMatchSubCamSize = std::min ( std::min (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
+          size_t  maxMatchSubCamSize = std::max ( std::max (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
+
           //--
           // Try to estimate this triplet.
           //--
@@ -719,7 +758,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;
 
-          if( map_tracksCommon.size() > 50 * rigOffsets.size() &&
+          if( map_tracksCommon.size() > 50 * minMatchSubCamSize &&
                 estimate_T_rig_triplet(
                     map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                     rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,
