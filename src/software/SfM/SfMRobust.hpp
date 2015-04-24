@@ -202,12 +202,25 @@ bool robustRigPose(
 
   KernelType kernel(b1, b2, scIdOne, scIdTwo, rigOffsets, rigRotations);
 
+  // compute number of subcamera that are matched for each rig
+  std::set <size_t>  subCamOne;
+  std::set <size_t>  subCamTwo;
+
+  for( size_t i=0; i < scIdOne.size() ; ++i )
+  {
+      subCamOne.insert( scIdOne[i] );
+      subCamTwo.insert( scIdTwo[i] );
+  }
+
+  size_t  minMatchCam = std::max( subCamOne.size(), subCamTwo.size() );
+
   // Robustly estimation of the Essential matrix and it's precision
   std::pair<double,double> acRansacOut = ACRANSAC(kernel, *pvec_inliers,
     4096, relativePose, precision, false, false );
   *errorMax = acRansacOut.first;
 
-  return (pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES );
+  return (pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * minMatchCam
+           && minMatchCam > 0.3 * rigOffsets.size() );
 }
 
 /// Triangulate a set of points between two view

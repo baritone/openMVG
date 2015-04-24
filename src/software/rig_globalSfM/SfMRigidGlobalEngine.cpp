@@ -1685,7 +1685,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondences
     double errorMax = std::numeric_limits<double>::max();
-    const double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 4.0 / averageFocal ) );
+    const double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 2.5 / averageFocal ) );
+    //const double maxExpectedError = 2.5 / averageFocal ;
 
     isPoseUsable = SfMRobust::robustRigPose(
                           bearingVectorsRigOne,
@@ -1799,6 +1800,15 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             }
           }
         }
+
+#if 0
+        // export point cloud (for debug purpose only)^M
+        std::ostringstream pairIJ;
+        pairIJ << R0 << "_" <<  R1 << ".ply";
+
+        plyHelper::exportToPly(vec_allScenes, stlplus::create_filespec(_sOutDirectory,
+                              "pointCloud_pose_"+pairIJ.str()) );
+#endif
 
         if( map_tracksInliers.size() > 0 )
         {
