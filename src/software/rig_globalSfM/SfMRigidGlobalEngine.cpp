@@ -1685,8 +1685,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondences
     double errorMax = std::numeric_limits<double>::max();
-    const double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 2.5 / averageFocal ) );
-    //const double maxExpectedError = 2.5 / averageFocal ;
+    // const double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 4.0 / averageFocal ) );
+    const double maxExpectedError = 2.5 / averageFocal ;
 
     isPoseUsable = SfMRobust::robustRigPose(
                           bearingVectorsRigOne,

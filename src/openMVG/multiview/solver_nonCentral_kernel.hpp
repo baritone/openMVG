@@ -9,7 +9,7 @@
 
 #include <vector>
 #include "openMVG/numeric/numeric.h"
-#include "openMVG/multiview/triangulation.hpp"
+#include "openMVG/multiview/triangulation_nview.hpp"
 #include "openMVG/cameras/PinholeCamera.hpp"
 #include <opengv/types.hpp>
 #include <opengv/relative_pose/methods.hpp>
@@ -78,13 +78,20 @@ struct RigProjError {
     // compute 3d point and reprojection error
     const Mat3 K = Mat3::Identity();
 
-    const PinholeCamera cam1(K, R1, t1);
-    const PinholeCamera cam2(K, R, t);
+    const Mat34 P1 = HStack(R1, t1);
+    const Mat34 P2 = HStack(R, t);
+    // Triangulate and return the reprojection error
+    Triangulation triangulationObj;
+    triangulationObj.add(P1, x1);
+    triangulationObj.add(P2, x2);
 
-    Vec3 X;
-    TriangulateDLT(cam1._P, x1, cam2._P, x2, &X);
+    const Vec3 X = triangulationObj.compute();
 
-    return std::max(cam1.Residual(X,x1), cam2.Residual(X,x2));
+    //- Return max error as a test
+    double pt1ReProj = (Project(P1, X) - x1).norm();
+    double pt2ReProj = (Project(P2, X) - x2).norm();
+
+    return std::max(pt1ReProj, pt2ReProj);
   }
 };
 typedef RigProjError SimpleError;

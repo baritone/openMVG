@@ -353,7 +353,10 @@ public:
       logalpha0_(log10(M_PI))
 {
     assert(b1_.size() == b2_.size());
-    logalpha0_ = log10(0.5);
+    const size_t w2 = 2592;
+    const size_t h2 = 1936;
+    const double N2 = 2040.0;
+    logalpha0_ = log10(M_PI/(w2*(double)h2) /(N2*N2));
   }
 
   enum { MINIMUM_SAMPLES = Solver::MINIMUM_SAMPLES };
@@ -394,7 +397,7 @@ public:
   size_t NumSamples() const { return b1_.size(); }
   void Unnormalize(Model * model) const {}
   double logalpha0() const {return logalpha0_;}
-  double multError() const {return 0.5;} // point to line error
+  double multError() const {return 1.0;} // point to line error
   Mat3 normalizer1() const {return Mat3::Identity();}
   Mat3 normalizer2() const {return Mat3::Identity();}
   double unormalizeError(double val) const { return val; }

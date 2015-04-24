@@ -196,7 +196,7 @@ bool robustRigPose(
   // Define the AContrario adaptor
   typedef ACKernelAdaptorRigPose<
       SolverType,
-      openMVG::noncentral::kernel::RigAngularError,
+      openMVG::noncentral::kernel::RigProjError,
       transformation_t>
       KernelType;
 
