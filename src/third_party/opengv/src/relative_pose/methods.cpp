@@ -696,7 +696,7 @@ rotation_t ge(
     //unrotate the bearing vectors
     bearingVector_t f1 = adapter.getCamRotation1(indices[i]) *
         adapter.getBearingVector1(indices[i]);
-        bearingVector_t f2 = adapter.getCamRotation2(indices[i]) *
+    bearingVector_t f2 = adapter.getCamRotation2(indices[i]) *
         adapter.getBearingVector2(indices[i]);
 
     //compute the standard summation terms
@@ -778,7 +778,7 @@ rotation_t ge(
   {
     pointsCenter1 += adapter.getCamRotation1(indices[i]) *
         adapter.getBearingVector1(indices[i]);
-        pointsCenter2 += adapter.getCamRotation2(indices[i]) *
+    pointsCenter2 += adapter.getCamRotation2(indices[i]) *
         adapter.getBearingVector2(indices[i]);
   }
 

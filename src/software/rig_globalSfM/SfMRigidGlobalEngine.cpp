@@ -1145,128 +1145,6 @@ bool GlobalRigidReconstructionEngine::Process()
     plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_KRT_RT_Xi", "ply"));
   }
 
-
-  // Triangulation of all the tracks
-  {
-    std::vector<double> vec_residuals;
-    std::set<size_t> set_idx_to_remove;
-
-    // compute scale factor to have metric point cloud
-    double  scaleFactor = 0.0;
-    size_t  nStereoPoint = 0;
-
-#ifdef OPENMVG_USE_OPENMP
-    #pragma omp parallel for schedule(dynamic)
-#endif
-    for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
-    {
-        STLMAPTracks::const_iterator iterTracks = _map_selectedTracks.begin();
-        std::advance(iterTracks, idx);
-
-        const submapTrack & subTrack = iterTracks->second;
-
-        // Look to the features required for the triangulation task
-        Triangulation trianObj;
-        std::map < size_t , std::vector < std::pair <size_t, size_t > > >  map_featIdPerRigId ;
-
-        for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack)
-        {
-          const size_t imaIndex = iterSubTrack->first;
-          const size_t featIndex = iterSubTrack->second;
-          const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
-
-          // update map
-          const size_t rigId = _map_RigIdPerImageId.at(imaIndex);
-          map_featIdPerRigId [ rigId ].push_back ( std::make_pair (imaIndex, featIndex) );
-
-          // Build the P matrix
-          trianObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
-        }
-
-        // Compute the 3D point and keep point index with negative depth
-        const Vec3 Xs  = trianObj.compute();
-
-        // compute scale factor
-        size_t  cpt_scale = 0;
-
-        Triangulation stereoRig;
-
-        for( std::map < size_t , std::vector < std::pair <size_t, size_t > > >::const_iterator iter = map_featIdPerRigId.begin();
-             iter != map_featIdPerRigId.end(); ++iter, ++cpt_scale)
-        {
-          const size_t rigId = iter->first;
-          const size_t numberOfFeature = iter->second.size();
-
-          // Build the P matrix
-          if ( numberOfFeature > 1 )
-          {
-            Triangulation stereoObj;
-
-            for( size_t k = 0 ; k < numberOfFeature ; ++k )
-            {
-              const size_t imaIndex = iter->second[k].first;
-              const size_t featIndex = iter->second[k].second;
-              const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
-              stereoObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
-            }
-
-            // compute 3D point and scale factor
-            const Vec3 X = stereoObj.compute();
-
-            if( stereoObj.minDepth() > 0.0 && trianObj.minDepth() > 1.0 )
-            {
-              scaleFactor += stereoObj.minDepth() / trianObj.minDepth() ;
-              ++nStereoPoint ;
-            }
-          }
-        }
-    }
-
-    // scale camera map and point cloud
-    scaleFactor /= nStereoPoint ;
-    if( scaleFactor > 0.0 )
-    {
-      std::cout << "\n Scale camera position with scale Factor " << scaleFactor << endl;
-
-      // rebuild rig map with scale factor
-      for (Map_Rig::iterator iter = _map_rig.begin(); iter != _map_rig.end(); ++iter) {
-         const Vec3 tRig = scaleFactor * iter->second.second;
-         iter->second.second = tRig ;
-      }
-
-      // rebuild camera map with correct scale factor
-      std::vector < Vec3 > vec_C ;
-      for (Map_Camera::iterator iter = _map_camera.begin(); iter != _map_camera.end(); ++iter)
-      {
-         // extract rig index and sub camera index
-         const size_t rigId = _map_RigIdPerImageId.at(iter->first);
-         const size_t subCamId = _map_IntrinsicIdPerImageId.find(iter->first)->second;
-
-        // extract  subcamera pose, rig pose
-         const Mat3   Rrig  = _map_rig.at(rigId).first;
-         const Vec3   tRig  = _map_rig.at(rigId).second;
-
-         const Mat3   Rcam  = _vec_intrinsicGroups[subCamId].m_R ;
-         const Vec3   tCam  = -Rcam * _vec_intrinsicGroups[subCamId].m_rigC ;
-
-         // compute subcamera pose
-         const Vec3   t     = Rcam * tRig + tCam;
-         const Mat3   R     = Rcam * Rrig;
-
-         const Mat3 & _K = _vec_intrinsicGroups[subCamId].m_K;   // The same K matrix is used by all the camera
-         _map_camera[iter->first] = PinholeCamera(_K, R, t);
-
-         vec_C.push_back( iter->second._C );
-      }
-
-      // update computed 3d point
-      for (int idx = 0; idx < _vec_allScenes.size(); ++idx)
-      {
-          _vec_allScenes[idx] *= scaleFactor;
-      }
-    }
-  }
-
   //-- Export statistics about the global process
   if (_bHtmlReport)
   {
@@ -1547,7 +1425,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
   // create rig structure using openGV
   translations_t  rigOffsets;
   rotations_t     rigRotations;
-  double          averageFocal=0.0;
+  double          averageFocal=1.0e10;
 
   for(int k=0; k < _vec_intrinsicGroups.size(); ++k)
   {
@@ -1556,10 +1434,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
       rigOffsets.push_back(t);
       rigRotations.push_back(R);
-      averageFocal += _vec_intrinsicGroups[k].m_focal ;
+      averageFocal = std::min(averageFocal, _vec_intrinsicGroups[k].m_focal) ;
   }
-
-  averageFocal /= (double) _vec_intrinsicGroups.size();
 
   // initialize structure used for matching between rigs
   bearingVectors_t bearingVectorsRigOne;
@@ -1685,8 +1561,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondences
     double errorMax = std::numeric_limits<double>::max();
-    // const double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 4.0 / averageFocal ) );
-    const double maxExpectedError = 2.5 / averageFocal ;
+    const double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 2.5 / averageFocal ) );
+    //const double maxExpectedError = 2.5 / averageFocal ;
 
     isPoseUsable = SfMRobust::robustRigPose(
                           bearingVectorsRigOne,
@@ -1781,6 +1657,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             }
           }
 
+#if 0
           //-- Remove useless tracks and 3D points
           {
             std::vector<Vec3> vec_allScenes_cleaned;
@@ -1799,6 +1676,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
               map_tracksInliers.erase(*iterSet);
             }
           }
+#endif
         }
 
 #if 0
@@ -1809,9 +1687,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         plyHelper::exportToPly(vec_allScenes, stlplus::create_filespec(_sOutDirectory,
                               "pointCloud_pose_"+pairIJ.str()) );
 #endif
-
-        if( map_tracksInliers.size() > 0 )
-        {
 
         // now do bundle adjustment
         using namespace std;
@@ -1996,7 +1871,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         //  Make Ceres automatically detect the bundle structure.
         ceres::Solver::Options options;
         // Use a dense back-end since we only consider a two view problem
-        options.linear_solver_type = ceres::DENSE_SCHUR;
+        options.linear_solver_type = ceres::SPARSE_SCHUR;
         options.minimizer_progress_to_stdout = false;
         options.logging_type = ceres::SILENT;
 
@@ -2022,6 +1897,15 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
                 pt3D = Vec3(pt[0], pt[1], pt[2]);
                 finalPoint.push_back(pt3D);
             }
+
+            #if 0
+                    // export point cloud (for debug purpose only)^M
+                    std::ostringstream pairIJ;
+                    pairIJ << R0 << "_" <<  R1 << ".ply";
+
+                    plyHelper::exportToPly(finalPoint, stlplus::create_filespec(_sOutDirectory,
+                                          "pointCloud_BA_pose_"+pairIJ.str()) );
+            #endif
 
             // retrieve relative translation and rotation of rig
             // Get back rig 1
@@ -2058,7 +1942,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
           vec_relatives.insert(std::make_pair(iter->first, std::make_pair(R,t)));
         }
       }
-    }
 
      #ifdef OPENMVG_USE_OPENMP
         #pragma omp critical

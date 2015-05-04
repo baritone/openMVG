@@ -538,7 +538,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
   // create rig structure using openGV
   std::vector<Vec3>  rigOffsets;
   std::vector<Mat3>  rigRotations;
-  double             averageFocal=0.0;
+  double             averageFocal=1.0e10;
 
   for(int k=0; k < _vec_intrinsicGroups.size(); ++k)
   {
@@ -547,10 +547,8 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
       rigOffsets.push_back(t);
       rigRotations.push_back(R);
-      averageFocal += _vec_intrinsicGroups[k].m_focal ;
+      averageFocal = std::min(_vec_intrinsicGroups[k].m_focal, averageFocal) ;
   }
-
-  averageFocal /= (double) _vec_intrinsicGroups.size();
 
   //-- Prepare tracks count per triplets:
   std::map<size_t, size_t> map_tracksPerTriplets;
@@ -753,7 +751,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
           // update precision to have good value for normalized coordinates
           double dPrecision = pow ( 2.0 / averageFocal , 2.0 ) ;
-          const double ThresholdUpperBound = 0.5 / averageFocal;
+          const double ThresholdUpperBound = 1.0 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;

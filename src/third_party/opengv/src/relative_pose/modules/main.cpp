@@ -801,9 +801,9 @@ opengv::relative_pose::modules::ge_main(
   LevenbergMarquardt< NumericalDiff<Ge_step> > lm(numDiff);
 
   lm.resetParameters();
-  lm.parameters.ftol = 0.000001;//1.E1*NumTraits<double>::epsilon();
-  lm.parameters.xtol = 1.E1*NumTraits<double>::epsilon();
-  lm.parameters.maxfev = 100;
+  lm.parameters.ftol = 1.0e-10;//1.E1*NumTraits<double>::epsilon();
+  lm.parameters.xtol = 1.0e-10;
+  lm.parameters.maxfev = 1000;
   lm.minimize(x);
 
   cayley_t cayley = x;
@@ -861,10 +861,13 @@ opengv::relative_pose::modules::ge_main2(
   double lambda = 0.01;
   double maxLambda = 0.08;
   double modifier = 2.0;
-  int maxIterations = 50;
+  int maxIterations = 500;
   double min_xtol = 0.00001;
   bool disablingIncrements = true;
   bool print = false;
+
+  double sigma = 2.0e-4;
+  double rho   = 0.5;
 
   cayley_t cayley;
 
@@ -913,46 +916,38 @@ opengv::relative_pose::modules::ge_main2(
         std::cout << " lambda: " << lambda << " EV: " << samplingEV << std::endl;
       }
 
-      if( iterations == 0 || !disablingIncrements )
+      // define inputs for backtracking
+      double  alpha = 1.0;
+      cayley_t  xk  = cayley;
+      double  fk    = ge::getCost(xxF,yyF,zzF,xyF,yzF,zxF,
+      x1P,y1P,z1P,x2P,y2P,z2P,m11P,m12P,m22P,xk,1);
+
+      Eigen::Matrix<double,1,3> jfk;
+      ge::getQuickJacobian(xxF,yyF,zzF,xyF,yzF,zxF,
+      x1P,y1P,z1P,x2P,y2P,z2P,m11P,m12P,m22P,xk,fk,jfk,1);
+
+      cayley_t  dk = -jfk.transpose();
+      cayley_t  xx = xk;
+
+      // initialize backtracking
+      xk += alpha * dk;
+      double fk1 = ge::getCost(xxF,yyF,zzF,xyF,yzF,zxF,x1P,y1P,z1P,x2P,y2P,z2P,m11P,m12P,m22P,xk,1);
+
+      // do backtracking
+      while ( fk1 > fk + sigma * alpha * jfk * dk )
       {
-        while( samplingEV < smallestEV )
-        {
-          smallestEV = samplingEV;
-          if( lambda * modifier > maxLambda )
-            break;
-          lambda *= modifier;
-          samplingPoint = cayley - lambda * normalizedJacobian;
-          samplingEV = ge::getCost(xxF,yyF,zzF,xyF,yzF,zxF,
-              x1P,y1P,z1P,x2P,y2P,z2P,m11P,m12P,m22P,samplingPoint,1);
-
-          if(print)
-          {
-            std::cout << iterations << ": " << samplingPoint.transpose();
-            std::cout << " lambda: " << lambda << " EV: " << samplingEV << std::endl;
-          }
-        }
-      }
-
-      while( samplingEV > smallestEV )
-      {
-        lambda /= modifier;
-        samplingPoint = cayley - lambda * normalizedJacobian;
-        samplingEV = ge::getCost(xxF,yyF,zzF,xyF,yzF,zxF,
-            x1P,y1P,z1P,x2P,y2P,z2P,m11P,m12P,m22P,samplingPoint,1);
-
-        if(print)
-        {
-          std::cout << iterations << ": " << samplingPoint.transpose();
-          std::cout << " lambda: " << lambda << " EV: " << samplingEV << std::endl;
-        }
+        // update alpha, xk and fk1
+        alpha *= rho;
+        xk  = xx + alpha * dk;
+        fk1 = ge::getCost(xxF,yyF,zzF,xyF,yzF,zxF,x1P,y1P,z1P,x2P,y2P,z2P,m11P,m12P,m22P,xk,1);
       }
 
       //apply update
-      cayley = samplingPoint;
-      smallestEV = samplingEV;
+      cayley = xk;
+      smallestEV = fk1;
 
       //stopping condition (check if the update was too small)
-      if( lambda < min_xtol )
+      if( (xk - xx).norm() / xx.norm() < 1.0e-2 )
         break;
 
       iterations++;
@@ -973,6 +968,13 @@ opengv::relative_pose::modules::ge_main2(
       found = true;
   }
 
+  //Do minimization
+  modules::ge_main(
+          xxF, yyF, zzF, xyF, yzF, zxF,
+          x1P, y1P, z1P, x2P, y2P, z2P,
+          m11P, m12P, m22P, cayley, output);
+
+#if 0
   Eigen::Matrix4d G = ge::composeG(xxF,yyF,zzF,xyF,yzF,zxF,
       x1P,y1P,z1P,x2P,y2P,z2P,m11P,m12P,m22P,cayley);
 
@@ -995,6 +997,7 @@ opengv::relative_pose::modules::ge_main2(
   output.rotation = math::cayley2rot(cayley);
   output.eigenvalues = D;
   output.eigenvectors = V;
+#endif
 }
 
 void

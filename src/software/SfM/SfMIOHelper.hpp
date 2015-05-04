@@ -66,7 +66,7 @@ struct CameraRigInfo
 struct IntrinsicCameraRigInfo
 {
   size_t m_w, m_h;
-  float m_focal;
+  double m_focal;
   Mat3 m_K;
   Mat3 m_R;
   Vec3 m_rigC;

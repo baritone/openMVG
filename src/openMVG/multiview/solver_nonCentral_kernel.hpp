@@ -40,7 +40,7 @@ struct SixPointSolver {
 };
 
 struct GePointSolver {
-  enum { MINIMUM_SAMPLES = 8 };
+  enum { MINIMUM_SAMPLES = 6 };
   enum { MAX_MODELS = 1 };
   static void Solve(relative_pose::NoncentralRelativeAdapter & adapter,
   std::vector<transformation_t> * models,

@@ -57,7 +57,7 @@ struct GeometricFilter_RigEMatrix_AC
     double upper_bound_precision = m_dPrecision;
 
     std::pair<double,double> acRansacOut = ACRANSAC(kernel, vec_inliers,
-        m_stIteration, relativePose, upper_bound_precision, false );
+        m_stIteration, relativePose, upper_bound_precision, true );
 
     if (vec_inliers.size() < 2.5 * SolverType::MINIMUM_SAMPLES )  {
         vec_inliers.clear();
