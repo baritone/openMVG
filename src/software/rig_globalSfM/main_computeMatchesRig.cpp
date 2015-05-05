@@ -414,7 +414,7 @@ int main(int argc, char **argv)
           for (std::vector<PairWiseMatches::key_type>::const_iterator
             iter =  vec_toRemove.begin(); iter != vec_toRemove.end(); ++iter)
           {
-            map_GeometricMatches.at(iterMap->first).erase(*iter);
+          //  map_GeometricMatches.at(iterMap->first).erase(*iter);
           }
         }
 
@@ -428,7 +428,7 @@ int main(int argc, char **argv)
       for (std::vector<RigWiseMatches::key_type>::const_iterator
         iter =  vec_rigtoRemove.begin(); iter != vec_rigtoRemove.end(); ++iter)
       {
-        map_GeometricMatches.erase(*iter);
+        // map_GeometricMatches.erase(*iter);
       }
 
       //---------------------------------------
