@@ -147,7 +147,7 @@ bool estimate_T_rig_triplet(
       << " total putative " << featsAndRigIdPerTrack.size() << std::endl;
   }
 
-  bool bRefine = true;
+  bool bRefine = false;
   if (bRefine && bTest)
   {
     // Compute initial triangulation
@@ -750,13 +750,13 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = pow ( 2.0 / averageFocal , 2.0 ) ;
+          double dPrecision = 2.0 / averageFocal ;
           const double ThresholdUpperBound = 1.0 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;
 
-          if( map_tracksCommon.size() > 50 * minMatchSubCamSize &&
+          if( map_tracksCommon.size() > 50 * maxMatchSubCamSize &&
                 estimate_T_rig_triplet(
                     map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                     rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,

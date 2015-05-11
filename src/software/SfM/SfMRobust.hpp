@@ -207,7 +207,7 @@ bool robustRigPose(
     4096, relativePose, precision, false );
   *errorMax = acRansacOut.first;
 
-  return (pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES );
+  return (pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * rigOffsets.size() );
 
 }
 
