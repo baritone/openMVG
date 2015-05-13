@@ -869,9 +869,6 @@ opengv::relative_pose::modules::ge_main2(
   double sigma = 2.0e-4;
   double rho   = 0.5;
   double beta_k = 0.0;
-  cayley_t x_km1 = startingPoint;
-  double f0 = ge::getCost(xxF,yyF,zzF,xyF,yzF,zxF,
-      x1P,y1P,z1P,x2P,y2P,z2P,m11P,m12P,m22P,startingPoint,1);
 
   cayley_t cayley;
 
@@ -900,6 +897,9 @@ opengv::relative_pose::modules::ge_main2(
     int iterations = 0;
     double smallestEV = ge::getCost(xxF,yyF,zzF,xyF,yzF,zxF,
         x1P,y1P,z1P,x2P,y2P,z2P,m11P,m12P,m22P,cayley,1);
+
+    cayley_t x_km1 = cayley;
+    double f0 = smallestEV;
 
     while( iterations < maxIterations )
     {
@@ -970,7 +970,7 @@ opengv::relative_pose::modules::ge_main2(
       x_km1 = xk;
 
       //stopping condition (check if the update was too small)
-      if( ( (abs(fk1-fk) / abs(f0) < 1.0e-8) || abs(fk1) < 1.0e-8 ) || (xk-xx).norm() < 1.0e-6 )
+      if( ( (abs(fk1-fk) / abs(f0) < 1.0e-6) || abs(fk1) < 1.0e-6 ) || (xk-xx).norm() < 1.0e-6 )
         break;
 
       iterations++;

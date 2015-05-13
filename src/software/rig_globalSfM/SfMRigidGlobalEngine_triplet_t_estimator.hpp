@@ -416,7 +416,7 @@ public:
   vec_rigRotation_(rigRotation),
   vec_rigOffset_(rigOffsets),
   ThresholdUpperBound_(ThresholdUpperBound),
-  logalpha0_(log10(M_PI/2592.0/1936.))
+  logalpha0_(log10(M_PI/1936./2592.))
 {
   //initialize normalized coordinates
   // Normalize points by inverse(K)

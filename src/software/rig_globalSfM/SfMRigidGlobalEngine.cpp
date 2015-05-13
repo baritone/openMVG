@@ -1552,8 +1552,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondences
     double errorMax = std::numeric_limits<double>::max();
-    const double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 2.5 / averageFocal ) );
-    //const double maxExpectedError = 2.5 / averageFocal ;
+    const double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 4.0 / averageFocal ) );
 
     isPoseUsable = SfMRobust::robustRigPose(
                           bearingVectorsRigOne,
@@ -1868,10 +1867,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         ceres::Solver::Summary summary;
         ceres::Solve(options, &problem, &summary);
 
-        // If no error, get back refined parameters
-        Mat3  R = Mat3::Identity();
-        Vec3  t = Vec3::Zero();
-
         if (summary.IsSolutionUsable())
         {
             // Get back 3D points
@@ -1920,15 +1915,19 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
               tRigTwo[0] = cam[3]; tRigTwo[1] = cam[4]; tRigTwo[2]=cam[5];
             }
 
+            // If no error, get back refined parameters
+            Mat3  R = Mat3::Identity();
+            Vec3  t = Vec3::Zero();
+
             RelativeCameraMotion(RotRigOne, tRigOne, RotRigTwo, tRigTwo, &R, &t);
 
-        }
-        // export rotation for rotation avereging
-        #ifdef OPENMVG_USE_OPENMP
-        //  #pragma omp critical
-        #endif
-        {
-          vec_relatives.insert(std::make_pair(iter->first, std::make_pair(R,t)));
+            // export rotation for rotation avereging
+            #ifdef OPENMVG_USE_OPENMP
+                #pragma omp critical
+            #endif
+            {
+              vec_relatives.insert(std::make_pair(iter->first, std::make_pair(R,t)));
+            }
         }
       }
 
@@ -1986,11 +1985,16 @@ void GlobalRigidReconstructionEngine::tripletRotationRejection(
     const std::pair<size_t,size_t> ij = std::make_pair(I,J);
     const std::pair<size_t,size_t> ji = std::make_pair(J,I);
 
+    bool bTripletComputed = true;
+
     Mat3 RIJ;
     if (map_relatives.find(ij) != map_relatives.end())
       RIJ = map_relatives.find(ij)->second.first;
     else
-      RIJ = map_relatives.find(ji)->second.first.transpose();
+      if (map_relatives.find(ji) != map_relatives.end())
+        RIJ = map_relatives.find(ji)->second.first.transpose();
+      else
+        bTripletComputed = false;
 
     const std::pair<size_t,size_t> jk = std::make_pair(J,K);
     const std::pair<size_t,size_t> kj = std::make_pair(K,J);
@@ -1999,7 +2003,10 @@ void GlobalRigidReconstructionEngine::tripletRotationRejection(
     if (map_relatives.find(jk) != map_relatives.end())
       RJK = map_relatives.find(jk)->second.first;
     else
-      RJK = map_relatives.find(kj)->second.first.transpose();
+      if (map_relatives.find(kj) != map_relatives.end())
+        RJK = map_relatives.find(kj)->second.first.transpose();
+      else
+        bTripletComputed = false;
 
     const std::pair<size_t,size_t> ki = std::make_pair(K,I);
     const std::pair<size_t,size_t> ik = std::make_pair(I,K);
@@ -2008,13 +2015,17 @@ void GlobalRigidReconstructionEngine::tripletRotationRejection(
     if (map_relatives.find(ki) != map_relatives.end())
       RKI = map_relatives.find(ki)->second.first;
     else
-      RKI = map_relatives.find(ik)->second.first.transpose();
+      if (map_relatives.find(ik) != map_relatives.end())
+        RKI = map_relatives.find(ik)->second.first.transpose();
+      else
+        bTripletComputed = false;
 
     Mat3 Rot_To_Identity = RIJ * RJK * RKI; // motion composition
     float angularErrorDegree = static_cast<float>(R2D(getRotationMagnitude(Rot_To_Identity)));
-    vec_errToIdentityPerTriplet.push_back(angularErrorDegree);
+    if( bTripletComputed )
+      vec_errToIdentityPerTriplet.push_back(angularErrorDegree);
 
-    if (angularErrorDegree < 2.0f)
+    if (angularErrorDegree < 2.0f && bTripletComputed )
     {
       vec_triplets_validated.push_back(triplet);
 

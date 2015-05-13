@@ -122,7 +122,7 @@ bool estimate_T_rig_triplet(
   KernelType kernel(featsAndRigIdPerTrack, vec_global_KR_Triplet, vec_rigRotation,
                     vec_rigOffset, ThresholdUpperBound);
 
-  const size_t ORSA_ITER = 1024;
+  const size_t ORSA_ITER = 320;
 
   rigTrackTrifocalTensorModel T;
   std::pair<double,double> acStat = robust::ACRANSAC(kernel, vec_inliers, ORSA_ITER, &T, dPrecision, false );
@@ -147,7 +147,7 @@ bool estimate_T_rig_triplet(
       << " total putative " << featsAndRigIdPerTrack.size() << std::endl;
   }
 
-  bool bRefine = false;
+  bool bRefine = true;
   if (bRefine && bTest)
   {
     // Compute initial triangulation
@@ -159,9 +159,9 @@ bool estimate_T_rig_triplet(
 
     // keep only tracks related to inliers
     openMVG::tracks::STLMAPTracks map_tracksInliers;
-    for(int l=0; l < vec_inliers.size(); ++l)
+    for(int l=0; l < map_tracksCommon.size(); ++l)
     {
-      map_tracksInliers[l] = map_tracksCommon.at(vec_inliers[l]);
+      map_tracksInliers[l] = map_tracksCommon.at(l);
     }
 
     for (size_t i = 0; i < map_tracksInliers.size(); ++i)
@@ -229,6 +229,7 @@ bool estimate_T_rig_triplet(
         }
       }
 
+#if 0
       //-- Remove useless tracks and 3D points
       {
         std::vector<Vec3> vec_Xis_cleaned;
@@ -247,6 +248,7 @@ bool estimate_T_rig_triplet(
           map_tracksInliers.erase(*iterSet);
         }
       }
+#endif
 
     // BA on tis, Xis
     const size_t nbRigs = 3;
@@ -750,7 +752,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = 2.0 / averageFocal ;
+          double dPrecision = 3.0 / averageFocal ;
           const double ThresholdUpperBound = 1.0 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
