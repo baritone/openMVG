@@ -35,10 +35,13 @@ struct IntrinsicCameraInfo
   size_t m_w, m_h;
   float m_focal;
   Mat3 m_K;
+  double m_k1;
+  double m_k2;
+  double m_k3;
   bool m_bKnownIntrinsic; // true if 11 or 6, else false
   std::string m_sCameraMaker, m_sCameraModel;
 
-  IntrinsicCameraInfo(): m_w(0), m_h(0), m_K(Mat3::Zero()), m_bKnownIntrinsic(false), m_sCameraModel(""), m_sCameraMaker("")
+  IntrinsicCameraInfo(): m_w(0), m_h(0), m_K(Mat3::Zero()), m_k1(0), m_k2(0), m_k3(0), m_bKnownIntrinsic(false), m_sCameraModel(""), m_sCameraMaker("")
   {  }
 
   /// Functor used to tell if two IntrinsicCameraInfo share the same optical properties
@@ -63,7 +66,7 @@ struct CameraRigInfo
 struct IntrinsicCameraRigInfo
 {
   size_t m_w, m_h;
-  float m_focal;
+  double m_focal;
   Mat3 m_K;
   Mat3 m_R;
   Vec3 m_rigC;

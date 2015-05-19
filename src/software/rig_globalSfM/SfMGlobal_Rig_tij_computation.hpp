@@ -52,6 +52,11 @@ bool estimate_T_rig_triplet(
   map_rigIdToTripletId[nJ] = 1;
   map_rigIdToTripletId[nK] = 2;
 
+  // initialize subcamera set
+  std::set < size_t >  set_subCam0 ;
+  std::set < size_t >  set_subCam1 ;
+  std::set < size_t >  set_subCam2 ;
+
   // Convert data
   std::vector < std::vector < std::vector < double > > > featsAndRigIdPerTrack;
 
@@ -74,6 +79,16 @@ bool estimate_T_rig_triplet(
       const size_t cameraId  = map_intrinsicIdPerImageId.at(imaIndex);
       const size_t featIndex = iter->second;
       const size_t rigId     = map_rigIdPerImageId.at(imaIndex);
+
+      //update subcameras sets
+      if ( rigId == nI )
+         set_subCam0.insert( cameraId );
+
+      if ( rigId == nJ)
+         set_subCam1.insert( cameraId );
+
+      if ( rigId == nK)
+         set_subCam2.insert( cameraId );
 
       // extract features
       const SIOPointFeature & pt = map_feats.find(imaIndex)->second[featIndex];
@@ -107,10 +122,9 @@ bool estimate_T_rig_triplet(
   KernelType kernel(featsAndRigIdPerTrack, vec_global_KR_Triplet, vec_rigRotation,
                     vec_rigOffset, ThresholdUpperBound);
 
-  const size_t ORSA_ITER = 1024;
+  const size_t ORSA_ITER = 320;
 
   rigTrackTrifocalTensorModel T;
-  dPrecision = dPrecision ;//std::numeric_limits<double>::infinity();
   std::pair<double,double> acStat = robust::ACRANSAC(kernel, vec_inliers, ORSA_ITER, &T, dPrecision, false );
   dPrecision = acStat.first;
 
@@ -120,129 +134,122 @@ bool estimate_T_rig_triplet(
   vec_tis[1] = T.t2;
   vec_tis[2] = T.t3;
 
-  // Compute initial triangulation
-  std::vector<double> vec_residuals;
-  std::vector<Vec3>   vec_Xis;
-  std::set<size_t>    set_idx_to_remove;
-  std::map<size_t, PinholeCamera >  map_camera;
-  openMVG::tracks::STLMAPTracks     map_tracksInlier;
+  // compute minimal number of matches subcameras
+  size_t  minMatchSubCamSize = std::min ( std::min (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
+  size_t  maxMatchSubCamSize = std::max ( std::max (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
 
-  // keep only tracks related to inliers
-  openMVG::tracks::STLMAPTracks map_tracksInliers;
-  for(int l=0; l < vec_inliers.size(); ++l)
-  {
-    map_tracksInliers[l] = map_tracksCommon.at(vec_inliers[l]);
-  }
-
-  for (size_t i = 0; i < map_tracksInliers.size(); ++i)
-  {
-      STLMAPTracks::const_iterator iterTracks = map_tracksInliers.begin();
-      std::advance(iterTracks, i);
-
-      const submapTrack & subTrack = iterTracks->second;
-
-      Triangulation trianObj;
-      // loop on subtracks
-      for (size_t index = 0; index < subTrack.size() ; ++index)
-      { submapTrack::const_iterator iterSubTrack = subTrack.begin();
-        std::advance(iterSubTrack, index);
-        const size_t imaIndex = iterSubTrack->first;
-        const size_t featIndex = iterSubTrack->second;
-        const SIOPointFeature & pt = map_feats.find(imaIndex)->second[featIndex];
-
-        // extract camera id and subchannel number
-        const size_t SubI  = map_intrinsicIdPerImageId.at(imaIndex);
-        const size_t rigId = map_rigIdPerImageId.at(imaIndex);
-
-        // compute pose of each cameras
-        const Mat3 RcamI = vec_rigRotation[SubI];
-        const Mat3 K     = Mat3::Identity();
-        const Vec3 CI = vec_rigOffset[SubI];
-
-        Vec3 tI; Mat3 RI;
-
-        if( rigId == nI)
-        {
-           RI = RcamI * T.R1 ;
-           tI = RcamI * T.t1 - RcamI * CI ;
-        }
-        else
-        {
-          if( rigId == nJ )
-          {
-              RI = RcamI * T.R2 ;
-              tI = RcamI * T.t2 - RcamI * CI ;
-          }
-          else
-          {
-              RI = RcamI * T.R3 ;
-              tI = RcamI * T.t3 - RcamI * CI ;
-          }
-        }
-
-        // build associated camera
-        PinholeCamera cam(K, RI, tI);
-        map_camera[imaIndex] = cam;
-
-        // Build the P matrix
-        trianObj.add(map_camera[imaIndex]._P, pt.coords().cast<double>());
-      }
-
-      // Compute the 3D point and keep point index with negative depth
-      const Vec3 Xs = trianObj.compute();
-      vec_residuals.push_back( trianObj.error() / subTrack.size() );
-      vec_Xis.push_back(Xs);
-
-      if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
-           || !is_finite(Xs[2]) )  {
-        set_idx_to_remove.insert(i);
-      }
-    }
-
-    // remove point with big reprojection error
-    double quant;
-    quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
-
-    for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
-      if( vec_residuals[idx] > quant)
-        set_idx_to_remove.insert(idx);
-
-    //-- Remove useless tracks and 3D points
-    {
-      std::vector<Vec3> vec_Xis_cleaned;
-      for(size_t ic = 0; ic < vec_Xis.size(); ++ic)
-      {
-        if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), ic) == set_idx_to_remove.end())
-        {
-          vec_Xis_cleaned.push_back(vec_Xis[ic]);
-        }
-      }
-      vec_Xis.swap(vec_Xis_cleaned);
-
-      for( std::set<size_t>::const_iterator iterSet = set_idx_to_remove.begin();
-        iterSet != set_idx_to_remove.end(); ++iterSet)
-      {
-        map_tracksInliers.erase(*iterSet);
-      }
-    }
-
-  double min, max, mean, median;
-  minMaxMeanMedian<double>(vec_residuals.begin(), vec_residuals.end(),
-    min, max, mean, median);
-
-  bool bTest( map_tracksInliers.size() > 30 * vec_rigOffset.size() );
+  bool bTest( vec_inliers.size() > 30 * minMatchSubCamSize );
 
   if (!bTest)
   {
     std::cout << "Triplet rejected : AC: " << dPrecision
-      << " median: " << median
-      << " inliers count " << map_tracksInliers.size()
+      << " inliers count " << vec_inliers.size() / (double) featsAndRigIdPerTrack.size()
       << " total putative " << featsAndRigIdPerTrack.size() << std::endl;
   }
 
   bool bRefine = true;
   if (bRefine && bTest)
   {
+    // Compute initial triangulation
+    std::vector<double> vec_residuals;
+    std::vector<Vec3>   vec_Xis;
+    std::set<size_t>    set_idx_to_remove;
+    std::map<size_t, PinholeCamera >  map_camera;
+    openMVG::tracks::STLMAPTracks     map_tracksInlier;
+
+    // keep only tracks related to inliers
+    openMVG::tracks::STLMAPTracks map_tracksInliers;
+    for(int l=0; l < map_tracksCommon.size(); ++l)
+    {
+      map_tracksInliers[l] = map_tracksCommon.at(l);
+    }
+
+    for (size_t i = 0; i < map_tracksInliers.size(); ++i)
+    {
+        STLMAPTracks::const_iterator iterTracks = map_tracksInliers.begin();
+        std::advance(iterTracks, i);
+
+        const submapTrack & subTrack = iterTracks->second;
+
+        Triangulation trianObj;
+        // loop on subtracks
+        for (size_t index = 0; index < subTrack.size() ; ++index)
+        { submapTrack::const_iterator iterSubTrack = subTrack.begin();
+          std::advance(iterSubTrack, index);
+          const size_t imaIndex = iterSubTrack->first;
+          const size_t featIndex = iterSubTrack->second;
+          const SIOPointFeature & pt = map_feats.find(imaIndex)->second[featIndex];
+
+          // extract camera id and subchannel number
+          const size_t SubI  = map_intrinsicIdPerImageId.at(imaIndex);
+          const size_t rigId = map_rigIdPerImageId.at(imaIndex);
+
+          // compute pose of each cameras
+          const Mat3 RcamI = vec_rigRotation[SubI];
+          const Mat3 K     = Mat3::Identity();
+          const Vec3 CI = vec_rigOffset[SubI];
+
+          Vec3 tI; Mat3 RI;
+
+          if( rigId == nI)
+          {
+             RI = RcamI * T.R1 ;
+             tI = RcamI * T.t1 - RcamI * CI ;
+          }
+          else
+          {
+            if( rigId == nJ )
+            {
+                RI = RcamI * T.R2 ;
+                tI = RcamI * T.t2 - RcamI * CI ;
+            }
+            else
+            {
+                RI = RcamI * T.R3 ;
+                tI = RcamI * T.t3 - RcamI * CI ;
+            }
+          }
+
+          // build associated camera
+          PinholeCamera cam(K, RI, tI);
+          map_camera[imaIndex] = cam;
+
+          // Build the P matrix
+          trianObj.add(map_camera[imaIndex]._P, pt.coords().cast<double>());
+        }
+
+        // Compute the 3D point and keep point index with negative depth
+        const Vec3 Xs = trianObj.compute();
+        vec_residuals.push_back( trianObj.error() / subTrack.size() );
+        vec_Xis.push_back(Xs);
+
+        if (trianObj.minDepth() < 0 || !is_finite(Xs[0]) || !is_finite(Xs[1])
+             || !is_finite(Xs[2]) )  {
+          set_idx_to_remove.insert(i);
+        }
+      }
+
+#if 0
+      //-- Remove useless tracks and 3D points
+      {
+        std::vector<Vec3> vec_Xis_cleaned;
+        for(size_t ic = 0; ic < vec_Xis.size(); ++ic)
+        {
+          if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), ic) == set_idx_to_remove.end())
+          {
+            vec_Xis_cleaned.push_back(vec_Xis[ic]);
+          }
+        }
+        vec_Xis.swap(vec_Xis_cleaned);
+
+        for( std::set<size_t>::const_iterator iterSet = set_idx_to_remove.begin();
+          iterSet != set_idx_to_remove.end(); ++iterSet)
+        {
+          map_tracksInliers.erase(*iterSet);
+        }
+      }
+#endif
+
     // BA on tis, Xis
     const size_t nbRigs = 3;
     const size_t nbCams = vec_rigRotation.size();
@@ -407,7 +414,7 @@ bool estimate_T_rig_triplet(
     // Create residuals for each observation in the bundle adjustment problem. The
     // parameters for cameras and points are added automatically.
     ceres::Problem problem;
-    ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
+    ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
     for (size_t i = 0; i < ba_problem.num_observations(); ++i) {
       // Each Residual block takes a point and a camera as input and outputs a 2
       // dimensional residual. Internally, the cost function stores the observed
@@ -472,10 +479,10 @@ bool estimate_T_rig_triplet(
 
     options.minimizer_progress_to_stdout = false;
     options.logging_type = ceres::SILENT;
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
     options.num_threads = omp_get_max_threads();
     options.num_linear_solver_threads = omp_get_max_threads();
-#endif // USE_OPENMP
+#endif // OPENMVG_USE_OPENMP
 
     // Solve BA
     ceres::Solver::Summary summary;
@@ -533,23 +540,21 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
   // create rig structure using openGV
   std::vector<Vec3>  rigOffsets;
   std::vector<Mat3>  rigRotations;
-  double          averageFocal=0.0;
+  double             averageFocal=1.0e10;
 
   for(int k=0; k < _vec_intrinsicGroups.size(); ++k)
   {
-      const Vec3 t = _vec_intrinsicGroups[k].m_rigC;
       const Mat3 R = _vec_intrinsicGroups[k].m_R;
+      const Vec3 t = _vec_intrinsicGroups[k].m_rigC;
 
       rigOffsets.push_back(t);
       rigRotations.push_back(R);
-      averageFocal += _vec_intrinsicGroups[k].m_focal ;
+      averageFocal = std::min(_vec_intrinsicGroups[k].m_focal, averageFocal) ;
   }
-
-  averageFocal /= (double) _vec_intrinsicGroups.size();
 
   //-- Prepare tracks count per triplets:
   std::map<size_t, size_t> map_tracksPerTriplets;
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
   #pragma omp parallel for schedule(dynamic) ordered
 #endif
   for (int i = 0; i < (int)vec_triplets.size(); ++i)
@@ -583,7 +588,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
       tracksBuilder.Build(map_matchesIJK);
       tracksBuilder.Filter(_map_RigIdPerImageId,3);
     }
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
   #pragma omp critical
 #endif
    {
@@ -615,7 +620,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
     << "Computation of the relative translations over the graph with an edge coverage algorithm" << std::endl;
   for (int k = 0; k < vec_edges.size(); ++k)
   {
-    const myEdge & edge = vec_edges[k];
+    const myEdge & edge(vec_edges[k]);
     bool  bEvaluate     = true;
 
     //-- If current edge already computed continue
@@ -660,9 +665,9 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
       // Try to solve the triplets
       // Search the possible triplet:
-  #ifdef USE_OPENMP
-      #pragma omp parallel for schedule(dynamic)
-  #endif
+      #ifdef OPENMVG_USE_OPENMP
+          #pragma omp parallel for schedule(dynamic)
+      #endif
       for (size_t i = 0; i < vec_possibleTriplets.size(); ++i)
       {
         const graphUtils::Triplet & triplet = vec_triplets[vec_possibleTriplets[i]];
@@ -696,6 +701,47 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
             tracksBuilder.ExportToSTL(map_tracksCommon);
           }
 
+          // initialize subcamera set
+          std::set < size_t >  set_subCam0 ;
+          std::set < size_t >  set_subCam1 ;
+          std::set < size_t >  set_subCam2 ;
+
+          // initialize structure pour triplet estimation
+          size_t cpt = 0;
+          for (STLMAPTracks::const_iterator iterTracks = map_tracksCommon.begin();
+          iterTracks != map_tracksCommon.end(); ++iterTracks, ++cpt) {
+            const submapTrack & subTrack = iterTracks->second;
+
+            std::vector < std::vector <double> > subTrackInfo;
+
+            // loop on subtracks
+            size_t nrig = 0;
+            for (size_t index = 0; index < subTrack.size() ; ++index)
+            { submapTrack::const_iterator iter = subTrack.begin();
+              std::advance(iter, index);
+
+              // extract camera indexes
+              const size_t imaIndex  = iter->first;
+              const size_t cameraId  = _map_IntrinsicIdPerImageId.at(imaIndex);
+              const size_t rigId     = _map_RigIdPerImageId.at(imaIndex);
+
+              //update subcameras sets
+              if ( rigId == I )
+                set_subCam0.insert( cameraId );
+
+              if ( rigId == J)
+                set_subCam1.insert( cameraId );
+
+              if ( rigId == K)
+                set_subCam2.insert( cameraId );
+
+              }
+          }
+
+          // compute minimal number of matches subcameras
+          size_t  minMatchSubCamSize = std::min ( std::min (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
+          size_t  maxMatchSubCamSize = std::max ( std::max (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
+
           //--
           // Try to estimate this triplet.
           //--
@@ -706,13 +752,13 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = pow ( 4.0 / averageFocal , 2.0 ) ;
-          const double ThresholdUpperBound = 2.5 / averageFocal;
+          double dPrecision = 3.0 / averageFocal ;
+          const double ThresholdUpperBound = 1.0 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;
 
-          if( map_tracksCommon.size() > 50 * rigOffsets.size() &&
+          if( map_tracksCommon.size() > 50 * maxMatchSubCamSize &&
                 estimate_T_rig_triplet(
                     map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                     rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,
@@ -734,7 +780,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
             // IJ, JK, IK
 
             //--- ATOMIC
-            #ifdef USE_OPENMP
+            #ifdef OPENMVG_USE_OPENMP
                #pragma omp critical
             #endif
             {
@@ -755,6 +801,76 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
               RelativeCameraMotion(RI, ti, RK, tk, &RikGt, &tik);
               vec_initialEstimates.push_back(
                 std::make_pair(std::make_pair(I, K), std::make_pair(RikGt, tik)));
+
+              // Add trifocal inliers as valid 3D points
+              for (std::vector<size_t>::const_iterator iterInliers = vec_inliers.begin();
+                  iterInliers != vec_inliers.end(); ++iterInliers)
+              {
+                  STLMAPTracks::const_iterator iterTracks = map_tracksCommon.begin();
+                  std::advance(iterTracks, *iterInliers);
+                  const submapTrack & subTrack = iterTracks->second;
+
+                  std::vector<std::pair<size_t, size_t> >  imgAndFeat_rigI;
+                  std::vector<std::pair<size_t, size_t> >  imgAndFeat_rigJ;
+                  std::vector<std::pair<size_t, size_t> >  imgAndFeat_rigK;
+
+                  // split track into rig subset
+                  for (size_t index = 0; index < subTrack.size() ; ++index)
+                  { submapTrack::const_iterator iter = subTrack.begin();
+                    std::advance(iter, index);
+
+                    // extract camera indexes
+                    const size_t imaIndex  = iter->first;
+                    const size_t featIndex = iter->second;
+                    const size_t rigId     = _map_RigIdPerImageId.at(imaIndex);
+
+                    //update subcameras sets
+                    if ( rigId == I )
+                        imgAndFeat_rigI.push_back( std::make_pair(imaIndex, featIndex) );
+
+                    if ( rigId == J)
+                        imgAndFeat_rigJ.push_back( std::make_pair(imaIndex, featIndex) );
+
+                    if ( rigId == K)
+                        imgAndFeat_rigK.push_back( std::make_pair(imaIndex, featIndex) );
+                  }
+
+                  // compute pairwise matches between rigs (I,J)
+                  for( size_t ind_I=0; ind_I < imgAndFeat_rigI.size() ; ++ ind_I )
+                  {
+                      for( size_t  ind_J=0; ind_J < imgAndFeat_rigJ.size() ; ++ind_J )
+                      {
+                          const std::pair<size_t, size_t> pairI= imgAndFeat_rigI[ind_I];
+                          const std::pair<size_t, size_t> pairJ= imgAndFeat_rigJ[ind_J];
+
+                          newpairMatches[std::make_pair(I,J)][std::make_pair(pairI.first, pairJ.first)].push_back(IndMatch(pairI.second, pairJ.second));
+                      }
+                  }
+
+                  // compute pairwise matches between rigs (I,K)
+                  for( size_t ind_I=0; ind_I < imgAndFeat_rigI.size() ; ++ ind_I )
+                  {
+                      for( size_t  ind_K=0; ind_K < imgAndFeat_rigK.size() ; ++ind_K )
+                      {
+                          const std::pair<size_t, size_t> pairI= imgAndFeat_rigI[ind_I];
+                          const std::pair<size_t, size_t> pairK= imgAndFeat_rigK[ind_K];
+
+                          newpairMatches[std::make_pair(I,K)][std::make_pair(pairI.first, pairK.first)].push_back(IndMatch(pairI.second, pairK.second));
+                      }
+                  }
+
+                  // compute pairwise matches between rigs (J,K)
+                  for( size_t ind_J=0; ind_J < imgAndFeat_rigJ.size() ; ++ ind_J )
+                  {
+                      for( size_t  ind_K=0; ind_K < imgAndFeat_rigK.size() ; ++ind_K )
+                      {
+                          const std::pair<size_t, size_t> pairJ= imgAndFeat_rigJ[ind_J];
+                          const std::pair<size_t, size_t> pairK= imgAndFeat_rigK[ind_K];
+
+                          newpairMatches[std::make_pair(J,K)][std::make_pair(pairJ.first, pairK.first)].push_back(IndMatch(pairJ.second, pairK.second));
+                      }
+                  }
+              }
 
               //-- Remove the 3 edges validated by the trifocal tensor
               m_mutexSet.discard(std::make_pair(std::min(I,J), std::max(I,J)));

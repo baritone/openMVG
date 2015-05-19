@@ -322,7 +322,7 @@ int main(int argc, char **argv)
       // create rig structure using openGV
       translations_t  rigOffsets;
       rotations_t     rigRotations;
-      double          averageFocal=0.0;
+      double          averageFocal=1.0e10;
 
       for(int k=0; k < vec_focalGroup.size(); ++k)
       {
@@ -331,10 +331,10 @@ int main(int argc, char **argv)
 
         rigOffsets.push_back(t);
         rigRotations.push_back(R);
-        averageFocal +=  vec_focalGroup[k].m_focal ;
+        averageFocal = std::min( averageFocal, (double) vec_focalGroup[k].m_focal);
       }
 
-      averageFocal /= (double)  vec_focalGroup.size();
+    //  averageFocal /= (double)  vec_focalGroup.size();
 
       // create the structure with putative match per rigs
       matching::RigWiseMatches  map_Matches_Rig;
@@ -374,7 +374,7 @@ int main(int argc, char **argv)
         }
       }
 
-      double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 10.0 / averageFocal )));
+      double maxExpectedError = (1.0 - cos(atan(sqrt(2.0) * 4.0 / averageFocal )));
 
       // Now filter images
       collectionGeomFilter.Filter(
@@ -414,7 +414,7 @@ int main(int argc, char **argv)
           for (std::vector<PairWiseMatches::key_type>::const_iterator
             iter =  vec_toRemove.begin(); iter != vec_toRemove.end(); ++iter)
           {
-            map_GeometricMatches.at(iterMap->first).erase(*iter);
+          //  map_GeometricMatches.at(iterMap->first).erase(*iter);
           }
         }
 
@@ -428,7 +428,7 @@ int main(int argc, char **argv)
       for (std::vector<RigWiseMatches::key_type>::const_iterator
         iter =  vec_rigtoRemove.begin(); iter != vec_rigtoRemove.end(); ++iter)
       {
-        map_GeometricMatches.erase(*iter);
+        // map_GeometricMatches.erase(*iter);
       }
 
       //---------------------------------------

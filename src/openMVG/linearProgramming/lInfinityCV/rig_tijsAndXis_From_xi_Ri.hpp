@@ -99,7 +99,7 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
     A.coeffRef(rowPos, TVAR(indexRig, 0)) = Rc(2,0);
     A.coeffRef(rowPos, TVAR(indexRig, 1)) = Rc(2,1);
     A.coeffRef(rowPos, TVAR(indexRig, 2)) = Rc(2,2);
-    C(rowPos) = 1.0 - tc(2);
+    C(rowPos) = 0.01 - tc(2);
     vec_sign[rowPos] = LP_Constraints::LP_GREATER_OR_EQUAL;
     ++rowPos;
 
@@ -204,9 +204,6 @@ struct Rig_Translation_Structure_L1_ConstraintBuilder
     const size_t Nrig = (size_t) _M.row(4).maxCoeff() + 1;
 
     constraint._nbParams = (Nrig + N3D) * 3;
-
-    // to be sure that cost vector is empty
-    constraint._vec_cost.clear();
 
     return true;
   }

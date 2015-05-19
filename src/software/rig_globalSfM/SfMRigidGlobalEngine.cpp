@@ -674,7 +674,7 @@ bool GlobalRigidReconstructionEngine::Process()
   // Relative translations estimation (Triplet based translation computation)
   //-------------------
   std::vector<openMVG::relativeInfo > vec_initialRijTijEstimates;
-  RigWiseMatches newpairMatches;
+  RigWiseMatches filteredMatches;
   {
     std::cout << "\n-------------------------------" << "\n"
       << " Relative translations computation: " << "\n"
@@ -690,7 +690,7 @@ bool GlobalRigidReconstructionEngine::Process()
 
     bool  bComputeTrifocal=true;
     if(bComputeTrifocal){
-       computePutativeTranslation_EdgesCoverage(map_globalR, vec_triplets, vec_initialRijTijEstimates, newpairMatches);
+       computePutativeTranslation_EdgesCoverage(map_globalR, vec_triplets, vec_initialRijTijEstimates, filteredMatches);
     }
     else
     {
@@ -740,7 +740,7 @@ bool GlobalRigidReconstructionEngine::Process()
   //-- Robust translation estimation can perform inference and remove some bad conditioned triplets
 
   // create map original rig id to remaining rig id
-  std::map < size_t,  size_t >   mapRigIdToRepresented;
+  std::set<size_t> set_representedImageIndex;
 
   {
     // Build the list of Pairs used by the translations
@@ -751,7 +751,7 @@ bool GlobalRigidReconstructionEngine::Process()
       map_pairs_tij.push_back(std::make_pair(rel.first.first,rel.first.second));
     }
 
-    const std::set<size_t> set_representedImageIndex = CleanGraph_Node(map_pairs_tij, _vec_fileNames, _sOutDirectory, _map_ImagesIdPerRigId[0].size());
+    set_representedImageIndex = CleanGraph_Node(map_pairs_tij, _vec_fileNames, _sOutDirectory, _map_ImagesIdPerRigId[0].size());
 
     std::cout << "\n\n"
       << "We targeting to estimates: " << map_globalR.size()
@@ -760,16 +760,8 @@ bool GlobalRigidReconstructionEngine::Process()
     //-- Clean global rotations that are not in the TRIPLET GRAPH
     KeepOnlyReferencedElement(set_representedImageIndex, map_globalR);
     KeepOnlyReferencedElement(set_representedImageIndex, vec_initialRijTijEstimates);
-    KeepOnlyReferencedElement(set_representedImageIndex, newpairMatches);
+    KeepOnlyReferencedElement(set_representedImageIndex, filteredMatches);
     // clean _map_matches_E?
-
-    // create map initial rig id to remaining rig id
-    size_t   cpt = 0;
-    for( std::set<size_t>::const_iterator iter = set_representedImageIndex.begin() ;
-         iter != set_representedImageIndex.end() ; ++iter, ++cpt )
-    {
-        mapRigIdToRepresented[ *iter ] = cpt;
-    }
 
     std::cout << "\nRemaining rigs after inference filter: \n"
       << map_globalR.size() << " from a total of " << set_representedImageIndex.size() << std::endl;
@@ -781,7 +773,7 @@ bool GlobalRigidReconstructionEngine::Process()
   //-------------------
 
   {
-    const size_t iNRigs = map_globalR.size();
+    const size_t iNRigs = set_representedImageIndex.size();
     const size_t iNview = iNRigs * _vec_intrinsicGroups.size() ;
 
     std::cout << "\n-------------------------------" << "\n"
@@ -886,13 +878,12 @@ bool GlobalRigidReconstructionEngine::Process()
         std::vector<Vec3>  vec_C;
         for (size_t i = 0; i < iNRigs; ++i)
         {
-          const size_t rigNumT    = mapRigIdToRepresented.at(_reindexBackward[i]);
           const size_t rigNum     = _reindexBackward[i];
           const std::vector<size_t> ImageList = _map_ImagesIdPerRigId[rigNum];
 
           // extract rig pose
           const Mat3 & Ri = map_globalR[rigNum];
-          const Vec3 Rigt(vec_RigTranslation[rigNumT*3], vec_RigTranslation[rigNumT*3+1], vec_RigTranslation[rigNumT*3+2]);
+          const Vec3 Rigt(vec_RigTranslation[i*3], vec_RigTranslation[i*3+1], vec_RigTranslation[i*3+2]);
 
           for(size_t j= 0 ; j < ImageList.size(); ++j)
           {
@@ -938,8 +929,8 @@ bool GlobalRigidReconstructionEngine::Process()
   {
     // keep tracks that are seen in remaining rigs
     RigWiseMatches newpairMatches;
-    for(RigWiseMatches::const_iterator iter = _map_Matches_Rig.begin();
-          iter != _map_Matches_Rig.end(); ++iter )
+    for(RigWiseMatches::const_iterator iter = filteredMatches.begin();
+          iter != filteredMatches.end(); ++iter )
     {
       const size_t RigOne = iter->first.first;
       const size_t RigTwo = iter->first.second;
@@ -972,7 +963,7 @@ bool GlobalRigidReconstructionEngine::Process()
       double  scaleFactor = 0.0;
       size_t  nStereoPoint = 0;
 
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
       #pragma omp parallel for schedule(dynamic)
 #endif
       for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
@@ -1017,7 +1008,7 @@ bool GlobalRigidReconstructionEngine::Process()
 
           vec_residuals[idx] = dAverageResidual /subTrack.size() ;
 
-#ifdef USE_OPENMP
+#ifdef OPENMVG_USE_OPENMP
       #pragma omp critical
 #endif
         {
@@ -1032,27 +1023,19 @@ bool GlobalRigidReconstructionEngine::Process()
 
       std::cout << "\n Clean point cloud before BA \n " << endl;
 
-      // remove point with big reprojection error
-      double quant;
-      quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.95);
-
-      for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
-        if( vec_residuals[idx] > quant)
-          set_idx_to_remove.insert(idx);
-
       //-- Remove useless tracks and 3D points
       {
          std::map<size_t, Vec3> map_allScenes_cleaned;
          std::vector < Vec3 > vec_allScenes_cleaned;
 
-         #ifdef USE_OPENMP
+         #ifdef OPENMVG_USE_OPENMP
              #pragma omp parallel for schedule(dynamic)
           #endif
           for(size_t i = 0; i < _vec_allScenes.size(); ++i)
           {
               if (find(set_idx_to_remove.begin(), set_idx_to_remove.end(), i) == set_idx_to_remove.end())
               {
-                  #ifdef USE_OPENMP
+                  #ifdef OPENMVG_USE_OPENMP
                     #pragma omp critical
                   #endif
                   {
@@ -1151,128 +1134,6 @@ bool GlobalRigidReconstructionEngine::Process()
     // Refine Structure, rotations, translations, rig structure and camera intrinsics
     bundleAdjustment(_map_rig, _map_camera, _vec_allScenes, _map_selectedTracks, true, true, true, true);
     plyHelper::exportToPly(_vec_allScenes, stlplus::create_filespec(_sOutDirectory, "raw_pointCloud_BA_KRT_RT_Xi", "ply"));
-  }
-
-
-  // Triangulation of all the tracks
-  {
-    std::vector<double> vec_residuals;
-    std::set<size_t> set_idx_to_remove;
-
-    // compute scale factor to have metric point cloud
-    double  scaleFactor = 0.0;
-    size_t  nStereoPoint = 0;
-
-#ifdef USE_OPENMP
-    #pragma omp parallel for schedule(dynamic)
-#endif
-    for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
-    {
-        STLMAPTracks::const_iterator iterTracks = _map_selectedTracks.begin();
-        std::advance(iterTracks, idx);
-
-        const submapTrack & subTrack = iterTracks->second;
-
-        // Look to the features required for the triangulation task
-        Triangulation trianObj;
-        std::map < size_t , std::vector < std::pair <size_t, size_t > > >  map_featIdPerRigId ;
-
-        for (submapTrack::const_iterator iterSubTrack = subTrack.begin(); iterSubTrack != subTrack.end(); ++iterSubTrack)
-        {
-          const size_t imaIndex = iterSubTrack->first;
-          const size_t featIndex = iterSubTrack->second;
-          const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
-
-          // update map
-          const size_t rigId = _map_RigIdPerImageId.at(imaIndex);
-          map_featIdPerRigId [ rigId ].push_back ( std::make_pair (imaIndex, featIndex) );
-
-          // Build the P matrix
-          trianObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
-        }
-
-        // Compute the 3D point and keep point index with negative depth
-        const Vec3 Xs  = trianObj.compute();
-
-        // compute scale factor
-        size_t  cpt_scale = 0;
-
-        Triangulation stereoRig;
-
-        for( std::map < size_t , std::vector < std::pair <size_t, size_t > > >::const_iterator iter = map_featIdPerRigId.begin();
-             iter != map_featIdPerRigId.end(); ++iter, ++cpt_scale)
-        {
-          const size_t rigId = iter->first;
-          const size_t numberOfFeature = iter->second.size();
-
-          // Build the P matrix
-          if ( numberOfFeature > 1 )
-          {
-            Triangulation stereoObj;
-
-            for( size_t k = 0 ; k < numberOfFeature ; ++k )
-            {
-              const size_t imaIndex = iter->second[k].first;
-              const size_t featIndex = iter->second[k].second;
-              const SIOPointFeature & pt = _map_feats[imaIndex][featIndex];
-              stereoObj.add(_map_camera[imaIndex]._P, pt.coords().cast<double>());
-            }
-
-            // compute 3D point and scale factor
-            const Vec3 X = stereoObj.compute();
-
-            if( stereoObj.minDepth() > 0.0 && trianObj.minDepth() > 1.0 )
-            {
-              scaleFactor += stereoObj.minDepth() / trianObj.minDepth() ;
-              ++nStereoPoint ;
-            }
-          }
-        }
-    }
-
-    // scale camera map and point cloud
-    scaleFactor /= nStereoPoint ;
-    if( scaleFactor > 0.0 )
-    {
-      std::cout << "\n Scale camera position with scale Factor " << scaleFactor << endl;
-
-      // rebuild rig map with scale factor
-      for (Map_Rig::iterator iter = _map_rig.begin(); iter != _map_rig.end(); ++iter) {
-         const Vec3 tRig = scaleFactor * iter->second.second;
-         iter->second.second = tRig ;
-      }
-
-      // rebuild camera map with correct scale factor
-      std::vector < Vec3 > vec_C ;
-      for (Map_Camera::iterator iter = _map_camera.begin(); iter != _map_camera.end(); ++iter)
-      {
-         // extract rig index and sub camera index
-         const size_t rigId = _map_RigIdPerImageId.at(iter->first);
-         const size_t subCamId = _map_IntrinsicIdPerImageId.find(iter->first)->second;
-
-        // extract  subcamera pose, rig pose
-         const Mat3   Rrig  = _map_rig.at(rigId).first;
-         const Vec3   tRig  = _map_rig.at(rigId).second;
-
-         const Mat3   Rcam  = _vec_intrinsicGroups[subCamId].m_R ;
-         const Vec3   tCam  = -Rcam * _vec_intrinsicGroups[subCamId].m_rigC ;
-
-         // compute subcamera pose
-         const Vec3   t     = Rcam * tRig + tCam;
-         const Mat3   R     = Rcam * Rrig;
-
-         const Mat3 & _K = _vec_intrinsicGroups[subCamId].m_K;   // The same K matrix is used by all the camera
-         _map_camera[iter->first] = PinholeCamera(_K, R, t);
-
-         vec_C.push_back( iter->second._C );
-      }
-
-      // update computed 3d point
-      for (int idx = 0; idx < _vec_allScenes.size(); ++idx)
-      {
-          _vec_allScenes[idx] *= scaleFactor;
-      }
-    }
   }
 
   //-- Export statistics about the global process
@@ -1555,7 +1416,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
   // create rig structure using openGV
   translations_t  rigOffsets;
   rotations_t     rigRotations;
-  double          averageFocal=0.0;
+  double          averageFocal=1.0e10;
 
   for(int k=0; k < _vec_intrinsicGroups.size(); ++k)
   {
@@ -1564,24 +1425,34 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
       rigOffsets.push_back(t);
       rigRotations.push_back(R);
-      averageFocal += _vec_intrinsicGroups[k].m_focal ;
+      averageFocal = std::min(averageFocal, _vec_intrinsicGroups[k].m_focal) ;
   }
 
-  averageFocal /= (double) _vec_intrinsicGroups.size();
+  // initialize structure used for matching between rigs
+  bearingVectors_t bearingVectorsRigOne;
+  bearingVectors_t bearingVectorsRigTwo;
+
+  std::vector<int>  camCorrespondencesRigOne;
+  std::vector<int>  camCorrespondencesRigTwo;
+
+  transformation_t  pose;
+  std::vector<size_t> vec_inliers;
 
   C_Progress_display my_progress_bar( _map_Matches_Rig.size(), std::cout, "\n", " " , "ComputeRelativeRt\n " );
-#ifdef USE_OPENMP
-    #pragma omp parallel for schedule(dynamic)
+#ifdef OPENMVG_USE_OPENMP
+    #pragma omp parallel for schedule(dynamic) shared(vec_relatives) firstprivate(rigOffsets, rigRotations, averageFocal, bearingVectorsRigOne, bearingVectorsRigTwo, camCorrespondencesRigOne, camCorrespondencesRigTwo, pose, vec_inliers)
 #endif
-  // loop on rigs
   for (int i = 0; i < _map_Matches_Rig.size(); ++i)
   {
+    size_t R0, R1;
+    bool isPoseUsable = false;
+
     RigWiseMatches::const_iterator iter = _map_Matches_Rig.begin();
     std::advance(iter, i);
 
     // extract indices of matching rigs
-    const size_t R0 = iter->first.first;
-    const size_t R1 = iter->first.second;
+    R0 = iter->first.first;
+    R1 = iter->first.second;
 
     // compute tracks between rigs
     RigWiseMatches map_matchesR0R1;
@@ -1596,100 +1467,106 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
       tracksBuilder.ExportToSTL(map_tracks);
     }
 
-    // extract associated subcamera id for each tracks
-    std::vector<Vec2> subTrackIndex;
+    // initialize structure used for matching between rigs
+    bearingVectorsRigOne.clear();
+    bearingVectorsRigTwo.clear();
 
+    camCorrespondencesRigOne.clear();
+    camCorrespondencesRigTwo.clear();
+
+    vec_inliers.clear();
+
+    // extract associated subcamera id for each tracks
+    std::map < size_t, size_t >  map_bearingIdToTrackId;
     size_t cpt = 0;
     for (STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
       iterTracks != map_tracks.end(); ++iterTracks, ++cpt)
     {
       const submapTrack & subTrack = iterTracks->second;
-      size_t index = 0;
-      size_t subTrackCpt = 0;
-      Vec2  rigIndex = -1.0*Vec2::Ones();
-      Vec2  subTrackId;
-      for (submapTrack::const_iterator iter = subTrack.begin(); iter != subTrack.end(); ++iter, ++subTrackCpt) {
-        const size_t imaIndex = iter->first;
-        const size_t rigidId = _map_RigIdPerImageId.at(imaIndex);
-        if( rigIndex[0] == -1 && index == 0 )
-        {
-          rigIndex[index]    = rigidId;
-          subTrackId[index]  = subTrackCpt;
-          ++index;
-        }
-        if( rigIndex[1] == -1 && rigIndex[0] != rigidId && index == 1 )
-        {
-          rigIndex[index]    = rigidId;
-          subTrackId[index]  = subTrackCpt;
-          ++index;
-        }
-      }
-      subTrackIndex.push_back(subTrackId);
-    }
+      std::vector<std::pair<size_t, size_t> >  imgAndFeat_rigI;
+      std::vector<std::pair<size_t, size_t> >  imgAndFeat_rigJ;
 
-    // initialize structure used for matching between rigs
-    bearingVectors_t bearingVectorsRigOne;
-    bearingVectors_t bearingVectorsRigTwo;
-
-    std::vector<int>  camCorrespondencesRigOne;
-    std::vector<int>  camCorrespondencesRigTwo;
-
-    // loop on inter-rig correspondences
-    cpt = 0;
-    for( STLMAPTracks::const_iterator iterTracks = map_tracks.begin();
-                iterTracks != map_tracks.end(); ++iterTracks, ++cpt)
-    {
-      const submapTrack & subTrack = iterTracks->second;
-      // iter on subtracks
-      for (size_t index = 0; index < 2 ; ++index)
+      for (submapTrack::const_iterator iterSubTrack = subTrack.begin();
+              iterSubTrack != subTrack.end(); ++iterSubTrack)
       {
-        submapTrack::const_iterator iter = subTrack.begin();
-        std::advance(iter, subTrackIndex[cpt][index]);
+        const size_t imaIndex  = iterSubTrack->first;
+        const size_t featIndex = iterSubTrack->second;
+        const size_t rigidId = _map_RigIdPerImageId.at(imaIndex);
 
-        // extract camId and feature index
-        const size_t imaIndex = iter->first;
-        const size_t featIndex = iter->second;
+        if( rigidId == R0 )
+            imgAndFeat_rigI.push_back(std::make_pair(imaIndex,featIndex));
 
-        // extract features
-        bearingVector_t  bearing;
-
-        // extract normalized keypoints coordinates
-        const SIOPointFeature & pt = _map_feats_normalized.at(imaIndex)[featIndex];
-        bearing(0) = pt.x();
-        bearing(1) = pt.y();
-        bearing(2) = 1.0;
-
-        // normalize bearing vectors
-        bearing = bearing / bearing.norm();
-
-        // extract camera indexes
-        size_t subCamId = _map_IntrinsicIdPerImageId.at(imaIndex);
-
-        if( _map_RigIdPerImageId.at(imaIndex) == R0 ){
-          // add bearing vectors to list and update correspondences list
-          bearingVectorsRigOne.push_back( bearing );
-          camCorrespondencesRigOne.push_back(subCamId);
-        }
-        else
-        {
-          // add bearing vectors to list and update correspondences list
-          bearingVectorsRigTwo.push_back( bearing );
-          camCorrespondencesRigTwo.push_back(subCamId);
-        }
+        if( rigidId == R1 )
+            imgAndFeat_rigJ.push_back(std::make_pair(imaIndex,featIndex));
       }
+
+      // loop on matches between rigs
+      for( size_t  indI = 0; indI < imgAndFeat_rigI.size(); ++indI )
+      {
+          for( size_t indJ = 0; indJ < imgAndFeat_rigJ.size(); ++indJ )
+          {
+            // extract image index and feat index
+            const size_t  ima_one  = imgAndFeat_rigI[indI].first;
+            const size_t  feat_one = imgAndFeat_rigI[indI].second;
+
+            const size_t  ima_two  = imgAndFeat_rigJ[indJ].first;
+            const size_t  feat_two = imgAndFeat_rigJ[indJ].second;
+
+            // extract features
+            bearingVector_t  bearing_one;
+            bearingVector_t  bearing_two;
+
+            // extract normalized keypoints coordinates
+            const SIOPointFeature & pt_one = _map_feats_normalized.at(ima_one)[feat_one];
+            bearing_one(0) = pt_one.x();
+            bearing_one(1) = pt_one.y();
+            bearing_one(2) = 1.0;
+
+            const SIOPointFeature & pt_two = _map_feats_normalized.at(ima_two)[feat_two];
+            bearing_two(0) = pt_two.x();
+            bearing_two(1) = pt_two.y();
+            bearing_two(2) = 1.0;
+
+            // normalize bearing vectors
+            bearing_one.normalized();
+            bearing_two.normalized();
+
+            // extract camera indexes
+            const size_t subCamId_one = _map_IntrinsicIdPerImageId.at(ima_one);
+            const size_t subCamId_two = _map_IntrinsicIdPerImageId.at(ima_two);
+
+            // add bearing vectors to list and update correspondences list
+            bearingVectorsRigOne.push_back( bearing_one );
+            camCorrespondencesRigOne.push_back( subCamId_one );
+
+            // add bearing vectors to list and update correspondences list
+            bearingVectorsRigTwo.push_back( bearing_two );
+            camCorrespondencesRigTwo.push_back( subCamId_two );
+
+            // update map
+            map_bearingIdToTrackId[bearingVectorsRigTwo.size()-1] = cpt;
+          }
+      }
+
     }// end loop on tracks
 
     //--> Estimate the best possible Rotation/Translation from correspondences
     double errorMax = std::numeric_limits<double>::max();
-    double maxExpectedError = 2.0*(1.0 - cos(atan(sqrt(2.0) * 5.0 / averageFocal )));
+    const double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 4.0 / averageFocal ) );
 
-    transformation_t  pose;
-    std::vector<size_t> vec_inliers;
+    isPoseUsable = SfMRobust::robustRigPose(
+                          bearingVectorsRigOne,
+                          bearingVectorsRigTwo,
+                          camCorrespondencesRigOne,
+                          camCorrespondencesRigTwo,
+                          rigOffsets,
+                          rigRotations,
+                          &pose,
+                          &vec_inliers,
+                          &errorMax,
+                          maxExpectedError);
 
-    if ( SfMRobust::robustRigPose( bearingVectorsRigOne, bearingVectorsRigTwo,
-        camCorrespondencesRigOne, camCorrespondencesRigTwo,
-        rigOffsets, rigRotations, &pose, &vec_inliers,
-        &errorMax, maxExpectedError) )
+    if ( isPoseUsable )
     {
         // retrieve relative rig orientation and translation
         const Mat3  Rrig = pose.block<3,3>(0,0).transpose();
@@ -1704,7 +1581,8 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         openMVG::tracks::STLMAPTracks map_tracksInliers;
         for(int l=0; l < vec_inliers.size(); ++l)
         {
-          map_tracksInliers[l] = map_tracks[vec_inliers[l]];
+            const size_t  trackId = map_bearingIdToTrackId.at(vec_inliers[l]);
+            map_tracksInliers[l] = map_tracks.at( trackId );
         }
 
         // Triangulation of all the tracks
@@ -1758,7 +1636,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
               trianObj.add(map_camera[imaIndex]._P, pt.coords().cast<double>());
             }
 
-            // Compute the 3D point and keep point index with negative depth
+            // Compute the 3D point and keep point index with positive depth
             const Vec3 Xs = trianObj.compute();
             vec_residuals.push_back( trianObj.error() / subTrack.size() );
             vec_allScenes[idx] = Xs;
@@ -1768,14 +1646,6 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
               set_idx_to_remove.insert(idx);
             }
           }
-
-          // remove point with big reprojection error
-          double quant;
-          quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
-
-          for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
-            if( vec_residuals[idx] > quant)
-              set_idx_to_remove.insert(idx);
 
           //-- Remove useless tracks and 3D points
           {
@@ -1796,6 +1666,15 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
             }
           }
         }
+
+#if 0
+        // export point cloud (for debug purpose only)^M
+        std::ostringstream pairIJ;
+        pairIJ << R0 << "_" <<  R1 << ".ply";
+
+        plyHelper::exportToPly(vec_allScenes, stlplus::create_filespec(_sOutDirectory,
+                              "pointCloud_pose_"+pairIJ.str()) );
+#endif
 
         // now do bundle adjustment
         using namespace std;
@@ -1947,7 +1826,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         ceres::Problem problem;
         // Set a LossFunction to be less penalized by false measurements
         //  - set it to NULL if you don't want use a lossFunction.
-        ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
+        ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
         for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
           // Each Residual block takes a point and a camera as input and outputs a 2
           // dimensional residual. Internally, the cost function stores the observed
@@ -1980,17 +1859,13 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         //  Make Ceres automatically detect the bundle structure.
         ceres::Solver::Options options;
         // Use a dense back-end since we only consider a two view problem
-        options.linear_solver_type = ceres::DENSE_SCHUR;
+        options.linear_solver_type = ceres::SPARSE_SCHUR;
         options.minimizer_progress_to_stdout = false;
         options.logging_type = ceres::SILENT;
 
         // Solve BA
         ceres::Solver::Summary summary;
         ceres::Solve(options, &problem, &summary);
-
-        // If no error, get back refined parameters
-        Mat3  R = Mat3::Identity();
-        Vec3  t = Vec3::Zero();
 
         if (summary.IsSolutionUsable())
         {
@@ -2006,6 +1881,15 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
                 pt3D = Vec3(pt[0], pt[1], pt[2]);
                 finalPoint.push_back(pt3D);
             }
+
+            #if 0
+                    // export point cloud (for debug purpose only)^M
+                    std::ostringstream pairIJ;
+                    pairIJ << R0 << "_" <<  R1 << ".ply";
+
+                    plyHelper::exportToPly(finalPoint, stlplus::create_filespec(_sOutDirectory,
+                                          "pointCloud_BA_pose_"+pairIJ.str()) );
+            #endif
 
             // retrieve relative translation and rotation of rig
             // Get back rig 1
@@ -2031,23 +1915,28 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
               tRigTwo[0] = cam[3]; tRigTwo[1] = cam[4]; tRigTwo[2]=cam[5];
             }
 
+            // If no error, get back refined parameters
+            Mat3  R = Mat3::Identity();
+            Vec3  t = Vec3::Zero();
+
             RelativeCameraMotion(RotRigOne, tRigOne, RotRigTwo, tRigTwo, &R, &t);
 
+            // export rotation for rotation avereging
+            #ifdef OPENMVG_USE_OPENMP
+                #pragma omp critical
+            #endif
+            {
+              vec_relatives.insert(std::make_pair(iter->first, std::make_pair(R,t)));
+            }
         }
-        // export rotation for rotation avereging
-        #ifdef USE_OPENMP
-          #pragma omp critical
-        #endif
-        {
-          vec_relatives.insert( std::make_pair ( std::make_pair(R0,R1), std::make_pair(R,t) ) );
-        }
-    }
-    #ifdef USE_OPENMP
+      }
+
+     #ifdef OPENMVG_USE_OPENMP
         #pragma omp critical
-    #endif
-    {
-        ++my_progress_bar;
-    }
+     #endif
+      {
+          ++my_progress_bar;
+      }
   }
 }
 
@@ -2096,11 +1985,16 @@ void GlobalRigidReconstructionEngine::tripletRotationRejection(
     const std::pair<size_t,size_t> ij = std::make_pair(I,J);
     const std::pair<size_t,size_t> ji = std::make_pair(J,I);
 
+    bool bTripletComputed = true;
+
     Mat3 RIJ;
     if (map_relatives.find(ij) != map_relatives.end())
       RIJ = map_relatives.find(ij)->second.first;
     else
-      RIJ = map_relatives.find(ji)->second.first.transpose();
+      if (map_relatives.find(ji) != map_relatives.end())
+        RIJ = map_relatives.find(ji)->second.first.transpose();
+      else
+        bTripletComputed = false;
 
     const std::pair<size_t,size_t> jk = std::make_pair(J,K);
     const std::pair<size_t,size_t> kj = std::make_pair(K,J);
@@ -2109,7 +2003,10 @@ void GlobalRigidReconstructionEngine::tripletRotationRejection(
     if (map_relatives.find(jk) != map_relatives.end())
       RJK = map_relatives.find(jk)->second.first;
     else
-      RJK = map_relatives.find(kj)->second.first.transpose();
+      if (map_relatives.find(kj) != map_relatives.end())
+        RJK = map_relatives.find(kj)->second.first.transpose();
+      else
+        bTripletComputed = false;
 
     const std::pair<size_t,size_t> ki = std::make_pair(K,I);
     const std::pair<size_t,size_t> ik = std::make_pair(I,K);
@@ -2118,13 +2015,17 @@ void GlobalRigidReconstructionEngine::tripletRotationRejection(
     if (map_relatives.find(ki) != map_relatives.end())
       RKI = map_relatives.find(ki)->second.first;
     else
-      RKI = map_relatives.find(ik)->second.first.transpose();
+      if (map_relatives.find(ik) != map_relatives.end())
+        RKI = map_relatives.find(ik)->second.first.transpose();
+      else
+        bTripletComputed = false;
 
     Mat3 Rot_To_Identity = RIJ * RJK * RKI; // motion composition
     float angularErrorDegree = static_cast<float>(R2D(getRotationMagnitude(Rot_To_Identity)));
-    vec_errToIdentityPerTriplet.push_back(angularErrorDegree);
+    if( bTripletComputed )
+      vec_errToIdentityPerTriplet.push_back(angularErrorDegree);
 
-    if (angularErrorDegree < 2.0f)
+    if (angularErrorDegree < 2.0f && bTripletComputed )
     {
       vec_triplets_validated.push_back(triplet);
 
@@ -2408,7 +2309,7 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
   ceres::Problem problem;
   // Set a LossFunction to be less penalized by false measurements
   //  - set it to NULL if you don't want use a lossFunction.
-  ceres::LossFunction * p_LossFunction = new ceres::CauchyLoss(Square(2.0));
+  ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
   for (size_t k = 0; k < ba_problem.num_observations(); ++k) {
     // Each Residual block takes a point and a camera as input and outputs a 2
     // dimensional residual. Internally, the cost function stores the observed
@@ -2456,10 +2357,10 @@ void GlobalRigidReconstructionEngine::bundleAdjustment(
     }
   options.minimizer_progress_to_stdout = false;
   options.logging_type = ceres::SILENT;
-  #ifdef USE_OPENMP
+  #ifdef OPENMVG_USE_OPENMP
   options.num_threads = omp_get_max_threads();
   options.num_linear_solver_threads = omp_get_max_threads();
-  #endif // USE_OPENMP
+  #endif // OPENMVG_USE_OPENMP
 
   // Configure constant parameters (if any)
   {

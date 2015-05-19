@@ -36,6 +36,7 @@ class Bundle_Adjustment_Ceres : public Bundle_Adjustment
     Hash_Map<IndexT, std::vector<double> > map_intrinsics;
     Hash_Map<IndexT, std::vector<double> > map_poses;
 
+    // Setup Poses data & subparametrization
     for (Poses::const_iterator itPose = sfm_data.poses.begin(); itPose != sfm_data.poses.end(); ++itPose)
     {
       const IndexT indexPose = itPose->first;
@@ -85,6 +86,7 @@ class Bundle_Adjustment_Ceres : public Bundle_Adjustment
       }
     }
 
+    // Setup Intrinsics data & subparametrization
     for (Intrinsics::const_iterator itIntrinsic = sfm_data.intrinsics.begin();
       itIntrinsic != sfm_data.intrinsics.end(); ++itIntrinsic)
     {
@@ -94,7 +96,7 @@ class Bundle_Adjustment_Ceres : public Bundle_Adjustment
       {
         case PINHOLE_CAMERA:
         {
-          std::vector<double> vec_params = itIntrinsic->second->getParams();
+          const std::vector<double> vec_params = itIntrinsic->second->getParams();
           map_intrinsics[indexCam].reserve(3);
           map_intrinsics[indexCam].push_back(vec_params[0]);
           map_intrinsics[indexCam].push_back(vec_params[1]);
@@ -112,37 +114,44 @@ class Bundle_Adjustment_Ceres : public Bundle_Adjustment
       }
     }
 
-
     // Set a LossFunction to be less penalized by false measurements
     //  - set it to NULL if you don't want use a lossFunction.
     ceres::LossFunction * p_LossFunction = new ceres::HuberLoss(Square(2.0));
     // TODO: make the LOSS function and the parameter an option
 
     // For all visibility add reprojections errors:
-    IndexT nb_obs = 0;
     for (Landmarks::iterator iterTracks = sfm_data.structure.begin();
       iterTracks!= sfm_data.structure.end(); ++iterTracks)
     {
       const Observations & obs = iterTracks->second.obs;
       for(Observations::const_iterator itObs = obs.begin();
-        itObs != obs.end(); ++itObs, ++nb_obs)
+        itObs != obs.end(); ++itObs)
       {
-        // Build the corresponding Projection matrix to the View
+        // Build the residual block corresponding to the track observation:
         const View & view = sfm_data.views[itObs->first];
 
         // Each Residual block takes a point and a camera as input and outputs a 2
         // dimensional residual. Internally, the cost function stores the observed
         // image location and compares the reprojection against the observation.
-
-        ceres::CostFunction* cost_function =
-         new ceres::AutoDiffCostFunction<pinhole_reprojectionError::ErrorFunc_Refine_Intrinsic_Motion_3DPoints, 2, 3, 6, 3>(
-            new pinhole_reprojectionError::ErrorFunc_Refine_Intrinsic_Motion_3DPoints(itObs->second.pos.data()));
-
-        problem.AddResidualBlock(cost_function,
-          p_LossFunction,
-          &map_intrinsics[view.id_cam][0],
-          &map_poses[view.id_pose][0],
-          iterTracks->second.pt3.data()); //Do we need to copy 3D point to avoid false motion, if failure ?
+        ceres::CostFunction* cost_function = NULL;
+        switch(sfm_data.intrinsics[view.id_intrinsic]->getType())
+        {
+          case PINHOLE_CAMERA:
+          {
+            cost_function =
+             new ceres::AutoDiffCostFunction<pinhole_reprojectionError::ErrorFunc_Refine_Intrinsic_Motion_3DPoints, 2, 3, 6, 3>(
+              new pinhole_reprojectionError::ErrorFunc_Refine_Intrinsic_Motion_3DPoints(itObs->second.x.data()));
+          }
+          break;
+          default:
+            std::cout << "Unsupported camera type: please create the appropriate ceres functor." << std::endl;
+        }
+        if (cost_function)
+          problem.AddResidualBlock(cost_function,
+            p_LossFunction,
+            &map_intrinsics[view.id_intrinsic][0],
+            &map_poses[view.id_pose][0],
+            iterTracks->second.X.data()); //Do we need to copy 3D point to avoid false motion, if failure ?
       }
     }
 
@@ -166,15 +175,15 @@ class Bundle_Adjustment_Ceres : public Bundle_Adjustment
     }
     options.minimizer_progress_to_stdout = false;
     options.logging_type = ceres::SILENT;
-  #ifdef USE_OPENMP
+  #ifdef OPENMVG_USE_OPENMP
     options.num_threads = omp_get_max_threads();
     options.num_linear_solver_threads = omp_get_max_threads();
-  #endif // USE_OPENMP
+  #endif // OPENMVG_USE_OPENMP
 
     // Solve BA
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
-    // std::cout << summary.FullReport() << std::endl;
+    //std::cout << summary.FullReport() << std::endl;
 
     // If no error, get back refined parameters
     if (!summary.IsSolutionUsable())
@@ -186,13 +195,15 @@ class Bundle_Adjustment_Ceres : public Bundle_Adjustment
     {
       // Display statistics about the minimization
       std::cout << std::endl
-        << "Bundle Adjustment statistics:\n"
-        << " Initial RMSE: " << std::sqrt( summary.initial_cost / (nb_obs*2.)) << "\n"
-        << " Final RMSE: " << std::sqrt( summary.final_cost / (nb_obs*2.)) << "\n"
+        << "Bundle Adjustment statistics (approximated RMSE):\n"
+        << " Initial RMSE: " << std::sqrt( summary.initial_cost / summary.num_residuals) << "\n"
+        << " Final RMSE: " << std::sqrt( summary.final_cost / summary.num_residuals) << "\n"
+        << " #residuals: " << summary.num_residuals << "\n"
         << std::endl;
 
       // Update camera poses with refined data
-      for (Poses::iterator itPose = sfm_data.poses.begin(); itPose != sfm_data.poses.end(); ++itPose)
+      for (Poses::iterator itPose = sfm_data.poses.begin();
+        itPose != sfm_data.poses.end(); ++itPose)
       {
         const IndexT indexPose = itPose->first;
 
@@ -205,13 +216,13 @@ class Bundle_Adjustment_Ceres : public Bundle_Adjustment
       }
 
       // Update camera intrinsics with refined data
-      for (Intrinsics::iterator itIntrinsic = sfm_data.intrinsics.begin(); itIntrinsic != sfm_data.intrinsics.end(); ++itIntrinsic)
+      for (Intrinsics::iterator itIntrinsic = sfm_data.intrinsics.begin();
+        itIntrinsic != sfm_data.intrinsics.end(); ++itIntrinsic)
       {
         const IndexT indexCam = itIntrinsic->first;
 
         const std::vector<double> & vec_params = map_intrinsics[indexCam];
-        Intrinsic * cam = itIntrinsic->second;
-        cam->updateFromParams(vec_params);
+        itIntrinsic->second.get()->updateFromParams(vec_params);
       }
       return true;
     }
