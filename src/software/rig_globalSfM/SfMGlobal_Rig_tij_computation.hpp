@@ -61,23 +61,26 @@ bool estimate_T_rig_triplet(
   std::vector < std::vector < std::vector < double > > > featsAndRigIdPerTrack;
 
   // initialize structure pour triplet estimation
+  std::map  <size_t, size_t>  sampleToTrackId;
   size_t cpt = 0;
+  size_t scpt = 0;
   for (STLMAPTracks::const_iterator iterTracks = map_tracksCommon.begin();
     iterTracks != map_tracksCommon.end(); ++iterTracks, ++cpt) {
     const submapTrack & subTrack = iterTracks->second;
 
-    std::vector < std::vector <double> > subTrackInfo;
+    std::vector < std::vector <double> > subTrackInfo_One;
+    std::vector < std::vector <double> > subTrackInfo_Two;
+    std::vector < std::vector <double> > subTrackInfo_Three;
 
     // loop on subtracks
-    size_t nrig = 0;
     for (size_t index = 0; index < subTrack.size() ; ++index)
     { submapTrack::const_iterator iter = subTrack.begin();
       std::advance(iter, index);
 
       // extract camera indexes
       const size_t imaIndex  = iter->first;
-      const size_t cameraId  = map_intrinsicIdPerImageId.at(imaIndex);
       const size_t featIndex = iter->second;
+      const size_t cameraId  = map_intrinsicIdPerImageId.at(imaIndex);
       const size_t rigId     = map_rigIdPerImageId.at(imaIndex);
 
       //update subcameras sets
@@ -101,12 +104,29 @@ bool estimate_T_rig_triplet(
         tmp.push_back(cameraId); // rig instrinsic ID
         tmp.push_back(map_rigIdToTripletId.at(rigId)); // rig id in triplet estimation
 
-        subTrackInfo.push_back( tmp );
-        ++nrig;
+        if ( rigId == nI )
+          subTrackInfo_One.push_back( tmp );
+
+        if ( rigId == nJ)
+          subTrackInfo_Two.push_back( tmp );
+
+        if(  rigId == nK )
+          subTrackInfo_Three.push_back( tmp );
       }
     }
 
-    featsAndRigIdPerTrack.push_back( subTrackInfo );
+    for( int i = 0 ; i < subTrackInfo_One.size(); ++i )
+      for( int j = 0; j < subTrackInfo_Two.size(); ++j )
+        for( int k = 0 ; k < subTrackInfo_Three.size() ; ++k)
+        {
+            std::vector < std::vector < double > >   tmp;
+            tmp.push_back(subTrackInfo_One[i]);
+            tmp.push_back(subTrackInfo_Two[j]);
+            tmp.push_back(subTrackInfo_Three[k]);
+            featsAndRigIdPerTrack.push_back( tmp );
+            sampleToTrackId[scpt] = cpt;
+            ++scpt;
+        }
   }
 
   // compute model
@@ -134,20 +154,57 @@ bool estimate_T_rig_triplet(
   vec_tis[1] = T.t2;
   vec_tis[2] = T.t3;
 
+  // update inlier list
+  std::set <size_t>  inliers_tracks;
+  for( size_t i = 0 ; i < vec_inliers.size() ; ++i )
+      inliers_tracks.insert( sampleToTrackId[vec_inliers[i]] );
+
+  std::vector <size_t>  inliers;
+  for( size_t i = 0 ; i < map_tracksCommon.size() ; ++i )
+     if( inliers_tracks.find(i) !=  inliers_tracks.end() )
+          inliers.push_back( i );
+
+  vec_inliers.swap( inliers );
+
+  // compute min and max rigOffsets
+  double  min_offset = 1.0e10;
+  double  max_offset = 0.0;
+
+  for( int i=0 ; i < vec_rigOffset.size(); ++i )
+  {
+      min_offset = std::min ( vec_rigOffset[i].norm(),  min_offset );
+      max_offset = std::max ( vec_rigOffset[i].norm(),  max_offset );
+  }
+
+  // add a criterion to remove bad triplets
+  const double  max_t_norm = std::max( T.t2.norm(), T.t3.norm() ); // t1 = (0,0,0) !
+  const double  min_t_norm = std::min( T.t2.norm(), T.t3.norm() );
+
   // compute minimal number of matches subcameras
   size_t  minMatchSubCamSize = std::min ( std::min (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
   size_t  maxMatchSubCamSize = std::max ( std::max (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
 
-  bool bTest( vec_inliers.size() > 30 * minMatchSubCamSize );
+  // do we consider this triplet or not
+  const bool  bUseDistanceThreshold = true;
+  bool  bTest = false ;
+
+  if( bUseDistanceThreshold )
+  {
+      bTest =  ( vec_inliers.size() > 30 * minMatchSubCamSize )
+              && ( max_t_norm < 25.0 )
+              && ( min_t_norm > 2.0 * min_offset ) ;
+  }
+  else
+      bTest =  ( vec_inliers.size() > 30 * minMatchSubCamSize ) ;
 
   if (!bTest)
   {
     std::cout << "Triplet rejected : AC: " << dPrecision
-      << " inliers count " << vec_inliers.size() / (double) featsAndRigIdPerTrack.size()
+      << " inliers count " << inliers_tracks.size()
       << " total putative " << featsAndRigIdPerTrack.size() << std::endl;
   }
 
-  bool bRefine = true;
+  bool bRefine = false;
   if (bRefine && bTest)
   {
     // Compute initial triangulation
@@ -618,20 +675,19 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
   std::cout << std::endl
     << "Computation of the relative translations over the graph with an edge coverage algorithm" << std::endl;
+#ifdef OPENMVG_USE_OPENMP
+    #pragma omp parallel for schedule(dynamic)
+#endif
   for (int k = 0; k < vec_edges.size(); ++k)
   {
-    const myEdge & edge(vec_edges[k]);
-    bool  bEvaluate     = true;
-
-    //-- If current edge already computed continue
-    if (m_mutexSet.isDiscarded(edge) || m_mutexSet.size() == vec_edges.size())
-    {
+      const myEdge & edge = vec_edges[k];
+      //-- If current edge already computed continue
+      if (m_mutexSet.isDiscarded(edge) || m_mutexSet.size() == vec_edges.size())
+      {
         std::cout << "EDGES WAS PREVIOUSLY COMPUTED" << std::endl;
-        bEvaluate = false;
-    }
+        continue;
+      }
 
-    if( bEvaluate )
-    {
       std::vector<size_t> vec_possibleTriplets;
       // Find the triplet that contain the given edge
       for (size_t i = 0; i < vec_triplets.size(); ++i)
@@ -665,9 +721,6 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
       // Try to solve the triplets
       // Search the possible triplet:
-      #ifdef OPENMVG_USE_OPENMP
-          #pragma omp parallel for schedule(dynamic)
-      #endif
       for (size_t i = 0; i < vec_possibleTriplets.size(); ++i)
       {
         const graphUtils::Triplet & triplet = vec_triplets[vec_possibleTriplets[i]];
@@ -752,20 +805,20 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = 3.0 / averageFocal ;
-          const double ThresholdUpperBound = 1.0 / averageFocal;
+          double dPrecision = 4.0 / averageFocal ;
+          const double ThresholdUpperBound = 2.0 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;
 
-          if( map_tracksCommon.size() > 50 * maxMatchSubCamSize &&
+          if( map_tracksCommon.size() > 50 * rigOffsets.size() &&
                 estimate_T_rig_triplet(
                     map_tracksCommon, _map_feats_normalized,  vec_global_KR_Triplet,
                     rigRotations, rigOffsets, _map_IntrinsicIdPerImageId, _map_RigIdPerImageId,
                     vec_tis, dPrecision, vec_inliers, ThresholdUpperBound, _sOutDirectory, I, J, K) )
           {
             std::cout << I << " " << J << " " << K << ":"
-                      << dPrecision * averageFocal << "\t" << vec_inliers.size() << std::endl;
+                      << dPrecision * averageFocal << "\t" << vec_inliers.size() << "/" << map_tracksCommon.size() << std::endl;
 
 
             //-- Build the three camera:
@@ -871,16 +924,16 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
                       }
                   }
               }
-
-              //-- Remove the 3 edges validated by the trifocal tensor
-              m_mutexSet.discard(std::make_pair(std::min(I,J), std::max(I,J)));
-              m_mutexSet.discard(std::make_pair(std::min(I,K), std::max(I,K)));
-              m_mutexSet.discard(std::make_pair(std::min(J,K), std::max(J,K)));
             }
+
+            //-- Remove the 3 edges validated by the trifocal tensor
+            m_mutexSet.discard(std::make_pair(std::min(I,J), std::max(I,J)));
+            m_mutexSet.discard(std::make_pair(std::min(I,K), std::max(I,K)));
+            m_mutexSet.discard(std::make_pair(std::min(J,K), std::max(J,K)));
+            break;
           }
         }
       }
-    }
   }
 }
 

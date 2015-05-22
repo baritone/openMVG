@@ -685,33 +685,9 @@ bool GlobalRigidReconstructionEngine::Process()
     tripletListing(vec_triplets, _map_ImagesIdPerRigId[0].size());
 
     // Compute putative translations with an edge coverage algorithm
-
     openMVG::Timer timerLP_triplet;
+    computePutativeTranslation_EdgesCoverage(map_globalR, vec_triplets, vec_initialRijTijEstimates, filteredMatches);
 
-    bool  bComputeTrifocal=true;
-    if(bComputeTrifocal){
-       computePutativeTranslation_EdgesCoverage(map_globalR, vec_triplets, vec_initialRijTijEstimates, filteredMatches);
-    }
-    else
-    {
-       vec_initialRijTijEstimates.clear();
-       for(Map_RelativeRT::const_iterator  iter = map_relatives.begin();
-              iter != map_relatives.end(); ++iter )
-       {
-           // compute relative rotation of rig pair
-           const size_t I = iter->first.first;
-           const size_t J = iter->first.second;
-
-           const Mat3  RI = map_globalR.find(I)->second;
-           const Mat3  RJ = map_globalR.find(J)->second;
-
-           const Mat3  RIJ = RJ * RI.transpose() ;
-
-           vec_initialRijTijEstimates.push_back( std::make_pair(iter->first , std::make_pair(RIJ, iter->second.second) ) ) ;
-
-       }
-
-    }
     const double timeLP_triplet = timerLP_triplet.elapsed();
     std::cout << "TRIPLET COVERAGE TIMING: " << timeLP_triplet << " seconds" << std::endl;
 
@@ -1552,7 +1528,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
 
     //--> Estimate the best possible Rotation/Translation from correspondences
     double errorMax = std::numeric_limits<double>::max();
-    const double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 4.0 / averageFocal ) );
+    const double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 2.5 / averageFocal ) );
 
     isPoseUsable = SfMRobust::robustRigPose(
                           bearingVectorsRigOne,
@@ -1578,12 +1554,21 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
         std::vector<Vec3> vec_allScenes;
 
         // keep only tracks related to inliers
-        openMVG::tracks::STLMAPTracks map_tracksInliers;
+        std::set<size_t>   inliers_set;
         for(int l=0; l < vec_inliers.size(); ++l)
         {
             const size_t  trackId = map_bearingIdToTrackId.at(vec_inliers[l]);
-            map_tracksInliers[l] = map_tracks.at( trackId );
+            inliers_set.insert( trackId );
         }
+
+        openMVG::tracks::STLMAPTracks map_tracksInliers;
+        size_t  counter = 0;
+        for( size_t idx = 0 ; idx < map_tracks.size(); ++idx )
+            if(  inliers_set.find( idx ) != inliers_set.end() )
+            {
+                map_tracksInliers[counter] = map_tracks[idx];
+                ++counter;
+            }
 
         // Triangulation of all the tracks
         std::vector <double >  vec_residuals;
