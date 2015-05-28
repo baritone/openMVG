@@ -191,7 +191,7 @@ bool estimate_T_rig_triplet(
   if( bUseDistanceThreshold )
   {
       bTest =  ( vec_inliers.size() > 30 * minMatchSubCamSize )
-              && ( max_t_norm < 25.0 )
+              && ( max_t_norm < 25.0 * max_offset )
               && ( min_t_norm > 2.0 * min_offset ) ;
   }
   else
@@ -805,7 +805,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = 4.0 / averageFocal ;
+          double dPrecision = 2.0 / averageFocal ;
           const double ThresholdUpperBound = 2.0 / averageFocal;
 
           std::vector<Vec3> vec_tis(3);
