@@ -353,7 +353,7 @@ public:
       logalpha0_(log10(M_PI))
 {
     assert(b1_.size() == b2_.size());
-    logalpha0_ = log10(1.0/2.0);
+    logalpha0_ = log10(0.5);
   }
 
   enum { MINIMUM_SAMPLES = Solver::MINIMUM_SAMPLES };

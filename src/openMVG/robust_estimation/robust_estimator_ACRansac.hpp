@@ -142,12 +142,16 @@ std::pair<double, double> ACRANSAC(const Kernel &kernel,
   bool bVerbose = false,
   bool bOptimize = true)
 {
-  vec_inliers.clear();
-
   const size_t sizeSample = Kernel::MINIMUM_SAMPLES;
   const size_t nData = kernel.NumSamples();
   if(nData <= (size_t)sizeSample)
     return std::make_pair(0.0,0.0);
+
+  // Output parameters
+  double minNFA = std::numeric_limits<double>::infinity();
+  double errorMax = std::numeric_limits<double>::infinity();
+
+  vec_inliers.clear();
 
   const double maxThreshold = (precision==std::numeric_limits<double>::infinity()) ?
     std::numeric_limits<double>::infinity() :
@@ -167,10 +171,6 @@ std::pair<double, double> ACRANSAC(const Kernel &kernel,
   std::vector<float> vec_logc_n, vec_logc_k;
   makelogcombi_n(nData, vec_logc_n);
   makelogcombi_k(sizeSample, nData, vec_logc_k);
-
-  // Output parameters
-  double minNFA = std::numeric_limits<double>::infinity();
-  double errorMax = std::numeric_limits<double>::infinity();
 
   // Reserve 10% of iterations for focused sampling
   size_t nIterReserve = nIter/10;
@@ -229,14 +229,15 @@ std::pair<double, double> ACRANSAC(const Kernel &kernel,
       }
     }
 
-    if(bOptimize)
-    {
-      // ACRANSAC optimization: draw samples among best set of inliers so far
-      if((better && minNFA<0) || (iter+1==nIter && nIterReserve)) {
-        if(vec_inliers.empty()) { // No model found at all so far
-          nIter++; // Continue to look for any model, even not meaningful
-          nIterReserve--;
-        } else {
+    // ACRANSAC optimization: draw samples among best set of inliers so far
+    if((better && minNFA<0) || (iter+1==nIter && nIterReserve)) {
+      if(vec_inliers.empty()) { // No model found at all so far
+        nIter++; // Continue to look for any model, even not meaningful
+        nIterReserve--;
+      } else
+      {
+        if( vec_inliers.size() > 0.85 * vec_index.size() || bOptimize )
+        {
           // ACRANSAC optimization: draw samples among best set of inliers so far
           vec_index = vec_inliers;
           if(nIterReserve) {

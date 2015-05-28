@@ -60,9 +60,9 @@ namespace openMVG {
         const Vec3 X = triangulationObj.compute();
 
         //- Return max error as a test
-        double pt1ReProj = (Project(P1, X) - pt1).squaredNorm();
-        double pt2ReProj = (Project(P2, X) - pt2).squaredNorm();
-        double pt3ReProj = (Project(P3, X) - pt3).squaredNorm();
+        double pt1ReProj = (Project(P1, X) - pt1).norm();
+        double pt2ReProj = (Project(P2, X) - pt2).norm();
+        double pt3ReProj = (Project(P3, X) - pt3).norm();
 
         return std::max(pt1ReProj, std::max(pt2ReProj,pt3ReProj));
       }
@@ -225,7 +225,7 @@ void Errors(const Model &model, std::vector<double> & vec_errors) const {
 
   Mat3 normalizer1() const {return Mat3::Identity();}
   Mat3 normalizer2() const {return Mat3::Identity();}
-  double unormalizeError(double val) const { return sqrt(val);}
+  double unormalizeError(double val) const { return val;}
 
   double logalpha0() const {return logalpha0_;}
 
@@ -312,7 +312,7 @@ namespace openMVG {
         {
           const Mat34 P = views[i].first;
           const Vec2 pt = views[i].second;
-          max_error = std::max( (Project(P, X) - pt ).squaredNorm(), max_error );
+          max_error = std::max( (Project(P, X) - pt ).norm(), max_error );
         }
 
         //- Return max error as a test
@@ -356,7 +356,7 @@ namespace openMVG{
         }
       }
       //-- Solve the LInfinity translation and structure from Rotation and points data.
-      std::vector<double> vec_solution((3 + MINIMUM_SAMPLES)*3);
+      std::vector<double> vec_solution((3 + MINIMUM_SAMPLES + rigOffsets.size())*3);
 
       using namespace openMVG::lInfinityCV;
 
@@ -373,7 +373,7 @@ namespace openMVG{
         cstBuilder,
         &vec_solution,
         ThresholdUpperBound,//admissibleResidual,
-        0.0, 1e-8, 2, &gamma, false))
+        0.0, 1e-8, 5, &gamma, false))
       {
         std::vector<Vec3> vec_tis(3);
         vec_tis[0] = Vec3(vec_solution[0], vec_solution[1], vec_solution[2]);
@@ -416,7 +416,7 @@ public:
   vec_rigRotation_(rigRotation),
   vec_rigOffset_(rigOffsets),
   ThresholdUpperBound_(ThresholdUpperBound),
-  logalpha0_(log10(M_PI))
+  logalpha0_(log10(M_PI/1936./2592.))
 {
   //initialize normalized coordinates
   // Normalize points by inverse(K)
@@ -467,7 +467,7 @@ void Fit(const std::vector<size_t> &samples, std::vector<Model> *models) const {
 
   Mat3 normalizer1() const {return Mat3::Identity();}
   Mat3 normalizer2() const {return Mat3::Identity();}
-  double unormalizeError(double val) const { return sqrt(val);}
+  double unormalizeError(double val) const { return val;}
 
   double logalpha0() const {return logalpha0_;}
 

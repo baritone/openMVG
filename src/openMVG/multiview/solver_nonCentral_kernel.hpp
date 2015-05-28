@@ -9,7 +9,7 @@
 
 #include <vector>
 #include "openMVG/numeric/numeric.h"
-#include "openMVG/multiview/triangulation.hpp"
+#include "openMVG/multiview/triangulation_nview.hpp"
 #include "openMVG/cameras/PinholeCamera.hpp"
 #include <opengv/types.hpp>
 #include <opengv/relative_pose/methods.hpp>
@@ -33,14 +33,14 @@ using namespace opengv;
  */
 struct SixPointSolver {
   enum { MINIMUM_SAMPLES = 9 };
-  enum { MAX_MODELS = 1 };
+  enum { MAX_MODELS = 64 };
   static void Solve(relative_pose::NoncentralRelativeAdapter & adapter,
                     std::vector<transformation_t> * models,
                     const std::vector<size_t> &indices);
 };
 
 struct GePointSolver {
-  enum { MINIMUM_SAMPLES = 8 };
+  enum { MINIMUM_SAMPLES = 6 };
   enum { MAX_MODELS = 1 };
   static void Solve(relative_pose::NoncentralRelativeAdapter & adapter,
   std::vector<transformation_t> * models,
@@ -78,13 +78,20 @@ struct RigProjError {
     // compute 3d point and reprojection error
     const Mat3 K = Mat3::Identity();
 
-    const PinholeCamera cam1(K, R1, t1);
-    const PinholeCamera cam2(K, R, t);
+    const Mat34 P1 = HStack(R1, t1);
+    const Mat34 P2 = HStack(R, t);
+    // Triangulate and return the reprojection error
+    Triangulation triangulationObj;
+    triangulationObj.add(P1, x1);
+    triangulationObj.add(P2, x2);
 
-    Vec3 X;
-    TriangulateDLT(cam1._P, x1, cam2._P, x2, &X);
+    const Vec3 X = triangulationObj.compute();
 
-    return cam1.Residual(X,x1) +  cam2.Residual(X,x2);
+    //- Return max error as a test
+    double pt1ReProj = (Project(P1, X) - x1).norm();
+    double pt2ReProj = (Project(P2, X) - x2).norm();
+
+    return std::max(pt1ReProj, pt2ReProj);
   }
 };
 typedef RigProjError SimpleError;
@@ -127,14 +134,14 @@ struct RigAngularError {
         opengv::triangulation::triangulate2(_adapter,index);
     bearingVector_t reprojection1 = p_hom.block<3,1>(0,0).normalized();
     bearingVector_t reprojection2 = (inverseSolution * p_hom).normalized();
-    bearingVector_t f1 = _adapter.getBearingVector1(index);
-    bearingVector_t f2 = _adapter.getBearingVector2(index);
+    bearingVector_t f1 = _adapter.getBearingVector1(index).normalized();
+    bearingVector_t f2 = _adapter.getBearingVector2(index).normalized();
 
     //bearing-vector based outlier criterium (select threshold accordingly):
     //1-(f1'*f2) = 1-cos(alpha) \in [0:2]
-    double reprojError1 = 1.0 - (f1.transpose() * reprojection1);
-    double reprojError2 = 1.0 - (f2.transpose() * reprojection2);
-    return reprojError1 + reprojError2;
+    double reprojError1 = 1.0 - f1.transpose() * reprojection1 ;
+    double reprojError2 = 1.0 - f2.transpose() * reprojection2 ;
+    return std::max(reprojError1,reprojError2);
   }
 };
 typedef RigAngularError SimpleAngularError;
