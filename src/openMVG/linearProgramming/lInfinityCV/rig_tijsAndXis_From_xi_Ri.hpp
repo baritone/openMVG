@@ -184,6 +184,127 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
 # undef XVAR
 }
 
+/// Encode translation and structure linear program
+void EncodeRigCiXi(const Mat & M, //Scene representation
+                           const std::vector<Mat3> Ri,
+                           const std::vector<Mat3> rigRotation,
+                           const std::vector<Vec3> rigOffsets,
+                           double sigma, // Start upper bound
+                           sRMat & A, Vec & C,
+                           std::vector<LP_Constraints::eLP_SIGN> & vec_sign,
+                           std::vector<double> & vec_costs,
+                           std::vector< std::pair<double,double> > & vec_bounds)
+{
+  // Build Constraint matrix.
+  const size_t Nrig = (size_t) M.row(4).maxCoeff()+1;
+  const size_t N3D  = (size_t) M.row(2).maxCoeff()+1;
+  const size_t Nobs = M.cols();
+
+  assert(Nrig == Ri.size());
+
+  A.resize(12 * N3D, 3 * (N3D + Nrig) );
+
+  C.resize(12 * N3D, 1);
+  C.fill(0.0);
+  vec_sign.resize(12 * N3D + 3);
+
+  const size_t transStart  = 0;
+  const size_t pointStart  = transStart + 3*Nrig;
+
+# define TVAR(i, el) (0 + 3*(i) + (el))
+# define XVAR(j, el) (pointStart + 3*(j) + (el))
+
+  // By default set free variable:
+  vec_bounds = std::vector< std::pair<double,double> >(3 * (N3D + Nrig));
+  fill( vec_bounds.begin(), vec_bounds.end(), std::make_pair((double)-1e+30, (double)1e+30));
+  // Fix the translation ambiguity. (set first cam at (0,0,0))
+  vec_bounds[0] = vec_bounds[1] = vec_bounds[2] = std::make_pair(0,0);
+
+  // initialize cheirality condition (depth is constrained to be in 1cm -> 50 [m])
+  for( size_t l = 0 ; l < N3D; ++l )
+  {
+      vec_bounds[XVAR(l,0)] = std::make_pair(0.01, (double)1e+30);
+      vec_bounds[XVAR(l,1)] = std::make_pair(0.01, (double)1e+30);
+      vec_bounds[XVAR(l,2)] = std::make_pair(0.01, (double)1e+30);
+  }
+
+  size_t rowPos = 0;
+  // Add the cheirality conditions (R_c*R_i*X_j + R_c*T_i + t_c)_3 + Z_ij >= 1
+  for (size_t k = 0; k < N3D ; ++k)
+  {
+      // we assume here that each track is of length 3
+      Vec3 b0;
+      Vec3 b1;
+      Vec3 b2;
+
+      // extract bearing vectors
+      b0 << M(0,3*k),   M(1,3*k),   1.0;
+      b1 << M(0,3*k+1), M(1,3*k+1), 1.0;
+      b2 << M(0,3*k+2), M(1,3*k+2), 1.0;
+
+      // extract rotations
+      const Mat3  Rc0  = rigRotation[M(3,3*k+0)].transpose();
+      const Mat3  Rc1  = rigRotation[M(3,3*k+1)].transpose();
+      const Mat3  Rc2  = rigRotation[M(3,3*k+2)].transpose();
+
+      const Mat3  R0  = Ri[M(4,3*k+0)].transpose();
+      const Mat3  R1  = Ri[M(4,3*k+1)].transpose();
+      const Mat3  R2  = Ri[M(4,3*k+2)].transpose();
+
+      // check if we are close to identity or not
+      float angularErrorDegree0 = static_cast<float>(R2D(getRotationMagnitude(R0)));
+      float angularErrorDegree1 = static_cast<float>(R2D(getRotationMagnitude(R1)));
+      float angularErrorDegree2 = static_cast<float>(R2D(getRotationMagnitude(R2)));
+
+      // compute useful quantities
+      const Vec3  Rb0 = R0 * Rc0 * b0;
+      const Vec3  Rb1 = R1 * Rc1 * b1;
+      const Vec3  Rb2 = R2 * Rc2 * b2;
+
+      Vec3  R_c0 = R0 * rigOffsets[M(3,3*k+0)];
+      Vec3  R_c1 = R1 * rigOffsets[M(3,3*k+1)];
+      Vec3  R_c2 = R2 * rigOffsets[M(3,3*k+2)];
+
+      // 3D point index
+      const size_t  pointIndex = M(2,3*k);
+
+      // encode matrix
+      for( int i=0 ; i < 3 ; ++i )
+      {
+          A.coeffRef(12*k + i, TVAR(0, i)) =  1.0;
+          A.coeffRef(12*k + i, TVAR(1, i)) = -1.0;
+          A.coeffRef(12*k + i, XVAR(pointIndex, 0)) =  Rb0(i);
+          A.coeffRef(12*k + i, XVAR(pointIndex, 1)) = -Rb1(i);
+          C(12*k + i) = sigma - R_c0(i) + R_c1(i);
+          vec_sign[12*k + i] = LP_Constraints::LP_LESS_OR_EQUAL;
+
+          A.coeffRef(12*k +3+ i, TVAR(0, i)) =  1.0;
+          A.coeffRef(12*k +3+ i, TVAR(1, i)) = -1.0;
+          A.coeffRef(12*k +3+ i, XVAR(pointIndex, 0)) =  Rb0(i);
+          A.coeffRef(12*k +3+ i, XVAR(pointIndex, 1)) = -Rb1(i);
+          C(12*k +3+ i) = -sigma - R_c0(i) + R_c1(i);
+          vec_sign[12*k +3+ i] = LP_Constraints::LP_GREATER_OR_EQUAL;
+
+          A.coeffRef(12*k +6+ i, TVAR(0, i)) =  1.0;
+          A.coeffRef(12*k +6+ i, TVAR(2, i)) = -1.0;
+          A.coeffRef(12*k +6+ i, XVAR(pointIndex, 0)) =  Rb0(i);
+          A.coeffRef(12*k +6+ i, XVAR(pointIndex, 2)) = -Rb2(i);
+          C(12*k +6+ i) = sigma - R_c0(i) + R_c2(i);
+          vec_sign[12*k +6+ i] = LP_Constraints::LP_LESS_OR_EQUAL;
+
+          A.coeffRef(12*k +9+ i, TVAR(0, i)) =  1.0;
+          A.coeffRef(12*k +9+ i, TVAR(2, i)) = -1.0;
+          A.coeffRef(12*k +9+ i, XVAR(pointIndex, 0)) =  Rb0(i);
+          A.coeffRef(12*k +9+ i, XVAR(pointIndex, 2)) = -Rb2(i);
+          C(12*k +9+ i) = -sigma - R_c0(i) + R_c2(i);
+          vec_sign[12*k +9+ i] = LP_Constraints::LP_GREATER_OR_EQUAL;
+      }
+  }
+
+# undef TVAR
+# undef XVAR
+}
+
 /// Kernel that set Linear constraints for the
 ///   - Translation Registration and Structure Problem.
 ///  Designed to be used with bisectionLP and LP_Solver interface.
@@ -209,7 +330,7 @@ struct Rig_Translation_Structure_L1_ConstraintBuilder
   ///  in the LP_Constraints object.
   bool Build(double gamma, LP_Constraints_Sparse & constraint)
   {
-    EncodeRigTiXi(_M, _vec_Ri,
+    EncodeRigCiXi(_M, _vec_Ri,
       _rigRotation,
       _rigOffsets,
       gamma,
@@ -224,7 +345,7 @@ struct Rig_Translation_Structure_L1_ConstraintBuilder
     const size_t N3D  = (size_t) _M.row(2).maxCoeff() + 1;
     const size_t Nrig = (size_t) _M.row(4).maxCoeff() + 1;
 
-    constraint._nbParams = (Nrig + N3D + _rigOffsets.size()) * 3;
+    constraint._nbParams = (Nrig + N3D) * 3;
 
     return true;
   }

@@ -142,7 +142,7 @@ bool estimate_T_rig_triplet(
   KernelType kernel(featsAndRigIdPerTrack, vec_global_KR_Triplet, vec_rigRotation,
                     vec_rigOffset, ThresholdUpperBound);
 
-  const size_t ORSA_ITER = 320;
+  const size_t ORSA_ITER = 1024;
 
   rigTrackTrifocalTensorModel T;
   std::pair<double,double> acStat = robust::ACRANSAC(kernel, vec_inliers, ORSA_ITER, &T, dPrecision, false );
@@ -190,12 +190,12 @@ bool estimate_T_rig_triplet(
 
   if( bUseDistanceThreshold )
   {
-      bTest =  ( vec_inliers.size() > 30 * minMatchSubCamSize )
+      bTest =  ( vec_inliers.size() > 0.30 * map_tracksCommon.size() )
               && ( max_t_norm < 25.0 * max_offset )
               && ( min_t_norm > 2.0 * min_offset ) ;
   }
   else
-      bTest =  ( vec_inliers.size() > 30 * minMatchSubCamSize ) ;
+      bTest =  ( vec_inliers.size() > 0.30 * map_tracksCommon.size() ) ;
 
   if (!bTest)
   {
@@ -805,8 +805,8 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
           vec_global_KR_Triplet.push_back(map_global_KR.at(K));
 
           // update precision to have good value for normalized coordinates
-          double dPrecision = 2.0 / averageFocal ;
-          const double ThresholdUpperBound = 2.0 / averageFocal;
+          double dPrecision = 8.0 / averageFocal ;
+          const double ThresholdUpperBound = 0.10;
 
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;
