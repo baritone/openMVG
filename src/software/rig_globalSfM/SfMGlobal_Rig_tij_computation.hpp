@@ -185,17 +185,17 @@ bool estimate_T_rig_triplet(
   size_t  maxMatchSubCamSize = std::max ( std::max (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
 
   // do we consider this triplet or not
-  const bool  bUseDistanceThreshold = true;
+  const bool  bUseDistanceThreshold = false;
   bool  bTest = false ;
 
   if( bUseDistanceThreshold )
   {
-      bTest =  ( vec_inliers.size() > 0.30 * map_tracksCommon.size() )
+      bTest =  ( vec_inliers.size() > 0.66 * map_tracksCommon.size() )
               && ( max_t_norm < 25.0 * max_offset )
               && ( min_t_norm > 2.0 * min_offset ) ;
   }
   else
-      bTest =  ( vec_inliers.size() > 0.30 * map_tracksCommon.size() ) ;
+      bTest =  ( vec_inliers.size() > 0.66 * map_tracksCommon.size() ) ;
 
   if (!bTest)
   {
@@ -806,7 +806,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
           // update precision to have good value for normalized coordinates
           double dPrecision = 8.0 / averageFocal ;
-          const double ThresholdUpperBound = 0.10;
+          const double ThresholdUpperBound = 0.006;
 
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;

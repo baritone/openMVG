@@ -202,11 +202,11 @@ void EncodeRigCiXi(const Mat & M, //Scene representation
 
   assert(Nrig == Ri.size());
 
-  A.resize(12 * N3D, 3 * (N3D + Nrig) );
+  A.resize(18 * N3D, 3 * (N3D + Nrig) );
 
-  C.resize(12 * N3D, 1);
+  C.resize(18 * N3D, 1);
   C.fill(0.0);
-  vec_sign.resize(12 * N3D + 3);
+  vec_sign.resize(18 * N3D + 3);
 
   const size_t transStart  = 0;
   const size_t pointStart  = transStart + 3*Nrig;
@@ -220,12 +220,53 @@ void EncodeRigCiXi(const Mat & M, //Scene representation
   // Fix the translation ambiguity. (set first cam at (0,0,0))
   vec_bounds[0] = vec_bounds[1] = vec_bounds[2] = std::make_pair(0,0);
 
-  // initialize cheirality condition (depth is constrained to be in 1cm -> 50 [m])
+  // compute minimal between bearing vectors
+  double   minAngle = 1.0e10;
+  double   maxAngle = 0.0;
+
+  for (size_t k = 0; k < N3D ; ++k)
+  {
+      // we assume here that each track is of length 3
+      Vec3 b0;
+      Vec3 b1;
+      Vec3 b2;
+
+      // extract bearing vectors
+      b0 << M(0,3*k),   M(1,3*k),   1.0;
+      b1 << M(0,3*k+1), M(1,3*k+1), 1.0;
+      b2 << M(0,3*k+2), M(1,3*k+2), 1.0;
+
+      // extract rotations
+      const Mat3  Rc0  = rigRotation[M(3,3*k+0)].transpose();
+      const Mat3  Rc1  = rigRotation[M(3,3*k+1)].transpose();
+      const Mat3  Rc2  = rigRotation[M(3,3*k+2)].transpose();
+
+      const Mat3  R0  = Ri[M(4,3*k+0)].transpose();
+      const Mat3  R1  = Ri[M(4,3*k+1)].transpose();
+      const Mat3  R2  = Ri[M(4,3*k+2)].transpose();
+
+      // compute useful quantities
+      Vec3  Rb0 = R0 * Rc0 * b0;
+      Vec3  Rb1 = R1 * Rc1 * b1;
+      Vec3  Rb2 = R2 * Rc2 * b2;
+
+      // normalize bearing vectors
+      Rb0 /= Rb0.norm(); Rb1 /= Rb1.norm(); Rb2 /= Rb2.norm();
+
+      // update minAngle
+      const double alpha_0 = acos(Rb0.transpose() * Rb1 );
+      const double alpha_1 = acos(Rb0.transpose() * Rb2 );
+      const double alpha_2 = acos(Rb1.transpose() * Rb2 );
+
+      minAngle = std::min( minAngle, std::min(alpha_0, std::min(alpha_1, alpha_2) ) );
+      maxAngle = std::max( maxAngle, std::max(alpha_0, std::max(alpha_1, alpha_2) ) );
+  }
+
   for( size_t l = 0 ; l < N3D; ++l )
   {
-      vec_bounds[XVAR(l,0)] = std::make_pair(0.01, (double)1e+30);
-      vec_bounds[XVAR(l,1)] = std::make_pair(0.01, (double)1e+30);
-      vec_bounds[XVAR(l,2)] = std::make_pair(0.01, (double)1e+30);
+        vec_bounds[XVAR(l,0)] = std::make_pair(1.0 / maxAngle, (double)1e+30);
+        vec_bounds[XVAR(l,1)] = std::make_pair(1.0 / maxAngle, (double)1e+30);
+        vec_bounds[XVAR(l,2)] = std::make_pair(1.0 / maxAngle, (double)1e+30);
   }
 
   size_t rowPos = 0;
@@ -251,11 +292,6 @@ void EncodeRigCiXi(const Mat & M, //Scene representation
       const Mat3  R1  = Ri[M(4,3*k+1)].transpose();
       const Mat3  R2  = Ri[M(4,3*k+2)].transpose();
 
-      // check if we are close to identity or not
-      float angularErrorDegree0 = static_cast<float>(R2D(getRotationMagnitude(R0)));
-      float angularErrorDegree1 = static_cast<float>(R2D(getRotationMagnitude(R1)));
-      float angularErrorDegree2 = static_cast<float>(R2D(getRotationMagnitude(R2)));
-
       // compute useful quantities
       const Vec3  Rb0 = R0 * Rc0 * b0;
       const Vec3  Rb1 = R1 * Rc1 * b1;
@@ -271,33 +307,47 @@ void EncodeRigCiXi(const Mat & M, //Scene representation
       // encode matrix
       for( int i=0 ; i < 3 ; ++i )
       {
-          A.coeffRef(12*k + i, TVAR(0, i)) =  1.0;
-          A.coeffRef(12*k + i, TVAR(1, i)) = -1.0;
-          A.coeffRef(12*k + i, XVAR(pointIndex, 0)) =  Rb0(i);
-          A.coeffRef(12*k + i, XVAR(pointIndex, 1)) = -Rb1(i);
-          C(12*k + i) = sigma - R_c0(i) + R_c1(i);
-          vec_sign[12*k + i] = LP_Constraints::LP_LESS_OR_EQUAL;
+          A.coeffRef(18*k + i, TVAR(0, i)) =  1.0;
+          A.coeffRef(18*k + i, TVAR(1, i)) = -1.0;
+          A.coeffRef(18*k + i, XVAR(pointIndex, 0)) =  Rb0(i);
+          A.coeffRef(18*k + i, XVAR(pointIndex, 1)) = -Rb1(i);
+          C(18*k + i) = sigma - R_c0(i) + R_c1(i);
+          vec_sign[18*k + i] = LP_Constraints::LP_LESS_OR_EQUAL;
 
-          A.coeffRef(12*k +3+ i, TVAR(0, i)) =  1.0;
-          A.coeffRef(12*k +3+ i, TVAR(1, i)) = -1.0;
-          A.coeffRef(12*k +3+ i, XVAR(pointIndex, 0)) =  Rb0(i);
-          A.coeffRef(12*k +3+ i, XVAR(pointIndex, 1)) = -Rb1(i);
-          C(12*k +3+ i) = -sigma - R_c0(i) + R_c1(i);
-          vec_sign[12*k +3+ i] = LP_Constraints::LP_GREATER_OR_EQUAL;
+          A.coeffRef(18*k +3+ i, TVAR(0, i)) =  1.0;
+          A.coeffRef(18*k +3+ i, TVAR(1, i)) = -1.0;
+          A.coeffRef(18*k +3+ i, XVAR(pointIndex, 0)) =  Rb0(i);
+          A.coeffRef(18*k +3+ i, XVAR(pointIndex, 1)) = -Rb1(i);
+          C(18*k +3+ i) = -sigma - R_c0(i) + R_c1(i);
+          vec_sign[18*k +3+ i] = LP_Constraints::LP_GREATER_OR_EQUAL;
 
-          A.coeffRef(12*k +6+ i, TVAR(0, i)) =  1.0;
-          A.coeffRef(12*k +6+ i, TVAR(2, i)) = -1.0;
-          A.coeffRef(12*k +6+ i, XVAR(pointIndex, 0)) =  Rb0(i);
-          A.coeffRef(12*k +6+ i, XVAR(pointIndex, 2)) = -Rb2(i);
-          C(12*k +6+ i) = sigma - R_c0(i) + R_c2(i);
-          vec_sign[12*k +6+ i] = LP_Constraints::LP_LESS_OR_EQUAL;
+          A.coeffRef(18*k +6+ i, TVAR(0, i)) =  1.0;
+          A.coeffRef(18*k +6+ i, TVAR(2, i)) = -1.0;
+          A.coeffRef(18*k +6+ i, XVAR(pointIndex, 0)) =  Rb0(i);
+          A.coeffRef(18*k +6+ i, XVAR(pointIndex, 2)) = -Rb2(i);
+          C(18*k +6+ i) = sigma - R_c0(i) + R_c2(i);
+          vec_sign[18*k +6+ i] = LP_Constraints::LP_LESS_OR_EQUAL;
 
-          A.coeffRef(12*k +9+ i, TVAR(0, i)) =  1.0;
-          A.coeffRef(12*k +9+ i, TVAR(2, i)) = -1.0;
-          A.coeffRef(12*k +9+ i, XVAR(pointIndex, 0)) =  Rb0(i);
-          A.coeffRef(12*k +9+ i, XVAR(pointIndex, 2)) = -Rb2(i);
-          C(12*k +9+ i) = -sigma - R_c0(i) + R_c2(i);
-          vec_sign[12*k +9+ i] = LP_Constraints::LP_GREATER_OR_EQUAL;
+          A.coeffRef(18*k +9+ i, TVAR(0, i)) =  1.0;
+          A.coeffRef(18*k +9+ i, TVAR(2, i)) = -1.0;
+          A.coeffRef(18*k +9+ i, XVAR(pointIndex, 0)) =  Rb0(i);
+          A.coeffRef(18*k +9+ i, XVAR(pointIndex, 2)) = -Rb2(i);
+          C(18*k +9+ i) = -sigma - R_c0(i) + R_c2(i);
+          vec_sign[18*k +9+ i] = LP_Constraints::LP_GREATER_OR_EQUAL;
+
+          A.coeffRef(18*k +12+ i, TVAR(1, i)) =  1.0;
+          A.coeffRef(18*k +12+ i, TVAR(2, i)) = -1.0;
+          A.coeffRef(18*k +12+ i, XVAR(pointIndex, 1)) =  Rb1(i);
+          A.coeffRef(18*k +12+ i, XVAR(pointIndex, 2)) = -Rb2(i);
+          C(18*k +12+ i) = sigma - R_c1(i) + R_c2(i);
+          vec_sign[18*k +12+ i] = LP_Constraints::LP_LESS_OR_EQUAL;
+
+          A.coeffRef(18*k +15+ i, TVAR(1, i)) =  1.0;
+          A.coeffRef(18*k +15+ i, TVAR(2, i)) = -1.0;
+          A.coeffRef(18*k +15+ i, XVAR(pointIndex, 1)) =  Rb1(i);
+          A.coeffRef(18*k +15+ i, XVAR(pointIndex, 2)) = -Rb2(i);
+          C(18*k +15+ i) = -sigma - R_c1(i) + R_c2(i);
+          vec_sign[18*k +15+ i] = LP_Constraints::LP_GREATER_OR_EQUAL;
       }
   }
 
