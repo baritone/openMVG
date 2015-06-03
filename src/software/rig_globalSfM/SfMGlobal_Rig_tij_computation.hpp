@@ -145,7 +145,7 @@ bool estimate_T_rig_triplet(
   const size_t ORSA_ITER = 1024;
 
   rigTrackTrifocalTensorModel T;
-  std::pair<double,double> acStat = robust::ACRANSAC(kernel, vec_inliers, ORSA_ITER, &T, dPrecision, false );
+  std::pair<double,double> acStat = robust::ACRANSAC(kernel, vec_inliers, ORSA_ITER, &T, dPrecision, false, false );
   dPrecision = acStat.first;
 
   //-- Export data in order to have an idea of the precision of the estimates

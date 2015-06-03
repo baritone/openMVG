@@ -220,17 +220,17 @@ void EncodeRigCiXi(const Mat & M, //Scene representation
   // Fix the translation ambiguity. (set first cam at (0,0,0))
   vec_bounds[0] = vec_bounds[1] = vec_bounds[2] = std::make_pair(0,0);
 
-  // compute minimal between bearing vectors
+  // compute minimal angle between bearing vectors
   double   minAngle = 1.0e10;
   double   maxAngle = 0.0;
+
+  Vec3 b0;
+  Vec3 b1;
+  Vec3 b2;
 
   for (size_t k = 0; k < N3D ; ++k)
   {
       // we assume here that each track is of length 3
-      Vec3 b0;
-      Vec3 b1;
-      Vec3 b2;
-
       // extract bearing vectors
       b0 << M(0,3*k),   M(1,3*k),   1.0;
       b1 << M(0,3*k+1), M(1,3*k+1), 1.0;
@@ -274,10 +274,6 @@ void EncodeRigCiXi(const Mat & M, //Scene representation
   for (size_t k = 0; k < N3D ; ++k)
   {
       // we assume here that each track is of length 3
-      Vec3 b0;
-      Vec3 b1;
-      Vec3 b2;
-
       // extract bearing vectors
       b0 << M(0,3*k),   M(1,3*k),   1.0;
       b1 << M(0,3*k+1), M(1,3*k+1), 1.0;
