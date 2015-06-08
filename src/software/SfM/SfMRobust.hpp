@@ -207,7 +207,19 @@ bool robustRigPose(
     4096, relativePose, precision, false, false );
   *errorMax = acRansacOut.first;
 
-  return ( pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * rigOffsets.size() );
+  // compute min and max matches camera
+  std::set < size_t >  setCamOne;
+  std::set < size_t >  setCamTwo;
+
+  for( int  i = 0;  i < b1.size() ; ++i )
+  {
+      setCamOne.insert( scIdOne[i] );
+      setCamTwo.insert( scIdTwo[i] );
+  }
+
+  return ( pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * std::max( setCamOne.size(), setCamTwo.size() ) &&
+           pvec_inliers->size() > 0.40 * b1.size() );
+
 }
 
 /// Triangulate a set of points between two view

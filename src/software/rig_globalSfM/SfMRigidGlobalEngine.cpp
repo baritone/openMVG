@@ -936,7 +936,7 @@ bool GlobalRigidReconstructionEngine::Process()
       std::cout, "\n\n Initial triangulation:\n");
 
 #ifdef OPENMVG_USE_OPENMP
-      #pragma comment omp parallel for schedule(dynamic)
+      #pragma omp parallel for schedule(dynamic)
 #endif
       for (int idx = 0; idx < _map_selectedTracks.size(); ++idx)
       {
@@ -1526,7 +1526,7 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
     double errorMax = std::numeric_limits<double>::max();
     const double maxExpectedError = 1.0 - cos ( atan ( sqrt(2.0) * 2.5 / averageFocal ) );
 
-    if ( map_tracks.size() > 50 * rigOffsets.size())
+    if ( map_tracks.size() > 50 * rigOffsets.size() || 1 )
     {
         isPoseUsable = SfMRobust::robustRigPose(
                               bearingVectorsRigOne,
@@ -1969,16 +1969,11 @@ void GlobalRigidReconstructionEngine::tripletRotationRejection(
     const std::pair<size_t,size_t> ij = std::make_pair(I,J);
     const std::pair<size_t,size_t> ji = std::make_pair(J,I);
 
-    bool bTripletComputed = true;
-
     Mat3 RIJ;
     if (map_relatives.find(ij) != map_relatives.end())
       RIJ = map_relatives.find(ij)->second.first;
     else
-      if (map_relatives.find(ji) != map_relatives.end())
-        RIJ = map_relatives.find(ji)->second.first.transpose();
-      else
-        bTripletComputed = false;
+      RIJ = map_relatives.find(ji)->second.first.transpose();
 
     const std::pair<size_t,size_t> jk = std::make_pair(J,K);
     const std::pair<size_t,size_t> kj = std::make_pair(K,J);
@@ -1987,10 +1982,7 @@ void GlobalRigidReconstructionEngine::tripletRotationRejection(
     if (map_relatives.find(jk) != map_relatives.end())
       RJK = map_relatives.find(jk)->second.first;
     else
-      if (map_relatives.find(kj) != map_relatives.end())
-        RJK = map_relatives.find(kj)->second.first.transpose();
-      else
-        bTripletComputed = false;
+      RJK = map_relatives.find(kj)->second.first.transpose();
 
     const std::pair<size_t,size_t> ki = std::make_pair(K,I);
     const std::pair<size_t,size_t> ik = std::make_pair(I,K);
@@ -1999,17 +1991,14 @@ void GlobalRigidReconstructionEngine::tripletRotationRejection(
     if (map_relatives.find(ki) != map_relatives.end())
       RKI = map_relatives.find(ki)->second.first;
     else
-      if (map_relatives.find(ik) != map_relatives.end())
-        RKI = map_relatives.find(ik)->second.first.transpose();
-      else
-        bTripletComputed = false;
+      RKI = map_relatives.find(ik)->second.first.transpose();
+
 
     Mat3 Rot_To_Identity = RIJ * RJK * RKI; // motion composition
     float angularErrorDegree = static_cast<float>(R2D(getRotationMagnitude(Rot_To_Identity)));
-    if( bTripletComputed )
-      vec_errToIdentityPerTriplet.push_back(angularErrorDegree);
+    vec_errToIdentityPerTriplet.push_back(angularErrorDegree);
 
-    if (angularErrorDegree < 2.0f && bTripletComputed )
+    if (angularErrorDegree < 2.0f )
     {
       vec_triplets_validated.push_back(triplet);
 
