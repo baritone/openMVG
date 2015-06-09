@@ -195,7 +195,7 @@ bool estimate_T_rig_triplet(
               && ( min_t_norm > 2.0 * min_offset ) ;
   }
   else
-      bTest =  ( vec_inliers.size() > 0.66 * map_tracksCommon.size() ) ;
+      bTest =  ( vec_inliers.size() > 0.50 * map_tracksCommon.size() ) ;
 
   if (!bTest)
   {

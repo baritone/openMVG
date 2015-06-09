@@ -218,7 +218,7 @@ bool robustRigPose(
   }
 
   return ( pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * std::max( setCamOne.size(), setCamTwo.size() ) &&
-           pvec_inliers->size() > 0.40 * b1.size() );
+           pvec_inliers->size() > 0.70 * b1.size() );
 
 }
 
