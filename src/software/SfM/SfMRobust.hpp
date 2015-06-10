@@ -217,8 +217,8 @@ bool robustRigPose(
       setCamTwo.insert( scIdTwo[i] );
   }
 
-  return ( pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * std::max( setCamOne.size(), setCamTwo.size() ) &&
-           pvec_inliers->size() > 0.70 * b1.size() );
+  return ( pvec_inliers->size() > 2.5 * SolverType::MINIMUM_SAMPLES * rigOffsets.size()  ||
+           pvec_inliers->size() > 0.85 * b1.size() );
 
 }
 
