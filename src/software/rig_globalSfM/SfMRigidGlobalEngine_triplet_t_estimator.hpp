@@ -119,7 +119,7 @@ namespace openMVG{
   OSI_CLP_SolverWrapper LPsolver(static_cast<int>(vec_solution.size()));
   #endif
 
-  Rig_Translation_Structure_L1_ConstraintBuilder cstBuilder(vec_KR, megaMat, rigRotation, rigOffsets);
+  Rig_Translation_Structure_L1_ConstraintBuilder cstBuilder(vec_KR, megaMat, rigRotation, rigOffsets, 0);
   double gamma;
   if (BisectionLP<Rig_Translation_Structure_L1_ConstraintBuilder, LP_Constraints_Sparse>(
     LPsolver,
@@ -331,7 +331,7 @@ namespace openMVG{
 
   struct rigTrackTisXisTrifocalSolver {
     enum { MINIMUM_SAMPLES = 4 };
-    enum { MAX_MODELS = 1 };
+    enum { MAX_MODELS = 6 };
     // Solve the computation of the tensor.
     static void Solve(
     const std::vector< std::vector < std::vector <double> > > pt,
@@ -366,26 +366,29 @@ namespace openMVG{
       OSI_CLP_SolverWrapper LPsolver(static_cast<int>(vec_solution.size()));
       #endif
 
-      Rig_Translation_Structure_L1_ConstraintBuilder cstBuilder(vec_KR, megaMat, rigRotation, rigOffsets);
-      double gamma;
-      if (BisectionLP<Rig_Translation_Structure_L1_ConstraintBuilder, LP_Constraints_Sparse>(
-        LPsolver,
-        cstBuilder,
-        &vec_solution,
-        ThresholdUpperBound,//admissibleResidual,
-        0.0, 1e-8, 2, &gamma, false))
+      for( size_t i = 0 ; i < rigTrackTisXisTrifocalSolver::MAX_MODELS ; ++i )
       {
-        std::vector<Vec3> vec_tis(3);
-        vec_tis[0] = Vec3(vec_solution[0], vec_solution[1], vec_solution[2]);
-        vec_tis[1] = Vec3(vec_solution[3], vec_solution[4], vec_solution[5]);
-        vec_tis[2] = Vec3(vec_solution[6], vec_solution[7], vec_solution[8]);
+        Rig_Translation_Structure_L1_ConstraintBuilder cstBuilder(vec_KR, megaMat, rigRotation, rigOffsets, i);
+        double gamma;
+        if (BisectionLP<Rig_Translation_Structure_L1_ConstraintBuilder, LP_Constraints_Sparse>(
+          LPsolver,
+          cstBuilder,
+          &vec_solution,
+          ThresholdUpperBound,//admissibleResidual,
+          0.0, 1e-8, 5, &gamma, false))
+        {
+          std::vector<Vec3> vec_tis(3);
+          vec_tis[0] = Vec3(vec_solution[0], vec_solution[1], vec_solution[2]);
+          vec_tis[1] = Vec3(vec_solution[3], vec_solution[4], vec_solution[5]);
+          vec_tis[2] = Vec3(vec_solution[6], vec_solution[7], vec_solution[8]);
 
-        rigTrackTrifocalTensorModel PTemp;
-        PTemp.R1 = vec_KR[0]; PTemp.t1 = -vec_KR[0] * vec_tis[0];
-        PTemp.R2 = vec_KR[1]; PTemp.t2 = -vec_KR[1] * vec_tis[1];
-        PTemp.R3 = vec_KR[2]; PTemp.t3 = -vec_KR[2] * vec_tis[2];
+          rigTrackTrifocalTensorModel PTemp;
+          PTemp.R1 = vec_KR[0]; PTemp.t1 = -vec_KR[0] * vec_tis[0];
+          PTemp.R2 = vec_KR[1]; PTemp.t2 = -vec_KR[1] * vec_tis[1];
+          PTemp.R3 = vec_KR[2]; PTemp.t3 = -vec_KR[2] * vec_tis[2];
 
-        P->push_back(PTemp);
+          P->push_back(PTemp);
+        }
       }
     }
 

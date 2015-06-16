@@ -195,13 +195,13 @@ bool estimate_T_rig_triplet(
               && ( min_t_norm > 2.0 * min_offset ) ;
   }
   else
-      bTest =  ( vec_inliers.size() > 0.50 * map_tracksCommon.size() ) ;
+      bTest =  ( vec_inliers.size() > 0.66 * map_tracksCommon.size() ) ;
 
   if (!bTest)
   {
     std::cout << "Triplet rejected : AC: " << dPrecision
       << " inliers count " << inliers_tracks.size()
-      << " total putative " << featsAndRigIdPerTrack.size() << std::endl;
+      << " total putative " << map_tracksCommon.size() << std::endl;
   }
 
   bool bRefine = false;
@@ -806,7 +806,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
           // update precision to have good value for normalized coordinates
           double dPrecision = 8.0 / averageFocal ;
-          const double ThresholdUpperBound = 0.006;
+          const double ThresholdUpperBound = 0.10;
 
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;

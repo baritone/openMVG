@@ -193,7 +193,8 @@ void EncodeRigCiXi(const Mat & M, //Scene representation
                            sRMat & A, Vec & C,
                            std::vector<LP_Constraints::eLP_SIGN> & vec_sign,
                            std::vector<double> & vec_costs,
-                           std::vector< std::pair<double,double> > & vec_bounds)
+                           std::vector< std::pair<double,double> > & vec_bounds,
+                           const size_t level )
 {
   // Build Constraint matrix.
   const size_t Nrig = (size_t) M.row(4).maxCoeff()+1;
@@ -264,9 +265,9 @@ void EncodeRigCiXi(const Mat & M, //Scene representation
 
   for( size_t l = 0 ; l < N3D; ++l )
   {
-        vec_bounds[XVAR(l,0)] = std::make_pair(1.0 / maxAngle, (double)1e+30);
-        vec_bounds[XVAR(l,1)] = std::make_pair(1.0 / maxAngle, (double)1e+30);
-        vec_bounds[XVAR(l,2)] = std::make_pair(1.0 / maxAngle, (double)1e+30);
+        vec_bounds[XVAR(l,0)] = std::make_pair(0.01 * std::pow(10.0, level) / maxAngle, (double)1e+30);
+        vec_bounds[XVAR(l,1)] = std::make_pair(0.01 * std::pow(10.0, level) / maxAngle, (double)1e+30);
+        vec_bounds[XVAR(l,2)] = std::make_pair(0.01 * std::pow(10.0, level) / maxAngle, (double)1e+30);
   }
 
   size_t rowPos = 0;
@@ -364,9 +365,11 @@ struct Rig_Translation_Structure_L1_ConstraintBuilder
     const std::vector<Mat3> & vec_Ri,
     const Mat & M,
     const std::vector<Mat3> & rigRotation,
-    const std::vector<Vec3> & rigOffsets)
+    const std::vector<Vec3> & rigOffsets,
+    const size_t level )
   {
     _M = M;
+    _n = level;
     _vec_Ri = vec_Ri;
     _rigRotation = rigRotation;
     _rigOffsets = rigOffsets;
@@ -384,7 +387,8 @@ struct Rig_Translation_Structure_L1_ConstraintBuilder
       constraint._Cst_objective,
       constraint._vec_sign,
       constraint._vec_cost,
-      constraint._vec_bounds);
+      constraint._vec_bounds,
+      _n );
 
     //-- Setup additional information about the Linear Program constraint
     // We look for nb translations and nb 3D points.
@@ -398,6 +402,7 @@ struct Rig_Translation_Structure_L1_ConstraintBuilder
 
   std::vector<Mat3> _vec_Ri;  // Rotation matrix
   Mat _M; // M contains (X,Y,index3dPoint, indexCam)^T
+  size_t _n ; // level of depth
   std::vector<Mat3> _rigRotation; // rotation of rig subcameras
   std::vector<Vec3> _rigOffsets; // optical center of rig subcameras in rig referential frame
 };
