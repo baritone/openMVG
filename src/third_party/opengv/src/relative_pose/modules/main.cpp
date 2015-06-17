@@ -858,7 +858,7 @@ opengv::relative_pose::modules::ge_main2(
   // too much, we have to stop
   //-another idea consists of having linear change of lambda, instead of exponential (safer, but slower)
 
-  int maxIterations = 500;
+  int maxIterations = 50;
 
   double sigma = 2.0e-4;
   double rho   = 0.5;
