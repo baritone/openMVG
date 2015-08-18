@@ -62,7 +62,7 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
 
   assert(Nrig == Ri.size());
 
-  A.resize(5 * Nobs, 3 * (N3D + Nrig + rigOffsets.size() ) );
+  A.resize(5 * Nobs, 3 * (N3D + Nrig) );
 
   C.resize(5 * Nobs, 1);
   C.fill(0.0);
@@ -70,26 +70,15 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
 
   const size_t transStart  = 0;
   const size_t pointStart  = transStart + 3*Nrig;
-  const size_t rigtsStart  = transStart + 3*(Nrig+N3D);
 
 # define TVAR(i, el) (0 + 3*(i) + (el))
 # define XVAR(j, el) (pointStart + 3*(j) + (el))
-# define RVAR(n, el) (rigtsStart + 3*(n) + (el))
 
   // By default set free variable:
-  vec_bounds = std::vector< std::pair<double,double> >(3 * (N3D + Nrig + rigOffsets.size()));
+  vec_bounds = std::vector< std::pair<double,double> >(3 * (N3D + Nrig));
   fill( vec_bounds.begin(), vec_bounds.end(), std::make_pair((double)-1e+30, (double)1e+30));
   // Fix the translation ambiguity. (set first cam at (0,0,0))
   vec_bounds[0] = vec_bounds[1] = vec_bounds[2] = std::make_pair(0,0);
-
-  // initialize rig translation value and thresholds
-  for( size_t l = 0 ; l < rigOffsets.size(); ++l )
-  {
-      const Vec3 tc = -rigRotation[l] * rigOffsets[l];
-      vec_bounds[RVAR(l,0)] = std::make_pair( tc(0), tc(0));
-      vec_bounds[RVAR(l,1)] = std::make_pair( tc(1), tc(1));
-      vec_bounds[RVAR(l,2)] = std::make_pair( tc(2), tc(2));
-  }
 
   size_t rowPos = 0;
   // Add the cheirality conditions (R_c*R_i*X_j + R_c*T_i + t_c)_3 + Z_ij >= 1
@@ -101,6 +90,7 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
 
     const Mat3 & R  = Ri[indexRig];
     const Mat3 & Rc = rigRotation[indexCam];
+    const Vec3 & tc = -Rc * rigOffsets[indexCam];
 
     const Mat3 & RcRi = Rc * R;
 
@@ -110,8 +100,7 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
     A.coeffRef(rowPos, TVAR(indexRig, 0)) = Rc(2,0);
     A.coeffRef(rowPos, TVAR(indexRig, 1)) = Rc(2,1);
     A.coeffRef(rowPos, TVAR(indexRig, 2)) = Rc(2,2);
-    A.coeffRef(rowPos, RVAR(indexCam, 2)) = 1.0;
-    C(rowPos) = 0.01;
+    C(rowPos) = 0.01 - tc(2);
     vec_sign[rowPos] = LP_Constraints::LP_GREATER_OR_EQUAL;
     ++rowPos;
 
@@ -131,9 +120,7 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
     A.coeffRef(rowPos, TVAR(indexRig, 0)) = Rc(0,0) + (sigma-u) * Rc(2,0);
     A.coeffRef(rowPos, TVAR(indexRig, 1)) = Rc(0,1) + (sigma-u) * Rc(2,1);
     A.coeffRef(rowPos, TVAR(indexRig, 2)) = Rc(0,2) + (sigma-u) * Rc(2,2);
-    A.coeffRef(rowPos, RVAR(indexCam, 0)) = 1.0;
-    A.coeffRef(rowPos, RVAR(indexCam, 2)) = (sigma-u);
-    C(rowPos) = 0.0;
+    C(rowPos) = -tc(0) -tc(2) * (sigma-u);
     vec_sign[rowPos] = LP_Constraints::LP_GREATER_OR_EQUAL;
     ++rowPos;
 
@@ -143,9 +130,7 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
     A.coeffRef(rowPos, TVAR(indexRig, 0)) = Rc(0,0) - (sigma+u) * Rc(2,0);
     A.coeffRef(rowPos, TVAR(indexRig, 1)) = Rc(0,1) - (sigma+u) * Rc(2,1);
     A.coeffRef(rowPos, TVAR(indexRig, 2)) = Rc(0,2) - (sigma+u) * Rc(2,2);
-    A.coeffRef(rowPos, RVAR(indexCam, 0)) = 1.0;
-    A.coeffRef(rowPos, RVAR(indexCam, 2)) = -(sigma+u);
-    C(rowPos) = 0.0;
+    C(rowPos) = -tc(0) + tc(2) * (sigma + u);
     vec_sign[rowPos] = LP_Constraints::LP_LESS_OR_EQUAL;
     ++rowPos;
 
@@ -153,7 +138,7 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
     // (R_c*R_i*X_j + R_c*T_i + T_c)_2 / (R_c*R_i*X_j + R_c*T_i + T_c)_3 - v >= -sigma
     // (R_c*R_i*X_j + R_c*T_i + T_c)_2 - v * (R_c*R_i*X_j + R_c*T_i + T_c)_3  + sigma (R_c*R_i*X_j + R_c*T_i + T_c)_3  >= 0.0
     // ((R_c*R_i)_3 * (sigma-v) + (R_c*R_i)_2) * X_j +
-    //     + (R_c_3 * (sigma-v) + R_c_2)*t_i + (t_c_2 + t_c_3 * (sigma-u) ) >= 0
+    //     + (R_c_3 * (sigma-v) + R_c_2)*t_i + (t_c_2 + t_c_3 * (sigma-v) ) >= 0
 
     A.coeffRef(rowPos, XVAR(indexPt3D, 0)) = RcRi(1,0) + (sigma-v) * RcRi(2,0);
     A.coeffRef(rowPos, XVAR(indexPt3D, 1)) = RcRi(1,1) + (sigma-v) * RcRi(2,1);
@@ -161,9 +146,7 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
     A.coeffRef(rowPos, TVAR(indexRig, 0)) = Rc(1,0) + (sigma-v) * Rc(2,0);
     A.coeffRef(rowPos, TVAR(indexRig, 1)) = Rc(1,1) + (sigma-v) * Rc(2,1);
     A.coeffRef(rowPos, TVAR(indexRig, 2)) = Rc(1,2) + (sigma-v) * Rc(2,2);
-    A.coeffRef(rowPos, RVAR(indexCam, 1)) = 1.0;
-    A.coeffRef(rowPos, RVAR(indexCam, 2)) = (sigma-v);
-    C(rowPos) = 0.0;
+    C(rowPos) = -tc(1) -tc(2) * (sigma-v);
     vec_sign[rowPos] = LP_Constraints::LP_GREATER_OR_EQUAL;
     ++rowPos;
 
@@ -173,13 +156,10 @@ void EncodeRigTiXi(const Mat & M, //Scene representation
     A.coeffRef(rowPos, TVAR(indexRig, 0)) = Rc(1,0) - (sigma+v) * Rc(2,0);
     A.coeffRef(rowPos, TVAR(indexRig, 1)) = Rc(1,1) - (sigma+v) * Rc(2,1);
     A.coeffRef(rowPos, TVAR(indexRig, 2)) = Rc(1,2) - (sigma+v) * Rc(2,2);
-    A.coeffRef(rowPos, RVAR(indexCam, 1)) = 1.0;
-    A.coeffRef(rowPos, RVAR(indexCam, 2)) = -(sigma+v);
-    C(rowPos) = 0.0;
+    C(rowPos) = -tc(1) + tc(2) * (sigma+v);
     vec_sign[rowPos] = LP_Constraints::LP_LESS_OR_EQUAL;
     ++rowPos;
   }
-# undef RVAR
 # undef TVAR
 # undef XVAR
 }
