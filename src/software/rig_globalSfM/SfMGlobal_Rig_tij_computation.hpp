@@ -806,7 +806,7 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
 
           // update precision to have good value for normalized coordinates
           double dPrecision = 8.0 / averageFocal ;
-          const double ThresholdUpperBound = 0.006;
+          const double ThresholdUpperBound = 1.0e-2 ;
 
           std::vector<Vec3> vec_tis(3);
           std::vector<size_t> vec_inliers;

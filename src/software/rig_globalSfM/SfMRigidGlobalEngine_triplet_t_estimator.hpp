@@ -381,9 +381,9 @@ namespace openMVG{
         vec_tis[2] = Vec3(vec_solution[6], vec_solution[7], vec_solution[8]);
 
         rigTrackTrifocalTensorModel PTemp;
-        PTemp.R1 = vec_KR[0]; PTemp.t1 = -vec_KR[0] * vec_tis[0];
-        PTemp.R2 = vec_KR[1]; PTemp.t2 = -vec_KR[1] * vec_tis[1];
-        PTemp.R3 = vec_KR[2]; PTemp.t3 = -vec_KR[2] * vec_tis[2];
+        PTemp.R1 = vec_KR[0]; PTemp.t1 = vec_tis[0];
+        PTemp.R2 = vec_KR[1]; PTemp.t2 = vec_tis[1];
+        PTemp.R3 = vec_KR[2]; PTemp.t3 = vec_tis[2];
 
         P->push_back(PTemp);
       }
