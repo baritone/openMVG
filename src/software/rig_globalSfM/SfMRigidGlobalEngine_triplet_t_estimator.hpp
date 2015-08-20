@@ -261,32 +261,32 @@ namespace openMVG {
       {
         // Triangulate and return the reprojection error
         Triangulation triangulationObj;
-
         std::vector < std::pair <Mat34, Vec2> >  views;
 
         for( size_t i = 0 ; i < pointInfo.size() ; ++ i)
         {
           // extract sucamera rotations and translation
-          size_t I = (size_t) pointInfo[i][2];
-
+          size_t I = (size_t) pointInfo[i][2]; // intrinsic id
           const Mat3  RI = rigRotation[I];  const Vec3 tI = -RI * rigOffsets[I];
 
           // compute projection matrix
           Mat34 P ;
-          if( pointInfo[i][3] == 0 )
+          switch( (int) pointInfo[i][3] )  // pose Id
           {
-            P = HStack(RI * t.R1, RI * t.t1 + tI);
-          }
-          else
-          {
-            if( pointInfo[i][3] == 1)
-            {
+            // if first pose
+            case 0 :
+              P = HStack(RI * t.R1, RI * t.t1 + tI);
+              break;
+
+            // if second pose
+            case 1 :
               P = HStack(RI * t.R2, RI * t.t2 + tI);
-            }
-            else
-            {
+              break;
+
+            // if third pose
+            case 2 :
               P = HStack(RI * t.R3, RI * t.t3 + tI);
-            }
+              break;
           };
 
           //compute projection matrices
@@ -298,9 +298,7 @@ namespace openMVG {
 
         // update triangulation object
         for( size_t i = 0 ; i < views.size(); ++i )
-        {
           triangulationObj.add ( views[i].first, views[i].second );
-        }
 
         const Vec3 X = triangulationObj.compute();
 

@@ -754,47 +754,6 @@ void GlobalRigidReconstructionEngine::computePutativeTranslation_EdgesCoverage(
             tracksBuilder.ExportToSTL(map_tracksCommon);
           }
 
-          // initialize subcamera set
-          std::set < size_t >  set_subCam0 ;
-          std::set < size_t >  set_subCam1 ;
-          std::set < size_t >  set_subCam2 ;
-
-          // initialize structure pour triplet estimation
-          size_t cpt = 0;
-          for (STLMAPTracks::const_iterator iterTracks = map_tracksCommon.begin();
-          iterTracks != map_tracksCommon.end(); ++iterTracks, ++cpt) {
-            const submapTrack & subTrack = iterTracks->second;
-
-            std::vector < std::vector <double> > subTrackInfo;
-
-            // loop on subtracks
-            size_t nrig = 0;
-            for (size_t index = 0; index < subTrack.size() ; ++index)
-            { submapTrack::const_iterator iter = subTrack.begin();
-              std::advance(iter, index);
-
-              // extract camera indexes
-              const size_t imaIndex  = iter->first;
-              const size_t cameraId  = _map_IntrinsicIdPerImageId.at(imaIndex);
-              const size_t rigId     = _map_RigIdPerImageId.at(imaIndex);
-
-              //update subcameras sets
-              if ( rigId == I )
-                set_subCam0.insert( cameraId );
-
-              if ( rigId == J)
-                set_subCam1.insert( cameraId );
-
-              if ( rigId == K)
-                set_subCam2.insert( cameraId );
-
-              }
-          }
-
-          // compute minimal number of matches subcameras
-          size_t  minMatchSubCamSize = std::min ( std::min (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
-          size_t  maxMatchSubCamSize = std::max ( std::max (set_subCam0.size(), set_subCam1.size() ), set_subCam2.size() );
-
           //--
           // Try to estimate this triplet.
           //--
