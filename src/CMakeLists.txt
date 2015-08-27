@@ -282,7 +282,12 @@ SET(OpenMVG_LIBS "${OpenMVG_LIBS}"
   lemon
   opengv
   random_generators
-  easyexif)
+  easyexif
+  lib_CoinUtils
+  lib_Osi
+  lib_OsiClpSolver
+  lib_clp
+  )
 SET(OpenMVG_LIBS "${OpenMVG_LIBS}"
   ${OPENMVG_LIBRARY_DEPENDENCIES} CACHE STRING "openMVG library names")
 
