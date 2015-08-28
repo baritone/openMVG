@@ -1,4 +1,3 @@
-
 // Copyright (c) 2012, 2013 Lionel MOISAN.
 // Copyright (c) 2012, 2013 Pascal MONASSE.
 // Copyright (c) 2012, 2013 Pierre MOULON.
@@ -205,7 +204,7 @@ std::pair<double, double> ACRANSAC(const Kernel &kernel,
         vec_logc_k,
         kernel.multError());
 
-      if (best.first < minNFA /*&& vec_residuals[best.second-1].first < errorMax*/)  {
+      if (best.first < minNFA && best.second > vec_inliers.size() /*&& vec_residuals[best.second-1].first < errorMax*/)  {
         // A better model was found
         better = true;
         minNFA = best.first;
@@ -236,7 +235,7 @@ std::pair<double, double> ACRANSAC(const Kernel &kernel,
         nIterReserve--;
       } else
       {
-        if( vec_inliers.size() > 0.85 * vec_index.size() || bOptimize )
+        if( vec_inliers.size() > 0.85 * nData || bOptimize )
         {
           // ACRANSAC optimization: draw samples among best set of inliers so far
           vec_index = vec_inliers;

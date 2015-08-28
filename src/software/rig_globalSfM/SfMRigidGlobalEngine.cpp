@@ -999,6 +999,14 @@ bool GlobalRigidReconstructionEngine::Process()
 
       std::cout << "\n Clean point cloud before BA \n " << endl;
 
+      // remove point with big reprojection error
+      double quant;
+      quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
+
+      for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
+        if( vec_residuals[idx] > quant)
+            set_idx_to_remove.insert(idx);
+
       //-- Remove useless tracks and 3D points
       {
          std::map<size_t, Vec3> map_allScenes_cleaned;
@@ -1634,6 +1642,15 @@ void GlobalRigidReconstructionEngine::ComputeRelativeRt(
               set_idx_to_remove.insert(idx);
             }
           }
+
+          // remove point with big reprojection error
+          double quant;
+          quantile ( vec_residuals.begin(),  vec_residuals.end(), quant, 0.80);
+
+          for(size_t idx = 0; idx < vec_residuals.size() ; ++idx)
+            if( vec_residuals[idx] > quant)
+                set_idx_to_remove.insert(idx);
+
 
           //-- Remove useless tracks and 3D points
           {
