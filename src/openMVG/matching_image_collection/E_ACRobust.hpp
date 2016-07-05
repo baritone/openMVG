@@ -33,9 +33,10 @@ struct GeometricFilter_EMatrix_AC
       m_dPrecision_robust(std::numeric_limits<double>::infinity()){};
 
   /// Robust fitting of the ESSENTIAL matrix
+  template<typename Regions_or_Features_ProviderT>
   bool Robust_estimation(
     const sfm::SfM_Data * sfm_data,
-    const std::shared_ptr<sfm::Regions_Provider> & regions_provider,
+    const std::shared_ptr<Regions_or_Features_ProviderT> & regions_provider,
     const Pair pairIndex,
     const matching::IndMatches & vec_PutativeMatches,
     matching::IndMatches & geometric_inliers)
@@ -58,10 +59,10 @@ struct GeometricFilter_EMatrix_AC
      // Check that valid cameras can be retrieved for the pair of views
     const cameras::IntrinsicBase * cam_I =
       sfm_data->GetIntrinsics().count(view_I->id_intrinsic) ?
-        sfm_data->GetIntrinsics().at(view_I->id_intrinsic).get() : NULL;
+        sfm_data->GetIntrinsics().at(view_I->id_intrinsic).get() : nullptr;
     const cameras::IntrinsicBase * cam_J =
       sfm_data->GetIntrinsics().count(view_J->id_intrinsic) ?
-        sfm_data->GetIntrinsics().at(view_J->id_intrinsic).get() : NULL;
+        sfm_data->GetIntrinsics().at(view_J->id_intrinsic).get() : nullptr;
 
     if (!cam_I || !cam_J)
       return false;
@@ -87,15 +88,15 @@ struct GeometricFilter_EMatrix_AC
         Mat3>
         KernelType;
 
-    const cameras::Pinhole_Intrinsic * ptrPinhole_I = (const cameras::Pinhole_Intrinsic*)(cam_I);
-    const cameras::Pinhole_Intrinsic * ptrPinhole_J = (const cameras::Pinhole_Intrinsic*)(cam_J);
+    const cameras::Pinhole_Intrinsic * ptrPinhole_I = dynamic_cast<const cameras::Pinhole_Intrinsic*>(cam_I);
+    const cameras::Pinhole_Intrinsic * ptrPinhole_J = dynamic_cast<const cameras::Pinhole_Intrinsic*>(cam_J);
 
     KernelType kernel(
       xI, sfm_data->GetViews().at(iIndex)->ui_width, sfm_data->GetViews().at(iIndex)->ui_height,
       xJ, sfm_data->GetViews().at(jIndex)->ui_width, sfm_data->GetViews().at(jIndex)->ui_height,
       ptrPinhole_I->K(), ptrPinhole_J->K());
 
-    // Robustly estimate the Fundamental matrix with A Contrario ransac
+    // Robustly estimate the Essential matrix with A Contrario ransac
     const double upper_bound_precision = Square(m_dPrecision);
     std::vector<size_t> vec_inliers;
     const std::pair<double,double> ACRansacOut =
@@ -137,10 +138,10 @@ struct GeometricFilter_EMatrix_AC
       // Check that valid cameras can be retrieved for the pair of views
       const cameras::IntrinsicBase * cam_I =
         sfm_data->GetIntrinsics().count(view_I->id_intrinsic) ?
-          sfm_data->GetIntrinsics().at(view_I->id_intrinsic).get() : NULL;
+          sfm_data->GetIntrinsics().at(view_I->id_intrinsic).get() : nullptr;
       const cameras::IntrinsicBase * cam_J =
         sfm_data->GetIntrinsics().count(view_J->id_intrinsic) ?
-          sfm_data->GetIntrinsics().at(view_J->id_intrinsic).get() : NULL;
+          sfm_data->GetIntrinsics().at(view_J->id_intrinsic).get() : nullptr;
 
       if (!cam_I || !cam_J)
         return false;
@@ -148,8 +149,8 @@ struct GeometricFilter_EMatrix_AC
       if ( !isPinhole(cam_I->getType()) || !isPinhole(cam_J->getType()))
         return false;
 
-      const cameras::Pinhole_Intrinsic * ptrPinhole_I = (const cameras::Pinhole_Intrinsic*)(cam_I);
-      const cameras::Pinhole_Intrinsic * ptrPinhole_J = (const cameras::Pinhole_Intrinsic*)(cam_J);
+      const cameras::Pinhole_Intrinsic * ptrPinhole_I = dynamic_cast<const cameras::Pinhole_Intrinsic*>(cam_I);
+      const cameras::Pinhole_Intrinsic * ptrPinhole_J = dynamic_cast<const cameras::Pinhole_Intrinsic*>(cam_J);
 
       Mat3 F;
       FundamentalFromEssential(m_E, ptrPinhole_I->K(), ptrPinhole_J->K(), &F);
@@ -175,6 +176,6 @@ struct GeometricFilter_EMatrix_AC
   double m_dPrecision_robust;
 };
 
-} // namespace openMVG
 } //namespace matching_image_collection
+}  // namespace openMVG
 

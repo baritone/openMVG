@@ -33,7 +33,7 @@ using namespace openMVG::sfm;
 bool checkIntrinsicStringValidity(const std::string & Kmatrix, double & focal, double & ppx, double & ppy)
 {
   std::vector<std::string> vec_str;
-  stl::split(Kmatrix, ";", vec_str);
+  stl::split(Kmatrix, ';', vec_str);
   if (vec_str.size() != 9)  {
     std::cerr << "\n Missing ';' character" << std::endl;
     return false;
@@ -96,6 +96,7 @@ int main(int argc, char **argv)
       << "\t 2: Pinhole radial 1\n"
       << "\t 3: Pinhole radial 3 (default)\n"
       << "\t 4: Pinhole brown 2\n"
+      << "\t 5: Pinhole with a simple Fish-eye distortion\n"
       << "[-g|--group_camera_model]\n"
       << "\t 0-> each view have it's own camera intrinsic parameters,\n"
       << "\t 1-> (default) view can share some camera intrinsic parameters\n"
@@ -186,13 +187,22 @@ int main(int argc, char **argv)
     width = height = ppx = ppy = focal = -1.0;
 
     const std::string sImageFilename = stlplus::create_filespec( sImageDir, *iter_image );
+    const std::string sImFilenamePart = stlplus::filename_part(sImageFilename);
 
     // Test if the image format is supported:
     if (openMVG::image::GetFormat(sImageFilename.c_str()) == openMVG::image::Unknown)
     {
       error_report_stream
-          << stlplus::filename_part(sImageFilename) << ": Unkown image file format." << "\n";
+          << sImFilenamePart << ": Unkown image file format." << "\n";
       continue; // image cannot be opened
+    }
+
+    if(sImFilenamePart.find("mask.png") != std::string::npos
+       || sImFilenamePart.find("_mask.png") != std::string::npos)
+    {
+      error_report_stream
+          << sImFilenamePart << " is a mask image" << "\n";
+      continue;
     }
 
     ImageHeader imgHeader;
@@ -204,12 +214,11 @@ int main(int argc, char **argv)
     ppx = width / 2.0;
     ppy = height / 2.0;
 
-    std::unique_ptr<Exif_IO> exifReader(new Exif_IO_EasyExif());
+    std::unique_ptr<Exif_IO> exifReader(new Exif_IO_EasyExif);
     exifReader->open( sImageFilename );
 
     const bool bHaveValidExifMetadata =
       exifReader->doesHaveExifInfo()
-      && !exifReader->getBrand().empty()
       && !exifReader->getModel().empty();
 
     // Consider the case where the focal is provided manually
@@ -226,7 +235,6 @@ int main(int argc, char **argv)
     }
     else // If image contains meta data
     {
-      const std::string sCamName = exifReader->getBrand();
       const std::string sCamModel = exifReader->getModel();
 
       // Handle case where focal length is equal to 0
@@ -240,17 +248,17 @@ int main(int argc, char **argv)
       // Create the image entry in the list file
       {
         Datasheet datasheet;
-        if ( getInfo( sCamName, sCamModel, vec_database, datasheet ))
+        if ( getInfo( sCamModel, vec_database, datasheet ))
         {
           // The camera model was found in the database so we can compute it's approximated focal length
-          const double ccdw = datasheet._sensorSize;
+          const double ccdw = datasheet.sensorSize_;
           focal = std::max ( width, height ) * exifReader->getFocal() / ccdw;
         }
         else
         {
           error_report_stream
-            << stlplus::basename_part(sImageFilename) << ": Camera \""
-            << sCamName << "\" model \"" << sCamModel << "\" doesn't exist in the database" << "\n"
+            << stlplus::basename_part(sImageFilename)
+            << "\" model \"" << sCamModel << "\" doesn't exist in the database" << "\n"
             << "Please consider add your camera model and sensor width in the database." << "\n";
         }
       }
@@ -279,6 +287,10 @@ int main(int argc, char **argv)
         case PINHOLE_CAMERA_BROWN:
           intrinsic =std::make_shared<Pinhole_Intrinsic_Brown_T2>
             (width, height, focal, ppx, ppy, 0.0, 0.0, 0.0, 0.0, 0.0); // setup no distortion as initial guess
+        break;
+        case PINHOLE_CAMERA_FISHEYE:
+          intrinsic =std::make_shared<Pinhole_Intrinsic_Fisheye>
+            (width, height, focal, ppx, ppy, 0.0, 0.0, 0.0, 0.0); // setup no distortion as initial guess
         break;
         default:
           std::cerr << "Error: unknown camera model: " << (int) e_User_camera_model << std::endl;
