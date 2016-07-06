@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y \
      cd /tmp/openMVG && \
      mkdir build && \
      cd build && \
-     cmake ../src -DCMAKE_BUILD_TYPE=RELEASE -DOpenMVG_BUILD_EXAMPLES=ON -DOpenMVG_MAKE_TEST=ON \
+     cmake ../src -DCMAKE_BUILD_TYPE=RELEASE -DOpenMVG_BUILD_EXAMPLES=ON -DOpenMVG_BUILD_TESTS=ON \
      && make all \
-     && make install \
- CMD ["make test"]
+     && make install
+CMD ["make test"]
