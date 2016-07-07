@@ -1,5 +1,7 @@
 #Example of docker configuration file
 FROM ubuntu:14.04
+
+# get all dependencies and compile openMVG
 RUN apt-get update && apt-get install -y \
      vim \
      htop \
@@ -22,4 +24,6 @@ RUN apt-get update && apt-get install -y \
      cmake ../src -DCMAKE_BUILD_TYPE=RELEASE -DOpenMVG_BUILD_EXAMPLES=ON -DOpenMVG_BUILD_TESTS=ON \
      && make all \
      && make install
-CMD ["make test"]
+
+# now run command
+RUN cd /tmp/openMVG/build && make test
